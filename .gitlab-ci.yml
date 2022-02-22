@@ -6,7 +6,7 @@ build_and_test:
     stage: build
     script:
         - source ./envs/linux-macos.sh
-        - cd lib && ./get_gmsh.sh && cd ..
+        - cd lib && sh ./get_gmsh.sh && cd ..
         - mkdir build
         - cd build
         - cmake ..
