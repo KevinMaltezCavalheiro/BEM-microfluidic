@@ -196,8 +196,7 @@ int main(int argc, char **argv)
             /*---------computing the B matrix of the first element's (i.e elementTags[i][0]) first GP:------*/
             // ne serait-ça pas plutôt utile de directement convertir les Jacobiens en 2D ? travailler en full 2D
             // et faire pareil pour l'évaluation des gradients des basis functions ci-dessus ?
-            std::vector<double> b_matrix;
-
+            
             // convert first jacobian to Eigen format
             Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
                 jacob(&jacobians[0], 3, 3);
@@ -219,13 +218,24 @@ int main(int argc, char **argv)
             Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
             std::cout << "\ttranspose of the inverse of the first jacobian (Eigen):\n" 
                       << jacobinvtrans.format(fmt) << "\n";
+
             Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
-            B_matrix(0,0) = 0.;
-            std::cout << "\ttranspose of the inverse of the first jacobian (Eigen):\n" 
-                      << B_matrix.size() << "\n";
-            for (int j = 0; j < weights.size(); ++j){ // looping over the number of shape functions
-                
+            for (int j = 0; j < numNodes; ++j){ // looping over the number of shape functions
+                B_matrix(0,2*j) = jacobinvtrans(0,0)*basisFunctions[3*j]+jacobinvtrans(0,1)*basisFunctions[3*j+1];
+                B_matrix(1,2*j) = 0.;
+                B_matrix(2,2*j) = jacobinvtrans(1,0)*basisFunctions[3*j]+jacobinvtrans(1,1)*basisFunctions[3*j+1];
+                B_matrix(0,2*j+1) = 0.;
+                B_matrix(1,2*j+1) = B_matrix(2,2*j);
+                B_matrix(2,2*j+1) = B_matrix(0,2*j);
             }
+            std::cout << "\tfirst B matrix:\n" 
+                      << B_matrix << "\n";
+            
+            Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K_matrix(2*numNodes,2*numNodes);
+            K_matrix = B_matrix.transpose()*H_matrix*B_matrix*determinants[0]*weights[0];
+
+            std::cout << "\tfirst elemental K matrix:\n" 
+                      << K_matrix << "\n";
         }
     }
     
