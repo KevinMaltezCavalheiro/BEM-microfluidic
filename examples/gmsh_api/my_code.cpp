@@ -157,7 +157,7 @@ int main(int argc, char **argv)
 
             // convert to Eigen format
             Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>
-                localCoords_E(&localCoords[0], localCoords.size()/3, 3);
+                localCoords_E(&localCoords[0], 3, localCoords.size()/3);
             std::cout << "\tlocalCoords (Eigen):\n";
             Eigen::IOFormat fmt(4, 0, ", ", "\n", "\t\t[", "]");
             std::cout << localCoords_E.format(fmt) << '\n';
@@ -193,49 +193,43 @@ int main(int argc, char **argv)
                 std::cout << basisFunctions[j] << " ";
             std::cout << '\n';
 
-            /*---------computing the B matrix of the first element's (i.e elementTags[i][0]) first GP:------*/
-            // ne serait-ça pas plutôt utile de directement convertir les Jacobiens en 2D ? travailler en full 2D
-            // et faire pareil pour l'évaluation des gradients des basis functions ci-dessus ?
-            
-            // convert first jacobian to Eigen format
-            Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
-                jacob(&jacobians[0], 3, 3);
-            // passage en 2D xD
-            Eigen::Matrix<double, 2, 2> jacob2D;
-            jacob2D(0,0) = jacob(0,0);
-            jacob2D(1,0) = jacob(1,0);
-            jacob2D(0,1) = jacob(0,1);
-            jacob2D(1,1) = jacob(1,1);
-            std::cout << "\tfirst jacobian (Eigen):\n" 
-                      << jacob2D.format(fmt) << '\n';
-                    
-            // compute the inverse with Eigen
-            Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
-            std::cout << "\tinverse of the first jacobian (Eigen):\n" 
-                      << jacobinv.format(fmt) << "\n";
-
-            // compute the transpose of the inverse with Eigen
-            Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
-            std::cout << "\ttranspose of the inverse of the first jacobian (Eigen):\n" 
-                      << jacobinvtrans.format(fmt) << "\n";
-
-            Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
-            for (int j = 0; j < numNodes; ++j){ // looping over the number of shape functions
-                B_matrix(0,2*j) = jacobinvtrans(0,0)*basisFunctions[3*j]+jacobinvtrans(0,1)*basisFunctions[3*j+1];
-                B_matrix(1,2*j) = 0.;
-                B_matrix(2,2*j) = jacobinvtrans(1,0)*basisFunctions[3*j]+jacobinvtrans(1,1)*basisFunctions[3*j+1];
-                B_matrix(0,2*j+1) = 0.;
-                B_matrix(1,2*j+1) = B_matrix(2,2*j);
-                B_matrix(2,2*j+1) = B_matrix(0,2*j);
-            }
-            std::cout << "\tfirst B matrix:\n" 
-                      << B_matrix << "\n";
-            
+            /*---------computing the K matrix of the first element------*/
             Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K_matrix(2*numNodes,2*numNodes);
-            K_matrix = B_matrix.transpose()*H_matrix*B_matrix*determinants[0]*weights[0];
+            for (int j = 0; j < 2*numNodes; ++j){
+                for (int l = 0; l < 2*numNodes; ++l){
+                    K_matrix(j,l)=0.;
+                }
+            }
+            for (int j = 0; j < weights.size(); ++j){
+                // convert first jacobian to Eigen format
+                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
+                    jacob(&jacobians[9*j], 3, 3);
+                // passage en 2D xD
+                Eigen::Matrix<double, 2, 2> jacob2D;
+                jacob2D(0,0) = jacob(0,0);
+                jacob2D(1,0) = jacob(1,0);
+                jacob2D(0,1) = jacob(0,1);
+                jacob2D(1,1) = jacob(1,1);
+                        
+                // compute the inverse with Eigen
+                Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
 
-            std::cout << "\tfirst elemental K matrix:\n" 
-                      << K_matrix << "\n";
+                // compute the transpose of the inverse with Eigen
+                Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
+
+                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
+                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
+                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctions[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctions[3*l+numNodes*3*j+1];
+                    B_matrix(1,2*l) = 0.;
+                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctions[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctions[3*l+numNodes*3*j+1];
+                    B_matrix(0,2*l+1) = 0.;
+                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
+                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
+                }
+                
+                K_matrix = K_matrix + B_matrix.transpose()*H_matrix*B_matrix*determinants[j]*weights[j];
+            }
+            std::cout << "\tfirst elemental K matrix:\n" << K_matrix << "\n";
         }
     }
     
