@@ -128,6 +128,15 @@ int main(int argc, char **argv)
             for (int j = 0; j < elementTags[i].size(); ++j)
                 std::cout << elementTags[i][j] << " ";
             std::cout << '\n';
+
+            // getting element properties
+            std::string elementName;
+            int dim, order, numNodes, numPrimaryNodes;
+            std::vector<double> localNodeCoord;
+            gmsh::model::mesh::getElementProperties(elementTypes[i],
+                                            elementName, dim, order,
+                                            numNodes, localNodeCoord, 
+                                            numPrimaryNodes);
             
             // get Gauss points coordinates and weights
             std::vector<double> localCoords, weights;
@@ -210,11 +219,11 @@ int main(int argc, char **argv)
             Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
             std::cout << "\ttranspose of the inverse of the first jacobian (Eigen):\n" 
                       << jacobinvtrans.format(fmt) << "\n";
-            Eigen::Matrix<double, 3, Eigen::Dynamic> B_matrix;
+            Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
             B_matrix(0,0) = 0.;
             std::cout << "\ttranspose of the inverse of the first jacobian (Eigen):\n" 
-                      << B_matrix.format(fmt) << "\n";
-            for (int j = 0; j < weights.size(); ++j){ // looping over the number of gauss points ( = number of shape functions (A VERIF))
+                      << B_matrix.size() << "\n";
+            for (int j = 0; j < weights.size(); ++j){ // looping over the number of shape functions
                 
             }
         }
