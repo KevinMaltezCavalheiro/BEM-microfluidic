@@ -192,16 +192,22 @@ int main(int argc, char **argv)
             // convert first jacobian to Eigen format
             Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
                 jacob(&jacobians[0], 3, 3);
+            // passage en 2D xD
+            Eigen::Matrix<double, 2, 2> jacob2D;
+            jacob2D(0,0) = jacob(0,0);
+            jacob2D(1,0) = jacob(1,0);
+            jacob2D(0,1) = jacob(0,1);
+            jacob2D(1,1) = jacob(1,1);
             std::cout << "\tfirst jacobian (Eigen):\n" 
-                      << jacob.format(fmt) << '\n';
-
+                      << jacob2D.format(fmt) << '\n';
+                    
             // compute the inverse with Eigen
-            Eigen::Matrix<double, 3, 3> jacobinv = jacob.inverse();
+            Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
             std::cout << "\tinverse of the first jacobian (Eigen):\n" 
                       << jacobinv.format(fmt) << "\n";
 
             // compute the transpose of the inverse with Eigen
-            Eigen::Matrix<double, 3,3> jacobinvtrans = jacobinv.transpose();
+            Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
             std::cout << "\ttranspose of the inverse of the first jacobian (Eigen):\n" 
                       << jacobinvtrans.format(fmt) << "\n";
 
