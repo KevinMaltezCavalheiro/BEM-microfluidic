@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 
     /*--------Integration rule used in the code----------*/
     // could be useful to pass it as an argument in the .geo file
-    std::string integration_rule = "CompositeGauss2"; // tested with other methods, OK too.
+    std::string integration_rule = "CompositeGauss4"; // tested with other methods, OK too.
 
     /*--------get physical groups--------------*/
     std::map<std::string, std::pair<int, int>> groups;
@@ -247,6 +247,7 @@ int main(int argc, char **argv)
                 std::cout << '\n';*/
                 //std::cout << "\t elemental K matrix of element " << elementTags[i][el] << ":\n" << K_matrix << "\n";
                 /*------------- ASSEMBLY PROCESS ------------*/
+                // USE LIST OF TRIPLETS TO PUSH ONLY ONCE -> more rapid and easier to parallelize
                 for (int j = 0; j < 2*numNodes; ++j){
                     int first_node_index = (int) j/2;
                     int first_node = nodeTags[i][numNodes*el+first_node_index];
@@ -720,6 +721,11 @@ int main(int argc, char **argv)
         gmsh::model::mesh::getElementProperties(elementTypes[ityp], name, dim, order,
                                                 numNodes, paramCoord, numPrimaryNodes);
 
+        std::cout << "paramCoord: " << "\n";
+        for(int j = 0; j < paramCoord.size(); ++j)
+            std::cout << paramCoord[j] << " ";
+        std::cout << "\n";
+
         // select element/node tags for this type of element
         auto &etags = elementTags[ityp];
         auto &enods = elnodeTags[ityp];
@@ -733,6 +739,11 @@ int main(int argc, char **argv)
         gmsh::model::mesh::getIntegrationPoints(elementTypes[ityp], 
                                                 integration_rule, // "Gauss2", en vrai ne pas le hardcoder (on l'utilise plusieurs fois dans le code)
                                                 localCoords, weights);
+
+        std::cout << "localCoords: " << "\n";
+        for(int j = 0; j < localCoords.size(); ++j)
+            std::cout << localCoords[j] << " ";
+        std::cout << "\n";
 
         // get determinants and Jacobians (only jacob useful here)
         std::vector<double> jacobians, determinants, coords;
@@ -798,10 +809,10 @@ int main(int argc, char **argv)
                 // computing the transpose of the inverse
                 Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
 
-                // computing the B matrix (formula slide 19) and the f vector (also using gauss integration)
+                // computing the B matrix (formula slide 19)
                 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
                 for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
-                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1]; //ici faudrait pas un weights.size() à la place de numNodes ?? pense pas, ça fonctionne
                     B_matrix(1,2*l) = 0.;
                     B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
                     B_matrix(0,2*l+1) = 0.;
@@ -842,6 +853,165 @@ int main(int argc, char **argv)
                                 elems2D, data9);
     gmsh::view::addModelData(viewtag10, 0, names[0], "ElementData",
                                 elems2D, data10);
+
+    /*-------------------ELEMENTAL-NODAL VALUES-----------------------*/
+    int viewtag11 = gmsh::view::add("nodal_eps_x");
+    int viewtag12 = gmsh::view::add("nodal_eps_y");
+    int viewtag13 = gmsh::view::add("nodal_2eps_xy");
+    int viewtag14 = gmsh::view::add("nodal_eps_z");
+    int viewtag15 = gmsh::view::add("nodal_sig_x");
+    int viewtag16 = gmsh::view::add("nodal_sig_y");
+    int viewtag17 = gmsh::view::add("nodal_sig_xy");
+    int viewtag18 = gmsh::view::add("nodal_sig_VM");
+    std::vector<std::vector<double>> data11(nbelems);
+    std::vector<std::vector<double>> data12(nbelems);
+    std::vector<std::vector<double>> data13(nbelems);
+    std::vector<std::vector<double>> data14(nbelems);
+    std::vector<std::vector<double>> data15(nbelems);
+    std::vector<std::vector<double>> data16(nbelems);
+    std::vector<std::vector<double>> data17(nbelems);
+    std::vector<std::vector<double>> data18(nbelems);
+    std::vector<std::size_t> elems2D_bis(nbelems);
+
+    // for each element type
+    k=0;
+    for (std::size_t ityp = 0; ityp < elementTypes.size(); ++ityp)
+    {
+        // get info about this type of element
+        std::string name;
+        int dim, order, numNodes, numPrimaryNodes;
+        std::vector<double> paramCoord2D;
+        gmsh::model::mesh::getElementProperties(elementTypes[ityp], name, dim, order,
+                                                numNodes, paramCoord2D, numPrimaryNodes);
+        //paramCoord contains the coordinates of the nodes in 2D
+        // passage en 3D pour utiliser getJacobians
+        std::vector<double> paramCoord(3*paramCoord2D.size()/2);
+        for( int j = 0; j < paramCoord2D.size()/2; ++j){
+            paramCoord[3*j] = paramCoord2D[2*j];
+            paramCoord[3*j+1] = paramCoord2D[2*j+1];
+            paramCoord[3*j+2] = 0.;
+        }
+
+        /*std::cout << "paramCoord: " << "\n";
+        for(int j = 0; j < paramCoord.size(); ++j)
+            std::cout << paramCoord[j] << " ";
+        std::cout << "\n";*/
+        
+
+        // select element/node tags for this type of element
+        auto &etags = elementTags[ityp];
+        auto &enods = elnodeTags[ityp];
+
+        // will contain the d vector inside each element
+        Eigen::VectorXd nodal_displacement(2*numNodes); //use eigen vector to use Eigen matric product later
+
+        // get determinants and Jacobians (only jacob useful here) AT NODES AND NOT AT GAUSS POINTS
+        std::vector<double> jacobians, determinants, coords;
+        gmsh::model::mesh::getJacobians(elementTypes[ityp], 
+                                        paramCoord, jacobians, 
+                                        determinants, coords);
+
+        /*std::cout << "jacobians: " << "\n";
+        for(int j = 0; j < jacobians.size(); ++j)
+            std::cout << jacobians[j] << " ";
+        std::cout << "\n";*/
+
+        // derivatives of the shape functions at the nodes of the reference element
+        // we are here working with derivatives in the reference space, same for all elements
+        int numComponents, numOrientations;
+        std::vector<double> basisFunctionsGradient;
+
+        gmsh::model::mesh::getBasisFunctions(elementTypes[ityp], paramCoord, 
+                                                "GradLagrange", numComponents, 
+                                                basisFunctionsGradient, 
+                                                numOrientations);
+
+        Eigen::Vector3d epsilon; // will contain local values of the strains
+        Eigen::Vector3d sigma; // will contain local values of the stresses
+        Eigen::Vector3d tmp_epsilon; // will store temporary values
+
+        // loop over elements of type "ityp"
+        for (std::size_t i = 0; i < etags.size(); ++i)
+        {
+            elems2D_bis[k] = etags[i];
+
+            data11[k].resize(numNodes);
+            data12[k].resize(numNodes);
+            data13[k].resize(numNodes);
+            data14[k].resize(numNodes);
+            data15[k].resize(numNodes);
+            data16[k].resize(numNodes);
+            data17[k].resize(numNodes);
+            data18[k].resize(numNodes);
+
+            // loop over nodes of the element, filling the local nodal displacement vector "d"
+            for (std::size_t j = 0; j < numNodes; ++j)
+            {
+                int nodeTag = enods[numNodes * i + j];
+                nodal_displacement(2*j) = full_d_vector[2*(nodeTag-1)];
+                nodal_displacement(2*j+1) = full_d_vector[2*(nodeTag-1)+1];
+            }
+            // looping over the nodes
+            for (int j = 0; j < numNodes; ++j){
+                // converting jacobian to Eigen format
+                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
+                    jacob(&jacobians[9*j+9*numNodes*i], 3, 3);
+                // 3D to 2D (plane stress case)
+                Eigen::Matrix<double, 2, 2> jacob2D;
+                jacob2D(0,0) = jacob(0,0);
+                jacob2D(1,0) = jacob(1,0);
+                jacob2D(0,1) = jacob(0,1);
+                jacob2D(1,1) = jacob(1,1);
+                        
+                // computing the inverse
+                Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
+
+                // computing the transpose of the inverse
+                Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
+
+                // computing the B matrix (formula slide 19) 
+                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
+                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
+                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+                    B_matrix(1,2*l) = 0.;
+                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+                    B_matrix(0,2*l+1) = 0.;
+                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
+                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
+                }
+                epsilon = B_matrix*nodal_displacement;
+                sigma = H_matrix*epsilon;
+
+                data11[k][j] = epsilon(0);
+                data12[k][j] = epsilon(1);
+                data13[k][j] = epsilon(2);
+                data14[k][j] = -nu/E*(sigma(0)+sigma(1));// formula slide 11/20 elasticity
+                data15[k][j] = sigma(0);
+                data16[k][j] = sigma(1);
+                data17[k][j] = sigma(2);
+                data18[k][j] = sqrt(sigma(0)*sigma(0) + sigma(1)*sigma(1) - sigma(0)*sigma(1) + 3*sigma(2)*sigma(2)); // VM stress in plane stress configuration
+            }
+
+            k++;
+        }
+    }
+    std::cout << "hello";
+    gmsh::view::addModelData(viewtag11, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data11, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewtag12, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data12, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewtag13, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data13, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewtag14, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data14, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewtag15, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data15, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewtag16, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data16, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewtag17, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data17, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewtag18, 0, names[0], "ElementNodeData",
+                                elems2D_bis, data18, 1);  // the last ,1 is important!
 
     gmsh::fltk::run(); // opens the gmsh window
     
