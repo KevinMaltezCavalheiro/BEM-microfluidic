@@ -1,14 +1,22 @@
-//
-//  main.cpp
-//  test_bem
-//
-//  Created by Maltez Cavalheiro Kévin on 28/02/2022.
-//
+#include <gmsh.h>       // gmsh main header
+#include <iostream>     // for cout
+#include <map>
+#include <sstream>  // for stringstream
+#include <Eigen/Dense> // Eigen library
+#include <Eigen/Sparse> // Eigen library for sparse matrices (QUESTION: OK to use it ?)
+#include <Eigen/SparseCholesky> // solving sparse linear systems (QUESTION: OK to use it ?)
+#include <cmath>
+#include "code_louis.hpp"
+#include "code_kevin.hpp"
 
-#include <iostream>
 
-int main(int argc, const char * argv[]) {
-    // insert code here...
-    std::cout << "Hello, World!\n";
+using namespace std;
+using namespace gmsh;
+using namespace Eigen;
+
+int main(int argc, char **argv)
+{
+    code_kevin(argc,argv);
+
     return 0;
 }
