@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 
     /*--------Integration rule used in the code----------*/
     // could be useful to pass it as an argument in the .geo file
-    std::string integration_rule = "CompositeGauss4"; // tested with other methods, OK too.
+    std::string integration_rule = "CompositeGauss2"; // tested with other methods, OK too.
 
     /*--------get physical groups--------------*/
     std::map<std::string, std::pair<int, int>> groups;
@@ -873,6 +873,18 @@ int main(int argc, char **argv)
     std::vector<std::vector<double>> data18(nbelems);
     std::vector<std::size_t> elems2D_bis(nbelems);
 
+    std::vector<int> nb_adjacent_elements(all_nodeTags.size()); // number of 2d elements adjacent to node (i+1)
+    std::vector<double> nodal_sigma_x(all_nodeTags.size()); // will store nodal values (may be helpful later)
+    std::vector<double> nodal_sigma_y(all_nodeTags.size());
+    std::vector<double> nodal_sigma_xy(all_nodeTags.size());
+
+    for(int i = 0; i < all_nodeTags.size(); ++i){
+        nb_adjacent_elements[i] = 0;
+        nodal_sigma_x[i] = 0.;
+        nodal_sigma_y[i] = 0.;
+        nodal_sigma_xy[i] = 0.;
+    }
+
     // for each element type
     k=0;
     for (std::size_t ityp = 0; ityp < elementTypes.size(); ++ityp)
@@ -950,9 +962,12 @@ int main(int argc, char **argv)
                 int nodeTag = enods[numNodes * i + j];
                 nodal_displacement(2*j) = full_d_vector[2*(nodeTag-1)];
                 nodal_displacement(2*j+1) = full_d_vector[2*(nodeTag-1)+1];
+
+                nb_adjacent_elements[nodeTag-1] +=1; // -1 is because nodeTags begin at 1
             }
             // looping over the nodes
             for (int j = 0; j < numNodes; ++j){
+                int nodeTag = enods[numNodes * i + j];
                 // converting jacobian to Eigen format
                 Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
                     jacob(&jacobians[9*j+9*numNodes*i], 3, 3);
@@ -990,12 +1005,15 @@ int main(int argc, char **argv)
                 data16[k][j] = sigma(1);
                 data17[k][j] = sigma(2);
                 data18[k][j] = sqrt(sigma(0)*sigma(0) + sigma(1)*sigma(1) - sigma(0)*sigma(1) + 3*sigma(2)*sigma(2)); // VM stress in plane stress configuration
+
+                nodal_sigma_x[nodeTag - 1] += sigma(0);
+                nodal_sigma_y[nodeTag - 1] += sigma(1);
+                nodal_sigma_xy[nodeTag - 1] += sigma(2);
             }
 
             k++;
         }
     }
-    std::cout << "hello";
     gmsh::view::addModelData(viewtag11, 0, names[0], "ElementNodeData",
                                 elems2D_bis, data11, 1);  // the last ,1 is important!
     gmsh::view::addModelData(viewtag12, 0, names[0], "ElementNodeData",
@@ -1012,6 +1030,128 @@ int main(int argc, char **argv)
                                 elems2D_bis, data17, 1);  // the last ,1 is important!
     gmsh::view::addModelData(viewtag18, 0, names[0], "ElementNodeData",
                                 elems2D_bis, data18, 1);  // the last ,1 is important!
+
+    // empeche que tout se plot l'un sur l'autre
+    int nb_views = 18; //hardcoded
+    for( int i = 0; i < nb_views; ++i){
+        std::string hello = "View[" + std::to_string(i) + "].Visible";
+        gmsh::option::setNumber(hello, 0);
+    }
+
+    // computing mean nodal values
+    for (int i = 0; i < all_nodeTags.size(); ++i){
+        nodal_sigma_x[i] = nodal_sigma_x[i] / nb_adjacent_elements[i];
+        nodal_sigma_y[i] = nodal_sigma_y[i] / nb_adjacent_elements[i];
+        nodal_sigma_xy[i] = nodal_sigma_xy[i] / nb_adjacent_elements[i];
+    }
+
+    // computing reaction forces (if ux imposed, need to compute Rx (pareil pr y))
+    // using INTEGRATION PAR TRAPEZE
+    double Rx = 0.;
+    double Ry = 0.;
+    for (auto &key : keys)
+    {
+        // get corresponding value
+        std::vector<double> value;
+        gmsh::onelab::getNumber(key, value);
+        // expected key structure is "type/group_name/field"
+        // => split the key string into components
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
+        while(std::getline(ss, word, '/')) // read string until '/'
+            words.push_back(word);
+        if(words.size()==3) 
+        {
+            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
+                Rx = 0;
+                Ry = 0;
+                groupname = words[1];
+                std::cout << "-------------------- " << groupname << " ------------------- \n";
+                
+                //loop over elements of group_name
+                dim = groups[groupname].first;
+                tag = groups[groupname].second;
+                if (tag == 0)
+                {
+                    std::cerr << "Group '" << groupname << "' does not exist!\n";
+                    return 1;
+                }
+                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+
+                // loop over entities
+                for (int k = 0; k < tags.size(); ++k)
+                {
+                    std::vector<int> elementTypes;
+                    std::vector<std::vector<std::size_t>> elementTags;
+                    std::vector<std::vector<std::size_t>> nodeTags;
+                    gmsh::model::mesh::getElements(elementTypes, elementTags,
+                                                nodeTags, dim, tags[k]);
+                    
+                    for (int i = 0; i < elementTypes.size(); ++i)
+                    {
+
+                        // getting element properties
+                        std::string elementName;
+                        int dim, order, numNodes, numPrimaryNodes;
+                        std::vector<double> localNodeCoord;
+                        gmsh::model::mesh::getElementProperties(elementTypes[i],
+                                                        elementName, dim, order,
+                                                        numNodes, localNodeCoord, 
+                                                        numPrimaryNodes);
+                        // getting nodal coordinates
+                        std::vector<std::size_t> my_nodeTags; // rien de nouveau % nodeTags[i]
+                        std::vector<double> model_coord; // utile ici !! les coordonnées
+                        std::vector<double> param_coord; // inutile
+                        gmsh::model::mesh::getNodesByElementType(elementTypes[i], my_nodeTags, model_coord, param_coord, tags[k]);
+
+                        //looping over the elements (they are 1D -> 2 nodes)
+                        for (int el = 0; el < elementTags[i].size(); el++){
+                            int first_node = nodeTags[i][numNodes*el];
+                            int second_node = nodeTags[i][numNodes*el + 1];
+                            
+                            // retrieving the coordinates
+                            double x1 = model_coord[3*numNodes*el];
+                            double y1 = model_coord[3*numNodes*el + 1];
+                            double x2 = model_coord[3*numNodes*el + 3];
+                            double y2 = model_coord[3*numNodes*el + 4];
+                            // computing the normal (how to deal with the signs ?????)
+                            double dx = x1 - x2;
+                            double dy = y1 - y2;
+                            double length = sqrt(dx*dx+dy*dy);
+                            double nx;
+                            double ny;
+                            if (dx == 0){
+                                nx = 1;
+                                ny = 0;
+                            }
+                            else if (dy == 0){
+                                nx = 0;
+                                ny = 1;
+                            }
+                            else{
+                                double slope = dx/dy;
+                                nx = 1/sqrt(slope*slope+1);
+                                ny = slope/sqrt(slope*slope+1);
+                            }
+
+                            double mean_sigma_x = (nodal_sigma_x[first_node - 1] + nodal_sigma_x[second_node - 1])/2; //-1 because nodeTags begin at 1
+                            double mean_sigma_y = (nodal_sigma_y[first_node - 1] + nodal_sigma_y[second_node - 1])/2;
+                            double mean_sigma_xy = (nodal_sigma_x[first_node - 1] + nodal_sigma_xy[second_node - 1])/2;
+
+                            if(words[2].compare("ux") == 0){
+                                Rx += (mean_sigma_x*nx + mean_sigma_xy*ny)*length;
+                            }
+                            if(words[2].compare("uy") == 0){
+                                Ry += (mean_sigma_xy*nx + mean_sigma_y*ny)*length;
+                            }
+                        }
+                    }
+                }
+                std::cout << "Rx: " << Rx << " [N/m], Ry: " << Ry << " [N/m] \n";
+            }
+        }
+    }
 
     gmsh::fltk::run(); // opens the gmsh window
     
