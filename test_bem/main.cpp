@@ -6,7 +6,8 @@
 #include <Eigen/Sparse> // Eigen library for sparse matrices (QUESTION: OK to use it ?)
 #include <Eigen/SparseCholesky> // solving sparse linear systems (QUESTION: OK to use it ?)
 #include <cmath>
-#include "code_louis.hpp"
+//#include "code_louis_function.hpp"
+//#include "code_louis.hpp"
 #include "code_kevin.hpp"
 
 

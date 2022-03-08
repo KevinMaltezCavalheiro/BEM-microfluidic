@@ -12,29 +12,19 @@ using namespace gmsh;
 using namespace std;
 using namespace Eigen;
 
-void initialisation(double &E,double &nu,double &rho,double &bx,double &by,map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys);
+int initialisation(map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys, string &groupname,vector<int> &tags,string &integration_rule, vectorpair &dimTags);
 
-void initialise_H_matrix(Matrix<double, 3, 3> &H_matrix, double nu, double E);
+int compute_G_matrix(map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys, string &groupname,vector<int> &tags,string &integration_rule, vectorpair &dimTags);
 
-int compute_K_matrix(vector<size_t> &all_nodeTags, map<string, pair<int, int>> &groups, string &integration_rule, double bx, double rho, double by, Matrix<double, 3, 3> &H_matrix, SparseMatrix<double> &full_K_matrix,vector<double> &full_f_vector, string groupname);
-
-int boundary_conditions(vector<string> &keys, string &groupname, double &tx, double &ty, map<string, pair<int, int>> &groups, vector<int> &tags, string &integration_rule, vector<double> &full_f_vector);
-
-int code_simple(int argc, char **argv);
+void sorting_nodes(vector<size_t> &nodeTags,vector<double> &boundary_nodes_coordinates_x,vector<double> &boundary_nodes_coordinates_y,vector<double> &boundary_sort_nodes_tags, vector<double> &boundary_sort_length_elements);
 
 int code_kevin(int argc, char **argv);
 
-int dirichlet(vector<int> &new_indices, vector<double> &dir_BC, vector<string> &keys, double &ux, double &uy, string &groupname, map<string, pair<int, int>> &groups, vector<int> &tags, int &number_removed_lines);
-
-void filling(vector<size_t> &all_nodeTags, int &number_removed_lines, vector<int> &new_indices, SparseMatrix<double> &full_K_matrix, vector<double> &full_f_vector, vector<double> &dir_BC,SparseMatrix<double> &reduced_K_matrix,vector<double> &reduced_f_vector);
-
-void reduce_system_solver(vector<size_t> &all_nodeTags, int &number_removed_lines, vector<double> &reduced_f_vector, SparseMatrix<double> &reduced_K_matrix, VectorXd &final_reduced_d, VectorXd &final_reduced_f);
-
-void nodal_values(vector<double> &full_d_vector, vector<int> &new_indices, vector<double> &dir_BC, VectorXd &final_reduced_d);
-
-void plot_and_save(vector<size_t> &all_nodeTags, vector<double> &full_d_vector, vector<string> &names);
-
-//void post_processing(string &integration_rule, vector<double> &full_d_vector, Matrix<double, 3, 3> &H_matrix, double &nu, double &E, vector<string> &names);
+//todo:séparer en différentes fonctions
+//todo:gérer les conditions de dirichlet et neumann
+//todo: comparer au livre BEM
+//todo: générer matrice H et G
+// ordre (pour l'instant) initialisation, générer G, générer H
 
 int code_kevin(int argc, char **argv)
 {
@@ -54,11 +44,6 @@ int code_kevin(int argc, char **argv)
     /*PARAMETERS*/
 
     //physical
-    double E(0); // Young modulus
-    double nu(0); // Poisson ratio
-    double rho(0); // volumic mass
-    double bx(0); // volumic force along x axis
-    double by(0); // volumic force along y axis
     /*-----------first focus on neumann BC's (surface traction) into full_f_vector------------*/
     double tx(0); // surface traction along x axis
     double ty(0); // surface traction along y axis
@@ -75,936 +60,509 @@ int code_kevin(int argc, char **argv)
     vector<int> tags;
     int number_removed_lines = 0;
     vector<string> names;
+    vectorpair dimTags;
 
     //physical properties of the domain
     vector<string> keys;
-    string groupname = "domain"; // we consider the domain as containing the whole 2d model
+    string groupname = "boundary"; // on considère la frontière du domaine
 
     /*--------Integration rule used in the code----------*/
     // could be useful to pass it as an argument in the .geo file
-    string integration_rule = "CompositeGauss2"; // tested with other methods, OK too.
-
+    string integration_rule = "CompositeGauss4"; // tested with other methods, OK too.
     //H matrix
-    Matrix<double, 3, 3> H_matrix;
+    Matrix<double, 3, 3> H_matrix; //projet d'avenir
+    Matrix<double, 3, 3> G_matrix; //projet d'avenir
 
     /*FONCTIONS*/
-    //initialise tout le domaine physique
-    initialisation(E,nu,rho,bx,by,groups,all_nodeTags,all_nodecoord,all_nodeparametricCoord,keys);
+    //initialise toute la frontière physique
+    initialisation(groups,all_nodeTags,all_nodecoord,all_nodeparametricCoord,keys,groupname,tags,integration_rule, dimTags);
 
-    /*-----------------H matrix involved in stress computation------------------*/
+    /*-----------------compute the matrix G------------------*/
+    //Matrix<double,3,3> full_G_matrix;
+
+    compute_G_matrix(groups, all_nodeTags, all_nodecoord, all_nodeparametricCoord, keys, groupname, tags, integration_rule, dimTags); //en travaux pour l'instant
+
+
+    //initialise_G_matrix(all_nodeTags, groups, integration_rule,bx,rho,by,G_matrix,full_G_matrix,groupname);
+
+    /*-----------------compute the matrix H------------------*/
     //initialise_H_matrix(H_matrix,nu,E);
 
-    /*------------computing K matrix and f vector------------------------*/
-    //K matrix
-    //SparseMatrix<double> full_K_matrix(2*all_nodeTags.size(),2*all_nodeTags.size());
-    //f vector
-    //vector<double> full_f_vector(2*all_nodeTags.size());
-    //compute_K_matrix(all_nodeTags,groups,integration_rule,bx,rho,by,H_matrix,full_K_matrix,full_f_vector,groupname);
-
-    /*cout << "\t full K matrix:\n" << full_K_matrix << "\n";
-     cout << "\tfull f vector : ";
-     for (int j = 0; j < full_f_vector.size(); ++j)
-     cout << full_f_vector[j] << " ";
-     cout << '\n';*/
-    /*-----------------BOUNDARY CONDITIONS------------*/
-
-    //boundary_conditions(keys,groupname,tx,ty,groups,tags,integration_rule,full_f_vector);
-
-    /*cout << "\tfull f vector : ";
-     for (int j = 0; j < full_f_vector.size(); ++j)
-     cout << full_f_vector[j] << " ";
-     cout << '\n';
-     */
-    /*------------FOCUS ON DIRICHLET BC'S---------------*/
-    //vector<int> new_indices(2*all_nodeTags.size());
-    //vector<double> dir_BC(2*all_nodeTags.size());
-    //dirichlet(new_indices, dir_BC, keys, ux, uy, groupname, groups, tags, number_removed_lines);
-
-
-    /*------------FILLING THE REDUCED K MATRIX AND F VECTOR--------------*/
-    //SparseMatrix<double> reduced_K_matrix(2*all_nodeTags.size() - number_removed_lines,2*all_nodeTags.size() - number_removed_lines);
-    //vector<double> reduced_f_vector(2*all_nodeTags.size() - number_removed_lines);
-    //filling(all_nodeTags,number_removed_lines,new_indices,full_K_matrix,full_f_vector,dir_BC,reduced_K_matrix,reduced_f_vector);
-
-    /*--------------SOLVING THE REDUCED SYSTEM--------------------*/
-
-    //VectorXd final_reduced_d(2*all_nodeTags.size() - number_removed_lines);
-    //VectorXd final_reduced_f(2*all_nodeTags.size() - number_removed_lines);
-    //reduce_system_solver(all_nodeTags, number_removed_lines, reduced_f_vector, reduced_K_matrix, final_reduced_d, final_reduced_f);
-
-    /*-----------RECONSTRUCTING FULL NODAL VALUES--------------*/
-    //vector<double> full_d_vector(2*all_nodeTags.size());
-    //nodal_values(full_d_vector,new_indices,dir_BC,final_reduced_d);
-
-    /*cout << "\t final d vector : ";
-     for (int j = 0; j < full_d_vector.size(); ++j)
-     cout << full_d_vector[j] << " ";
-     cout << '\n';*/
-
-    /*--------------PLOTTING AND SAVING THEM------------------*/
-
-    //plot_and_save(all_nodeTags,full_d_vector,names);
-
-    /*-------------POST PROCESSING---------------*/
-    /*-------------Computing and saving strains/stresses-----------------*/
-    // ELEMENTAL STRAIN/STRESS COMPUTATION for now (mean value of values computed at GP's)
-
-    //post_processing(integration_rule, full_d_vector, H_matrix, nu, E, names);
-
+    fltk::run(); // opens the gmsh window
     finalize();
     return 0;
 }
 
-void initialisation(double &E,double &nu,double &rho,double &bx,double &by,map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys)
+int initialisation(map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys, string &groupname,vector<int> &tags,string &integration_rule,vectorpair &dimTags)
 {
     /*--------get physical groups--------------*/
-    vectorpair dimTags;
     model::getPhysicalGroups(dimTags);
+    model::mesh::getNodes(all_nodeTags, all_nodecoord, all_nodeparametricCoord);
     for (int i = 0; i < dimTags.size(); ++i)
     {
         int dim = dimTags[i].first;
         int tag = dimTags[i].second;
+        model::getEntitiesForPhysicalGroup(dim, tag, tags);
         string name;
         model::getPhysicalName(dim, tag, name);
         groups[name] = {dim, tag};
+        //cout << "Entities in group named: " << name << endl;
     }
 
     /*--------get number of nodes-----------------*/
 
-    model::mesh::getNodes(all_nodeTags, all_nodecoord, all_nodeparametricCoord);
+    /*for(int i = 0; i < all_nodecoord.size(); i++)
+     {
+     cout << all_nodecoord[i] << endl;
+     }
 
-    /*-----------get physical properties of domain----------------------*/
-    onelab::getNames(keys, "(Volumic Forces|Materials).+");
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        vector<double> value;
-        onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        stringstream ss(key);
-        vector<string> words;
-        string word;
-        while(getline(ss, word, '/'))// read string until '/'
-        {
-            words.push_back(word);
-        }
-        if(words.size()==3)
-        {
-            if(words[2].compare("Young") == 0)
-            {
-                E = value[0];
-            }
-            if(words[2].compare("Poisson") == 0)
-            {
-                nu = value[0];
-            }
-            if(words[2].compare("rho") == 0)
-            {
-                rho = value[0];
-            }
-            if(words[2].compare("bx") == 0)
-            {
-                bx = value[0];
-            }
-            if(words[2].compare("by") == 0)
-            {
-                by = value[0];
-            }
-        }
-    }
-}
-
-void initialise_H_matrix(Matrix<double, 3, 3> &H_matrix, double nu, double E)
-{
-    H_matrix(0,0) = 1.;
-    H_matrix(1,0) = nu;
-    H_matrix(2,0) = 0.;
-    H_matrix(0,1) = nu;
-    H_matrix(1,1) = 1.;
-    H_matrix(2,1) = 0.;
-    H_matrix(0,2) = 0.;
-    H_matrix(1,2) = 0.;
-    H_matrix(2,2) = (1-nu)/2;
-    H_matrix = E/(1-nu*nu)*H_matrix;
-
-}
-
-int compute_K_matrix(vector<size_t> &all_nodeTags, map<string, pair<int, int>> &groups, string &integration_rule, double bx, double rho, double by, Matrix<double, 3, 3> &H_matrix, SparseMatrix<double> &full_K_matrix,vector<double> &full_f_vector, string groupname)
-{
-    // we first consider the K matrix and the volumic part of the f vector
-
-    int dim = groups[groupname].first;
-    int tag = groups[groupname].second;
-    if (tag == 0)
-    {
-        cerr << "Group '" << groupname << "' does not exist!\n";
-        return 1;
-    }
-
-    // getting entities of the domain
-    vector<int> tags;
-    model::getEntitiesForPhysicalGroup(dim, tag, tags);
-
-    cout << "Entities in group named '" << groupname << "': ";
-    for (int i = 0; i < tags.size(); ++i)
-        cout << tags[i] << " ";
-    cout << '\n';
-
-    // looping over entities
-    for (int k = 0; k < tags.size(); ++k)
-    {
-        cout << "Entity (" << dim << "," << tags[k] << "):\n";
-        vector<int> elementTypes;
-        vector<vector<size_t>> elementTags;
-        vector<vector<size_t>> nodeTags;
-        model::mesh::getElements(elementTypes, elementTags,
-                                 nodeTags, dim, tags[k]);
-
-        // looping over element types
-        for (int i = 0; i < elementTypes.size(); ++i)
-        {
-            /*cout << "\telement type " << elementTypes[i] << ":\n";
-             cout << "\t\telements: ";
-             for (int j = 0; j < elementTags[i].size(); ++j)
-             cout << elementTags[i][j] << " ";
-             cout << '\n';
-             cout << "\t\tnodes: ";
-             for (int j = 0; j < nodeTags[i].size(); ++j)
-             cout << nodeTags[i][j] << " ";
-             cout << '\n';*/
-
-            // getting element properties
-            string elementName;
-            int dim, order, numNodes, numPrimaryNodes;
-            vector<double> localNodeCoord;
-            model::mesh::getElementProperties(elementTypes[i],
-                                              elementName, dim, order,
-                                              numNodes, localNodeCoord,
-                                              numPrimaryNodes);
-
-            // get Gauss points coordinates and weights
-            vector<double> localCoords, weights;
-            model::mesh::getIntegrationPoints(elementTypes[i],
-                                              integration_rule, // "Gauss2"
-                                              localCoords, weights);
-            cout << "\t" << weights.size() << " integration points\n";
-
-            cout << "\tweights: ";
-            for (int j = 0; j < weights.size(); ++j)
-                cout << weights[j] << " ";
-            cout << '\n';
-
-            cout << "\tlocalCoords (gmsh): ";
-            for (int j = 0; j < localCoords.size(); ++j)
-                cout << localCoords[j] << " ";
-            cout << '\n';
-
-            // get determinants and Jacobians
-            vector<double> jacobians, determinants, coords;
-            model::mesh::getJacobians(elementTypes[i],
-                                      localCoords, jacobians,
-                                      determinants, coords);
-
-            // values and derivatives of the shape functions at the Gauss points of the reference element
-            // we are here working with derivatives in the reference space, same for all elements
-            int numComponents, numOrientations;
-            vector<double> basisFunctions;
-            vector<double> basisFunctionsGradient;
-            model::mesh::getBasisFunctions(elementTypes[i], localCoords,
-                                           "Lagrange", numComponents,
-                                           basisFunctions,
-                                           numOrientations);
-
-            model::mesh::getBasisFunctions(elementTypes[i], localCoords,
-                                           "GradLagrange", numComponents,
-                                           basisFunctionsGradient,
-                                           numOrientations);
-
-            /*---------computing the K matrix (and f vector, only volumic part for now)------*/
-            // looping over the elements (computing elemental K matrices)
-            for (int el = 0; el < elementTags[i].size(); el++){
-                //for (int el = 0; el < 1; el++){
-                // elemental K matrix and f vector initialization
-                Matrix<double, Dynamic, Dynamic> K_matrix(2*numNodes,2*numNodes);
-                vector<double> f_vector(2*numNodes);
-                for (int j = 0; j < 2*numNodes; ++j)
-                {
-                    for (int l = 0; l < 2*numNodes; ++l)
-                    {
-                        K_matrix(j,l)=0.;
-                    }
-                    f_vector[j] = 0.;
-                }
-                // looping over the Gauss points (formula of slide 17)
-                for (int j = 0; j < weights.size(); ++j)
-                {
-                    // converting jacobian to Eigen format
-                    Map<Matrix<double, Dynamic, Dynamic> >
-                    jacob(&jacobians[9*j+9*weights.size()*el], 3, 3);
-                    // 3D to 2D (plane stress case)
-                    Matrix<double, 2, 2> jacob2D;
-                    jacob2D(0,0) = jacob(0,0);
-                    jacob2D(1,0) = jacob(1,0);
-                    jacob2D(0,1) = jacob(0,1);
-                    jacob2D(1,1) = jacob(1,1);
-
-                    // computing the inverse
-                    Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
-
-                    // computing the transpose of the inverse
-                    Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
-
-                    // computing the B matrix (formula slide 19) and the f vector (also using gauss integration)
-                    Matrix<double, Dynamic, Dynamic> B_matrix(3,2*numNodes);
-                    for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
-                        B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                        B_matrix(1,2*l) = 0.;
-                        B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                        B_matrix(0,2*l+1) = 0.;
-                        B_matrix(1,2*l+1) = B_matrix(2,2*l);
-                        B_matrix(2,2*l+1) = B_matrix(0,2*l);
-                        f_vector[2*l] = f_vector[2*l] + rho*basisFunctions[l+numNodes*j]*bx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
-                        f_vector[2*l+1] = f_vector[2*l+1] + rho*basisFunctions[l+numNodes*j]*by*determinants[j+weights.size()*el]*weights[j]; // pas oublier le weights[j] non plus !
-                    }
-
-                    K_matrix = K_matrix + B_matrix.transpose()*H_matrix*B_matrix*determinants[j+weights.size()*el]*weights[j];
-                }
-                /*cout << "\telemental f vector of element " << elementTags[i][el] << ": ";
-                 for (int j = 0; j < f_vector.size(); ++j)
-                 cout << f_vector[j] << " ";
-                 cout << '\n';*/
-                //cout << "\t elemental K matrix of element " << elementTags[i][el] << ":\n" << K_matrix << "\n";
-                /*------------- ASSEMBLY PROCESS ------------*/
-                for (int j = 0; j < 2*numNodes; ++j)
-                {
-                    int first_node_index = (int) j/2;
-                    int first_node = nodeTags[i][numNodes*el+first_node_index];
-                    int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
-                    for(int l = 0; l <= j; ++l)
-                    { // to exploit symmetry
-                        int second_node_index = (int) l/2;
-                        int second_node = nodeTags[i][numNodes*el+second_node_index];
-                        int my_col = 2*(second_node-1) + l % 2;
-
-                        full_K_matrix.coeffRef(my_row,my_col) += K_matrix(j,l);
-                        if(j != l)
-                            full_K_matrix.coeffRef(my_col,my_row) += K_matrix(l,j); // use symmetry
-                    }
-                    full_f_vector[my_row] += f_vector[j];
-                }
-            }
-        }
-    }
-    /*cout << "\t full K matrix:\n" << full_K_matrix << "\n";
-     cout << "\tfull f vector : ";
-     for (int j = 0; j < full_f_vector.size(); ++j)
-     cout << full_f_vector[j] << " ";
-     cout << '\n';*/
-    return 0;
-}
-
-int boundary_conditions(vector<string> &keys, string &groupname, double &tx, double &ty, map<string, pair<int, int>> &groups, vector<int> &tags, string &integration_rule, vector<double> &full_f_vector)
-{
-    /*-----------get group_names related to BC's----------------------*/
-    onelab::getNames(keys, "(Boundary Conditions).+");
-
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        vector<double> value;
-        onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        stringstream ss(key);
-        vector<string> words;
-        string word;
-        while(getline(ss, word, '/'))// read string until '/'
-        {
-            words.push_back(word);
-        }
-        if(words.size()==3)
-        {
-            groupname = ""; // will remain empty only if tx == ty == 0
-            if(words[2].compare("tx") == 0)
-            {
-                tx = value[0];
-                string new_key = "Boundary Conditions/" + words[1] + "/ty";
-                onelab::getNumber(new_key, value);
-                ty = value[0];
-                if(tx || ty) // there is no need the consider Neumann BC if it is homogeneous
-                    groupname = words[1];
-            }
-            //here, if we are dealing with neumann BC's, we should have retrieved a non-empty group_name
-            if(groupname.compare("") != 0)
-            {
-                cout << "------------------------------------" << "\n";
-                cout << groupname << ", tx: " << tx << ", ty: " << ty << "\n";
-                //loop over elements of group_name
-                int dim = groups[groupname].first;
-                int tag = groups[groupname].second;
-                if (tag == 0)
-                {
-                    cerr << "Group '" << groupname << "' does not exist!\n";
-                    return 1;
-                }
-                model::getEntitiesForPhysicalGroup(dim, tag, tags);
-
-                cout << "Entities in group named '" << groupname << "': ";
-                for (int i = 0; i < tags.size(); ++i)
-                    cout << tags[i] << " ";
-                cout << '\n';
-                // loop over entities
-                for (int k = 0; k < tags.size(); ++k)
-                {
-                    cout << "Entity (" << dim << "," << tags[k] << "):\n";
-                    vector<int> elementTypes;
-                    vector<vector<size_t>> elementTags;
-                    vector<vector<size_t>> nodeTags;
-                    model::mesh::getElements(elementTypes, elementTags,
-                                             nodeTags, dim, tags[k]);
-
-                    for (int i = 0; i < elementTypes.size(); ++i)
-                    {
-                        cout << "\telement type " << elementTypes[i] << ":\n";
-                        cout << "\t\telements: ";
-                        for (int j = 0; j < elementTags[i].size(); ++j)
-                            cout << elementTags[i][j] << " ";
-                        cout << '\n';
-                        cout << "\t\tnodes: ";
-                        for (int j = 0; j < nodeTags[i].size(); ++j)
-                            cout << nodeTags[i][j] << " ";
-                        cout << '\n';
-
-                        // getting element properties
-                        string elementName;
-                        int dim, order, numNodes, numPrimaryNodes;
-                        vector<double> localNodeCoord;
-                        model::mesh::getElementProperties(elementTypes[i],
-                                                          elementName, dim, order,
-                                                          numNodes, localNodeCoord,
-                                                          numPrimaryNodes);
-
-                        // get Gauss points coordinates and weights
-                        vector<double> localCoords, weights;
-                        model::mesh::getIntegrationPoints(elementTypes[i],
-                                                          integration_rule, //maybe use different integration method on boundary than in domain
-                                                          localCoords, weights);
-                        cout << "\t" << weights.size() << " integration points\n";
-
-                        cout << "\tweights: ";
-                        for (int j = 0; j < weights.size(); ++j)
-                            cout << weights[j] << " ";
-                        cout << '\n';
-
-                        cout << "\tlocalCoords (gmsh): ";
-                        for (int j = 0; j < localCoords.size(); ++j)
-                            cout << localCoords[j] << " ";
-                        cout << '\n';
-
-                        // get determinants and Jacobians (only determinants will be useful)
-                        vector<double> jacobians, determinants, coords;
-                        model::mesh::getJacobians(elementTypes[i],
-                                                  localCoords, jacobians,
-                                                  determinants, coords,tags[k]); // ai dû rajouter mon tags[k] pr focus on this particular entity
-                        cout << "\tGot " << determinants.size()
-                        << " Jacobians for type " << elementTypes[i] << "\n";
-
-                        cout << "\tdeterminants (gmsh): ";
-                        for (int j = 0; j < determinants.size(); ++j)
-                            cout << determinants[j] << " ";
-                        cout << '\n';
-                        int numComponents, numOrientations;
-                        vector<double> basisFunctions;
-                        model::mesh::getBasisFunctions(elementTypes[i], localCoords,
-                                                       "Lagrange", numComponents,
-                                                       basisFunctions,
-                                                       numOrientations);
-                        cout << "\tGot " << basisFunctions.size()
-                        << " basis functions for type "
-                        << elementTypes[i] << '\n';
-                        for (int j = 0; j < basisFunctions.size(); ++j)
-                            cout << basisFunctions[j] << " ";
-                        cout << '\n';
-                        /*-----------computing the f vector components related to this Neumann BC---------*/
-                        //looping over the elements
-                        vector<double> f_vector(2*numNodes);
-                        for (int el = 0; el < elementTags[i].size(); el++){
-                            for (int j = 0; j < 2*numNodes; ++j){
-                                f_vector[j] = 0.;
-                            }
-                            // looping over the Gauss points (formula of slide 17)
-                            for (int j = 0; j < weights.size(); ++j){
-                                // looping over the number of shape functions
-                                for (int l = 0; l < numNodes; ++l){
-                                    f_vector[2*l] = f_vector[2*l] + basisFunctions[l+numNodes*j]*tx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
-                                    f_vector[2*l+1] = f_vector[2*l+1] + basisFunctions[l+numNodes*j]*ty*determinants[j+weights.size()*el]*weights[j]; // le weight non plus !
-                                }
-                            }
-                            cout << "\telemental f vector of element " << elementTags[i][el] << ": ";
-                            for (int j = 0; j < f_vector.size(); ++j)
-                                cout << f_vector[j] << " ";
-                            cout << '\n';
-                            /*------------- ASSEMBLY PROCESS ------------*/
-                            for (int j = 0; j < 2*numNodes; ++j){
-                                int first_node_index = (int) j/2;
-                                int first_node = nodeTags[i][numNodes*el+first_node_index];
-                                int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
-                                full_f_vector[my_row] += f_vector[j];
-                                //cout << my_row << "\n";
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return 0;
-}
-
-int dirichlet(vector<int> &new_indices, vector<double> &dir_BC, vector<string> &keys, double &ux, double &uy, string &groupname, map<string, pair<int, int>> &groups, vector<int> &tags, int &number_removed_lines)
-{
-    // new_indices vector will contain the new indices of the K matrix after the rows/columns corresponding
-    // to dirichlet boundary conditions have been removed
-    // IN THIS IMPLEMENTATION WE DECIDE TO REMOVE EVERY ROW/COL ASSOCIATED TO DIR. BC's
-    // non-homo. dir BC will induce a correction in the RHS term f of the other rows, while homogeneous not
-    // if the given index has been removed, it will set to -1 in new_indices
-
-    for (int j = 0; j < new_indices.size(); ++j)
-    {
-        new_indices[j] = j;
-    }
-
-    // dir_BC[index] will contain the dirichlet boundary condition prescribed to this node
-    for (int j = 0; j < dir_BC.size(); ++j)
-    {
-        dir_BC[j] = 0;
-    }
-
-    // looping over the boundary conditions imposed in the .geo file, the purpose of the whole loop is
-    // to fill the two vectors defined just above
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        vector<double> value;
-        onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        stringstream ss(key);
-        vector<string> words;
-        string word;
-        while(getline(ss, word, '/')) // read string until '/'
-            words.push_back(word);
-        if(words.size()==3)
-        {
-            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
-                if(words[2].compare("ux") == 0)
-                    ux = value[0];
-                if(words[2].compare("uy") == 0)
-                    uy = value[0];
-                groupname = words[1];
-
-                //loop over elements of group_name
-                int dim = groups[groupname].first;
-                int tag = groups[groupname].second;
-                if (tag == 0)
-                {
-                    cerr << "Group '" << groupname << "' does not exist!\n";
-                    return 1;
-                }
-                model::getEntitiesForPhysicalGroup(dim, tag, tags);
-
-                cout << "Entities in group named '" << groupname << "': ";
-                for (int i = 0; i < tags.size(); ++i)
-                    cout << tags[i] << " ";
-                cout << '\n';
-                // loop over entities
-                for (int k = 0; k < tags.size(); ++k)
-                {
-                    cout << "Entity (" << dim << "," << tags[k] << "):\n";
-                    vector<int> elementTypes;
-                    vector<vector<size_t>> elementTags;
-                    vector<vector<size_t>> nodeTags;
-                    model::mesh::getElements(elementTypes, elementTags,
-                                             nodeTags, dim, tags[k]);
-
-                    for (int i = 0; i < elementTypes.size(); ++i)
-                    {
-                        cout << "\telement type " << elementTypes[i] << ":\n";
-                        cout << "\t\telements: ";
-                        for (int j = 0; j < elementTags[i].size(); ++j)
-                            cout << elementTags[i][j] << " ";
-                        cout << '\n';
-                        cout << "\t\tnodes: ";
-                        for (int j = 0; j < nodeTags[i].size(); ++j)
-                            cout << nodeTags[i][j] << " ";
-                        cout << '\n';
-
-                        // getting element properties
-                        string elementName;
-                        int dim, order, numNodes, numPrimaryNodes;
-                        vector<double> localNodeCoord;
-                        model::mesh::getElementProperties(elementTypes[i],
-                                                          elementName, dim, order,
-                                                          numNodes, localNodeCoord,
-                                                          numPrimaryNodes);
-                        //looping over the elements
-                        for (int el = 0; el < elementTags[i].size(); el++){
-                            for (int j = 0; j < 2*numNodes; ++j){
-                                int first_node_index = (int) j/2;
-                                int first_node = nodeTags[i][numNodes*el+first_node_index];
-                                int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
-                                if(words[2].compare("uy") == 0 && j % 2){ // we are dealing with a uy type of node
-                                    dir_BC[my_row] = uy;
-                                    new_indices[my_row] = -1;
-                                }
-                                if(words[2].compare("ux") == 0 && j % 2 == 0){ // ux type of node
-                                    dir_BC[my_row] = ux;
-                                    new_indices[my_row] = -1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /*cout << "\t\tdir_BC: ";
-     for (int j = 0; j < dir_BC.size(); ++j)
-     cout << dir_BC[j] << " ";
-     cout << '\n';*/
-
-    for (int j = 0; j < new_indices.size(); ++j){
-        if(new_indices[j] < 0)
-        { // line has to be removed
-            number_removed_lines++;
-        }
-        else{
-            new_indices[j] -= number_removed_lines;
-        }
-    }
-
-    return 0;
-
-    /*cout << "\t\tnew indices: ";
-     for (int j = 0; j < new_indices.size(); ++j)
-     cout << new_indices[j] << " ";
-     cout << '\n';*/
-}
-
-void filling(vector<size_t> &all_nodeTags, int &number_removed_lines, vector<int> &new_indices, SparseMatrix<double> &full_K_matrix, vector<double> &full_f_vector, vector<double> &dir_BC,SparseMatrix<double> &reduced_K_matrix,vector<double> &reduced_f_vector)
-{
-    //the correction term on the f vector comes from the "FEM" theoretical course (JP Ponthot), Chap2 Slide 38/50
-
-    for (int j = 0; j < reduced_f_vector.size(); ++j){
-        reduced_f_vector[j] = 0.;
-    }
-
-    // looping over the non-zero elements of full_K_matrix
-    int row;
-    int new_row;
-    int new_col;
-    double k_value;
-    for (int col=0; col<full_K_matrix.outerSize(); ++col){
-        new_col = new_indices[col];
-        for (SparseMatrix<double>::InnerIterator it(full_K_matrix,col); it; ++it){
-            k_value = it.value();
-            row = it.row();   // row index
-            new_row = new_indices[row];
-            if(new_row >= 0 && new_col >= 0){ // if the given element must not be removed
-                if(new_row < new_col){ // taking advantage of the symmetry
-                    reduced_K_matrix.coeffRef(new_row,new_col) = k_value;
-                    reduced_K_matrix.coeffRef(new_col,new_row) = k_value;
-                }
-                if(new_row == new_col){ // diagonal element
-                    reduced_K_matrix.coeffRef(new_row,new_col) = k_value;
-                }
-            }
-            if(new_col < 0 && new_row >= 0 && dir_BC[col]){ // correction term RHS due to non_homogeneous boundary condition
-                reduced_f_vector[new_row] -= k_value*dir_BC[col];
-            }
-        }
-        if(new_col >= 0 ){ // line must not be removed
-            reduced_f_vector[new_col] += full_f_vector[col];
-        }
-    }
-    //cout << "\t full K matrix:\n" << full_K_matrix << "\n";
-    //cout << "\t reduced K matrix:\n" << reduced_K_matrix << "\n";
-    cout << "\treduced f vector : ";
-    for (int j = 0; j < reduced_f_vector.size(); ++j)
-        cout << reduced_f_vector[j] << " ";
-    cout << '\n';
-}
-
-void reduce_system_solver(vector<size_t> &all_nodeTags, int &number_removed_lines, vector<double> &reduced_f_vector, SparseMatrix<double> &reduced_K_matrix, VectorXd &final_reduced_d, VectorXd &final_reduced_f)
-{
-    for (int j = 0; j < reduced_f_vector.size(); ++j)
-    {
-        final_reduced_f(j) = reduced_f_vector[j];
-    }
-    //cout << "final f vector: " << final_reduced_f << "\n";
-
-
-    // solve Kd=f
-    SimplicialLDLT<SparseMatrix<double> > solver;
-    solver.compute(reduced_K_matrix);
-    /*if(solver.info()!=Success) {
-     // decomposition failed
-     return;
-     }*/
-    final_reduced_d = solver.solve(final_reduced_f);
-    /*if(solver.info()!=Success) {
-     // solving failed
-     return;
+     for(int i = 0; i < all_nodeTags.size(); i++)
+     {
+     double x = all_nodecoord[i*3];
+     double y = all_nodecoord[i*3+1];
+     double z = all_nodecoord[i*3+2];
+     cout << "x:" << x << " y:" << y << " z:" << z << endl;
      }*/
 
-    //cout << "final d vector: " << final_reduced_d << "\n";
+    return 0;
 }
 
-void nodal_values(vector<double> &full_d_vector, vector<int> &new_indices, vector<double> &dir_BC, VectorXd &final_reduced_d)
+int compute_G_matrix(map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys, string &groupname,vector<int> &tags,string &integration_rule, vectorpair &dimTags)
 {
-    for (int j = 0; j < full_d_vector.size(); ++j){
-        if(new_indices[j] < 0){ // line was previously removed due to dirichlet boundary conditions
-            full_d_vector[j] = dir_BC[j];
-        }
-        else{
-            full_d_vector[j] = final_reduced_d(new_indices[j]);
-        }
-    }
-}
+    //le but est d'avoir un vecteur qui contient tous les éléments de la frontière. Pour ce faire, on combine tous les physical groups (right_edge+top_edge+left_edge+bottom_edge dans le cas du rectangle)
+    vector<double> boundary_elements_tags(0,0);
+    vector<double> boundary_sort_nodes_tags(0,0);
+    vector<double> boundary_nodes_coordinates_x(0,0);
+    vector<double> boundary_nodes_coordinates_y(0,0);
 
-void plot_and_save(vector<size_t> &all_nodeTags, vector<double> &full_d_vector, vector<string> &names)
-{
-    // loop over the nodes
-    int viewtag1 = view::add("ux");
-    int viewtag2 = view::add("uy");
-    vector<vector<double>> data1(all_nodeTags.size());
-    vector<vector<double>> data2(all_nodeTags.size());
-    for (size_t i = 0; i < all_nodeTags.size(); ++i)
+    vector<double> coord;
+    vector<double> parametricCoord;
+    vector<size_t> nodeTags;
+
+    model::mesh::renumberNodes();
+    model::mesh::getNodes(nodeTags, coord, parametricCoord);
+
+    // display the vectors
+    cout << "\tnodeTags = ";
+    for(int i=0; i<nodeTags.size(); ++i)
     {
-        data1[i].resize(1);
-        data1[i][0] = full_d_vector[2*i]; //ux
-        data2[i].resize(1);
-        data2[i][0] = full_d_vector[2*i+1]; //uy
+        cout << nodeTags[i] << " ";
+        boundary_nodes_coordinates_x.push_back(coord[i*3]);//coordonnée x de tous les noeuds de la frontière
+        boundary_nodes_coordinates_y.push_back(coord[(i*3)+1]);//coordonnée y de tous les noeuds de la frontière
     }
+    cout << endl;
 
-    model::list(names);
-    view::addModelData(viewtag1, 0, names[0], "NodeData",
-                       all_nodeTags, data1); //independent of time here
-    view::addModelData(viewtag2, 0, names[0], "NodeData",
-                       all_nodeTags, data2); //independent of time here
-
-    // save the results to disk
-    view::write(viewtag1, "ux.msh");
-    view::write(viewtag2, "uy.msh");
-
-    // set display options & view results
-    option::setNumber("View[0].IntervalsType", 3);
-    option::setNumber("View[0].AdaptVisualizationGrid", 1);
-    option::setNumber("View[0].MaxRecursionLevel", 3);
-    option::setNumber("View[0].TargetError", -0.0001);
-    option::setNumber("View[1].IntervalsType", 3);
-    option::setNumber("View[1].AdaptVisualizationGrid", 1);
-    option::setNumber("View[1].MaxRecursionLevel", 3);
-    option::setNumber("View[1].TargetError", -0.0001);
-
-}
-
-void post_processing(string &integration_rule, vector<double> &full_d_vector, Matrix<double, 3, 3> &H_matrix, double &nu, double &E, vector<string> &names)
-{
-    // get all the elements for dim=2
-    vector<int> elementTypes;
-    vector<vector<size_t>> elementTags;
-    vector<vector<size_t>> elnodeTags;
-    model::mesh::getElements(elementTypes, elementTags, elnodeTags, 2);
-
-    // compute total number of 2D elements
-    int nbelems=0;
-    for(size_t i=0; i< elementTags.size(); ++i)
+    //just for check
+    for(int i=0; i<nodeTags.size(); ++i)
     {
-        nbelems+=elementTags[i].size();
+        cout << nodeTags[i] << "(" << coord[i*3] << "," << coord[(i*3)+1] << ") ";
     }
-    cout << "the mesh has " << nbelems << " elements\n";
+    cout << endl;
 
-    int viewtag3 = view::add("eps_x");
-    int viewtag4 = view::add("eps_y");
-    int viewtag5 = view::add("2eps_xy");
-    int viewtag6 = view::add("eps_z");
-    int viewtag7 = view::add("sigma_x");
-    int viewtag8 = view::add("sigma_y");
-    int viewtag9 = view::add("sigma_xy");
-    int viewtag10 = view::add("sigma_VM");
-
-
-    vector<vector<double>> data3(nbelems);
-    vector<vector<double>> data4(nbelems);
-    vector<vector<double>> data5(nbelems);
-    vector<vector<double>> data6(nbelems);
-    vector<vector<double>> data7(nbelems);
-    vector<vector<double>> data8(nbelems);
-    vector<vector<double>> data9(nbelems);
-    vector<vector<double>> data10(nbelems);
-    vector<size_t> elems2D(nbelems);
-
-    // for each element type
-    int k=0;
-    for (size_t ityp = 0; ityp < elementTypes.size(); ++ityp)
+    cout << "\tcoord = ";
+    for(int i=0; i<coord.size(); ++i)
     {
-        // get info about this type of element
-        string name;
-        int dim, order, numNodes, numPrimaryNodes;
-        vector<double> paramCoord;
-        model::mesh::getElementProperties(elementTypes[ityp], name, dim, order,
-                                          numNodes, paramCoord, numPrimaryNodes);
-
-        // select element/node tags for this type of element
-        auto &etags = elementTags[ityp];
-        auto &enods = elnodeTags[ityp];
-        cout << numNodes << "\n";
-
-        // will contain the d vector inside each element
-        VectorXd nodal_displacement(2*numNodes); //use eigen vector to use Eigen matric product later
-
-        // get Gauss points coordinates and weights (only coordinates useful here)
-        vector<double> localCoords, weights;
-        model::mesh::getIntegrationPoints(elementTypes[ityp], integration_rule, localCoords, weights);// "Gauss2", en vrai ne pas le hardcoder (on l'utilise plusieurs fois dans le code)
-
-
-        // get determinants and Jacobians (only jacob useful here)
-        vector<double> jacobians, determinants, coords;
-        model::mesh::getJacobians(elementTypes[ityp],
-                                  localCoords, jacobians,
-                                  determinants, coords);
-
-        // derivatives of the shape functions at the Gauss points of the reference element
-        // we are here working with derivatives in the reference space, same for all elements
-        int numComponents, numOrientations;
-        vector<double> basisFunctionsGradient;
-
-        model::mesh::getBasisFunctions(elementTypes[ityp], localCoords,
-                                       "GradLagrange", numComponents,
-                                       basisFunctionsGradient,
-                                       numOrientations);
-
-        Vector3d epsilon; // will contain mean elemental values of the strains
-        Vector3d sigma; // will contain mean elemental values of the stresses
-        Vector3d tmp_epsilon; // will store temporary values
-
-        // loop over elements of type "ityp"
-        for (size_t i = 0; i < etags.size(); ++i)
-        {
-            elems2D[k] = etags[i];
-
-            data3[k].resize(1);
-            data4[k].resize(1);
-            data5[k].resize(1);
-            data6[k].resize(1);
-            data7[k].resize(1);
-            data8[k].resize(1);
-            data9[k].resize(1);
-            data10[k].resize(1);
-            epsilon(0) = 0.;
-            epsilon(1) = 0.;
-            epsilon(2) = 0.;
-            sigma(0) = 0.;
-            sigma(1) = 0.;
-            sigma(2) = 0.;
-            // loop over nodes of the element, filling the local nodal displacement vector "d"
-            for (size_t j = 0; j < numNodes; ++j)
-            {
-                int nodeTag = enods[numNodes * i + j];
-                nodal_displacement(2*j) = full_d_vector[2*(nodeTag-1)];
-                nodal_displacement(2*j+1) = full_d_vector[2*(nodeTag-1)+1];
-            }
-            // looping over the Gauss points (formula of slide 17)
-            for (int j = 0; j < weights.size(); ++j)
-            {
-                // converting jacobian to Eigen format
-                Map<Matrix<double, Dynamic, Dynamic> >
-                jacob(&jacobians[9*j+9*weights.size()*i], 3, 3);
-                // 3D to 2D (plane stress case)
-                Matrix<double, 2, 2> jacob2D;
-                jacob2D(0,0) = jacob(0,0);
-                jacob2D(1,0) = jacob(1,0);
-                jacob2D(0,1) = jacob(0,1);
-                jacob2D(1,1) = jacob(1,1);
-
-                // computing the inverse
-                Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
-
-                // computing the transpose of the inverse
-                Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
-
-                // computing the B matrix (formula slide 19) and the f vector (also using gauss integration)
-                Matrix<double, Dynamic, Dynamic> B_matrix(3,2*numNodes);
-                for (int l = 0; l < numNodes; ++l)
-                { // looping over the number of shape functions
-                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(1,2*l) = 0.;
-                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(0,2*l+1) = 0.;
-                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
-                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
-                }
-                tmp_epsilon = B_matrix*nodal_displacement;
-                epsilon += tmp_epsilon;
-                sigma += H_matrix*tmp_epsilon;
-            }
-            epsilon = epsilon / weights.size(); // performing an arithmetic mean value
-            sigma = sigma / weights.size();
-            data3[k][0] = epsilon(0);
-            data4[k][0] = epsilon(1);
-            data5[k][0] = epsilon(2);
-            data6[k][0] = -nu/E*(sigma(0)+sigma(1));// formula slide 11/20 elasticity
-            data7[k][0] = sigma(0);
-            data8[k][0] = sigma(1);
-            data9[k][0] = sigma(2);
-            data10[k][0] = sqrt(sigma(0)*sigma(0) + sigma(1)*sigma(1) - sigma(0)*sigma(1) + 3*sigma(2)*sigma(2)); // VM stress in plane stress configuration
-
-            k++;
-        }
+        cout << coord[i] << " ";
     }
-    view::addModelData(viewtag3, 0, names[0], "ElementData", elems2D, data3);
-    view::addModelData(viewtag4, 0, names[0], "ElementData", elems2D, data4);
-    view::addModelData(viewtag5, 0, names[0], "ElementData", elems2D, data5);
-    view::addModelData(viewtag6, 0, names[0], "ElementData", elems2D, data6);
-    view::addModelData(viewtag7, 0, names[0], "ElementData", elems2D, data7);
-    view::addModelData(viewtag8, 0, names[0], "ElementData", elems2D, data8);
-    view::addModelData(viewtag9, 0, names[0], "ElementData", elems2D, data9);
-    view::addModelData(viewtag10, 0, names[0], "ElementData", elems2D, data10);
+    cout << endl;
 
-    fltk::run(); // opens the gmsh window
-}
+    //le problème majeur, c'est qu'on a un gros vecteur, avec tous les noeuds sauf que leur numérotation n'est pas la même que le sens de parcours de la boundary (on aimerait bien qu'ils se suivent). (typiquement aller deflag fltk::run(); aller dans tools, option, mesh, nodes label)
+    boundary_sort_nodes_tags.resize(nodeTags.size(), 0);
+    vector<double> boundary_sort_length_elements(nodeTags.size(),0);
+    sorting_nodes(nodeTags,boundary_nodes_coordinates_x,boundary_nodes_coordinates_y,boundary_sort_nodes_tags,boundary_sort_length_elements);
 
-int code_simple(int argc, char **argv)
-{
-    if (argc < 2)
+    //code typique de parcours des éléments: première boucles, les différents physicals groups (left_edge,right_edge,...)
+    for (int i = 0; i < dimTags.size(); ++i)
     {
-        cout << "Usage: " << argv[0] << " <geo_file>\n";
-        return 0;
-    }
-    initialize();
-
-    open(argv[1]);
-    model::mesh::generate(2);
-
-    vectorpair dim_tags;
-    model::getPhysicalGroups(dim_tags);
-    //model::getEntities(dim_tags);
-    cout << dim_tags.size() << endl;
-
-    for(int i = 0; i < dim_tags.size(); i++)
-    {
-        int dim = dim_tags[i].first;
-        int tag = dim_tags[i].second;
+        int dim = dimTags[i].first;
+        int tag = dimTags[i].second;
+        model::getEntitiesForPhysicalGroup(dim, tag, tags);
         string name;
         model::getPhysicalName(dim, tag, name);
-        cout << "Physical group (" << dim << "D) " << "named '" << name << "' tag = " << tag << endl;
+        groups[name] = {dim, tag};
+        cout << "Entities in group named: " << name << endl;
+
+        //deuxième boucle: loop over entities (au sein d'un physical group) par exemple j'aurais pu créer un seul physical group boundary et au sein de se groupe, cette boucle aurait parcouru les 4 lignes qui forment les différents bords (que j'aurais regroupé dans boundary formée de 4 lignes) (ici on n'a que une courbe (un bord) par groupe, on aurait pu en mettre plusieurs)
+        for(int k = 0; k < tags.size(); ++k)
+        {
+            cout << "Entity (" << dim << "," << tags[k] << "):\n";
+            vector<int> elementTypes;
+            vector<vector<size_t>> elementTags;
+            vector<vector<size_t>> nodeTagsk;
+
+            model::mesh::getElements(elementTypes, elementTags, nodeTagsk, dim, tags[k]);
+
+            // loop over element types ([elements] and [nodes]) looping over the elements means looping over each element type of the mesh of each entity of a given physical group. Each entity can have several sets of elements of different types (in our example, we only have 1 set of triangles). par exemple an aurait pu avoir des carrés puis des triangles
+            for (int l = 0; l < elementTypes.size(); ++l)
+            {
+                //loop sur un type d'élement par exemple sur tous les triangles
+                //just to check
+                cout << "\telement type " << elementTypes[l] << ":\n";
+                cout << "\t\telements: ";
+                for (int j = 0; j < elementTags[l].size(); ++j)
+                {
+                    cout << elementTags[l][j] << " ";
+                }
+            }
+        }
     }
 
-    fltk::run(); // opens the gmsh window
-
-    finalize();
+    cout << endl;
     return 0;
 }
+
+void sorting_nodes(vector<size_t> &nodeTags,vector<double> &boundary_nodes_coordinates_x,vector<double> &boundary_nodes_coordinates_y,vector<double> &boundary_sort_nodes_tags, vector<double> &boundary_sort_length_elements)
+{
+    double length = 0; //longueure entre 2 noeuds à minimser
+    double temp = 0; //variable temporaire pour éviter de stupides erreurs
+    double min_tag_prev = 0; //retient le tag du précédent noeud, on pourrait s'en passer mais c'est plus simple pour raisonner
+    double min_tag_next = 0;//retient le tag du noeud suivant
+    double min_value = 0;//valeur minimale de la longueur pour repérer 2 noeuds successifs
+    boundary_sort_nodes_tags[0] = 1;//on initialise le premier élément (là où l'on commence la boucle des noeuds puisque la frontière est fermée) ici à l'élément 1.
+    bool already_count = 0;//si le noeud minimum fait partie des noeuds déjà considérés, on ne le compte pas et on passe au suivant
+
+    //parcours le vecteur des tags triés pour le complèter. Les deux premiers éléments ont déjà été calculé.
+    for(int i = 1; i < nodeTags.size(); i++)
+    {
+        min_value = HUGE_VAL; //pour chercher le minimum, on démarre d'une valeur très grande
+        //on cherche parmis tous les autres noeuds lequel est le minimum. Ils ne sont pas dans l'ordre, on doit tous les considérer.
+        for(int j = 0; j < nodeTags.size(); j++)
+        {
+            already_count = 0;// initialement le noeud n'est pas compté
+            //on parcours tous les éléments du vecteur node_tag_sort pour vérifier que le noeud potentiellement minimum j n'en fait pas partie. Si c'est le cas, break et on passe au noeud suivant
+            for(int k = 0; k < i; k++)
+            {
+                if(j+1 == boundary_sort_nodes_tags[k])
+                {
+                    already_count = 1;
+                    break;
+                }
+            }
+
+            // si already count == 1, le noeud est déjà pris en compte et on passe au j suivant
+            if(already_count == 0)
+            {
+                //variable temporaire: (x_next-x_previous)^2+(y_next-y_previous)^2
+                temp = (boundary_nodes_coordinates_x[j]-boundary_nodes_coordinates_x[min_tag_prev])*(boundary_nodes_coordinates_x[j]-boundary_nodes_coordinates_x[min_tag_prev]) + (boundary_nodes_coordinates_y[j]-boundary_nodes_coordinates_y[min_tag_prev])*(boundary_nodes_coordinates_y[j]-boundary_nodes_coordinates_y[min_tag_prev]);
+                length = sqrt(temp); //calcule la longueure
+
+                if(length <= min_value)
+                {
+                    min_tag_next = j;
+                    min_value = length;
+                }
+            }
+        }
+        //just for check
+        //cout << "min tag prev: " << min_tag_prev+1 << endl;
+        boundary_sort_nodes_tags[i] = min_tag_next+1;
+        boundary_sort_length_elements[i] = min_value;
+        min_tag_prev = min_tag_next;
+//        cout << "min tag next: " << min_tag_next+1 << endl;
+//        cout << "min value: " << min_value << endl;
+//        cout << endl;
+    }
+    length = 0;
+    int first = boundary_sort_nodes_tags.front()-1;
+    int last = boundary_sort_nodes_tags.back()-1;
+    temp = (boundary_nodes_coordinates_x[first]-boundary_nodes_coordinates_x[last])*(boundary_nodes_coordinates_x[first]-boundary_nodes_coordinates_x[last]) + (boundary_nodes_coordinates_y[first]-boundary_nodes_coordinates_y[last])*(boundary_nodes_coordinates_y[first]-boundary_nodes_coordinates_y[last]);
+    length = sqrt(temp); //calcule la longueure
+    boundary_sort_length_elements[0] = length;//pour terminer la boucle, on relie le premier au dernier élément
+}
+
+//void get_length_elements(vector<double> &boundary_sort_nodes_tags, vector<double> &boundary_length_elements, vector<double> &boundary_nodes_coordinates_x,vector<double> &boundary_nodes_coordinates_y)
+//{
+//    for(int i = 0; i < boundary_sort_nodes_tags.size()-1; i++)
+//    {
+//        boundary_length_elements[i] = sqrt((boundary_nodes_coordinates_x[boundary_sort_nodes_tags[i+1]]-boundary_nodes_coordinates_x[boundary_sort_nodes_tags[i]])*(boundary_nodes_coordinates_x[boundary_sort_nodes_tags[i+1]]-boundary_nodes_coordinates_x[boundary_sort_nodes_tags[i]])+(boundary_nodes_coordinates_y[boundary_sort_nodes_tags[i+1]]-boundary_nodes_coordinates_y[boundary_sort_nodes_tags[i]])*(boundary_nodes_coordinates_y[boundary_sort_nodes_tags[i+1]]-boundary_nodes_coordinates_y[boundary_sort_nodes_tags[i]]));
+//    }
+//    boundary_length_elements[boundary_length_elements.size()-1] = sqrt((boundary_nodes_coordinates_x[boundary_sort_nodes_tags[boundary_length_elements.size()-1]]-boundary_nodes_coordinates_x[boundary_sort_nodes_tags[0]])*(boundary_nodes_coordinates_x[boundary_sort_nodes_tags[boundary_length_elements.size()-1]]-boundary_nodes_coordinates_x[boundary_sort_nodes_tags[0]])+(boundary_nodes_coordinates_y[boundary_sort_nodes_tags[boundary_length_elements.size()-1]]-boundary_nodes_coordinates_y[boundary_sort_nodes_tags[0]])*(boundary_nodes_coordinates_y[boundary_sort_nodes_tags[boundary_length_elements.size()-1]]-boundary_nodes_coordinates_y[boundary_sort_nodes_tags[0]]));
+//}
+
+
+//int boundary_conditions()
+//{
+//    /*-----------get physical properties of boundary----------------------*/
+//    onelab::getNames(keys, "(Boundary Conditions).+");
+//    //exemple: "Boundary Conditions/bottom_edge/tx"
+//    for (auto &key : keys)
+//    {
+//        // get corresponding value
+//        vector<double> value;
+//        onelab::getNumber(key, value);
+//        // expected key structure is "type/group_name/field"
+//        // => split the key string into components
+//        stringstream ss(key);
+//        vector<string> words;
+//        string word;
+//        while(getline(ss, word, '/'))// read string until '/'
+//        {
+//            words.push_back(word);
+//        }
+//        //words[0] = Boundary Conditions, words[1] = bottom_edge, words[2] = tx
+//        if(words.size()==3)
+//        {
+//            groupname = ""; // will remain empty only if tx == ty == 0
+//            if(words[2].compare("tx") == 0)
+//            {
+//                tx = value[0];
+//                string new_key = "Boundary Conditions/" + words[1] + "/ty";
+//                onelab::getNumber(new_key, value);
+//                ty = value[0];
+//                if(tx != 0 || ty != 0) // there is no need the consider Neumann BC if it is homogeneous
+//                {
+//                    groupname = words[1];
+//                }
+//            }
+//            //here, if we are dealing with neumann BC's, we should have retrieved a non-empty group_name
+//            if(groupname.compare("") != 0)
+//            {
+//                cout << "------------------------------------" << "\n";
+//                cout << groupname << ", tx: " << tx << ", ty: " << ty << "\n";
+//                //loop over elements of group_name
+//                int dim = groups[groupname].first;
+//                int tag = groups[groupname].second;
+//                if (tag == 0)
+//                {
+//                    cerr << "Group '" << groupname << "' does not exist!\n";
+//                    return 1;
+//                }
+//                model::getEntitiesForPhysicalGroup(dim, tag, tags);
+//
+//                cout << "Entities in group named '" << groupname << "': ";
+//                for (int i = 0; i < tags.size(); ++i)
+//                {
+//                    cout << tags[i] << " ";
+//                }
+//                cout << endl;
+//                // loop over entities
+//                for (int k = 0; k < tags.size(); ++k)
+//                {
+//                    cout << "Entity (" << dim << "," << tags[k] << "):" << endl;
+//                    vector<int> elementTypes;
+//                    vector<vector<size_t>> elementTags;
+//                    vector<vector<size_t>> nodeTags;
+//                    model::mesh::getElements(elementTypes, elementTags, nodeTags, dim, tags[k]);
+//                    //looping over element types
+//                    for (int i = 0; i < elementTypes.size(); ++i)
+//                    {
+//                        //just to check
+//                        cout << "\telement type " << elementTypes[i] << ":" << endl;
+//                        cout << "\t\telements: ";
+//                        for (int j = 0; j < elementTags[i].size(); ++j)
+//                        {
+//                            cout << elementTags[i][j] << " ";
+//                        }
+//                        cout << endl;
+//                        cout << "\t\tnodes: ";
+//                        for (int j = 0; j < nodeTags[i].size(); ++j)
+//                        {
+//                            cout << nodeTags[i][j] << " ";
+//                        }
+//                        cout << endl;
+//
+//                        // getting element properties
+//                        string elementName;
+//                        int dim, order, numNodes, numPrimaryNodes;
+//                        vector<double> localNodeCoord;
+//                        model::mesh::getElementProperties(elementTypes[i],
+//                                                          elementName, dim, order,
+//                                                          numNodes, localNodeCoord,
+//                                                          numPrimaryNodes);
+//
+//                        // get Gauss points coordinates and weights
+//                        vector<double> localCoords, weights;
+//                        model::mesh::getIntegrationPoints(elementTypes[i], integration_rule, localCoords, weights);//maybe use different integration method on boundary than in domain
+//                        cout << "\t" << weights.size() << " integration points" << endl;
+//
+//                        cout << "\tweights: ";
+//                        for (int j = 0; j < weights.size(); ++j)
+//                        {
+//                            cout << weights[j] << " ";
+//                        }
+//                        cout << endl;
+//
+//                        cout << "\tlocalCoords (gmsh): ";
+//                        for (int j = 0; j < localCoords.size(); ++j)
+//                        {
+//                            cout << localCoords[j] << " ";
+//                        }
+//                        cout << endl;
+//
+//                        // get determinants and Jacobians (only determinants will be useful)
+//                        vector<double> jacobians, determinants, coords;
+//                        model::mesh::getJacobians(elementTypes[i], localCoords, jacobians, determinants, coords,tags[k]); //ATTENTION ai dû rajouter mon tags[k] pr focus on this particular entity
+//
+//                        //just to check
+//                        cout << "\tGot " << determinants.size()
+//                        << " Jacobians for type " << elementTypes[i] << endl;
+//
+//                        cout << "\tdeterminants (gmsh): ";
+//                        for (int j = 0; j < determinants.size(); ++j)
+//                        {
+//                            cout << determinants[j] << " ";
+//                        }
+//                        cout << endl;
+//
+//                        int numComponents, numOrientations;
+//                        vector<double> basisFunctions;
+//                        vector<double> basisFunctionsGradient;
+//                        model::mesh::getBasisFunctions(elementTypes[i], localCoords, "Lagrange", numComponents, basisFunctions, numOrientations);
+//
+//                        //just to check
+//                        cout << "\tGot " << basisFunctions.size() << " basis functions for type " << elementTypes[i] << endl;
+//                        for (int j = 0; j < basisFunctions.size(); ++j)
+//                        {
+//                            cout << basisFunctions[j] << " ";
+//                        }
+//                        cout << endl;
+//
+//                        model::mesh::getBasisFunctions(elementTypes[i], localCoords,
+//                                                       "GradLagrange", numComponents,
+//                                                       basisFunctionsGradient,
+//                                                       numOrientations);
+//
+//                        /*-----------computing the full_G_matrix---------*/
+//
+//                        for (int el = 0; el < elementTags[i].size(); el++)
+//                        {
+//                            //for (int el = 0; el < 1; el++){
+//                            // elemental K matrix and f vector initialization
+//                            Matrix<double, Dynamic, Dynamic> G_matrix(numNodes,numNodes);
+//                            vector<double> f_vector(numNodes);
+//                            for (int j = 0; j < numNodes; ++j)
+//                            {
+//                                for (int l = 0; l < numNodes; ++l)
+//                                {
+//                                    G_matrix(j,l)=0.;
+//                                }
+//                            }
+//
+//                            for(int j = 0; j < weights.size(); ++j)
+//                            {
+//                                // converting jacobian to Eigen format
+//                                Map<Matrix<double, Dynamic, Dynamic> >
+//                                jacob(&jacobians[9*j+9*weights.size()*el], 3, 3);
+//                                // 3D to 2D (plane stress case)
+//                                Matrix<double, 2, 2> jacob2D;
+//                                jacob2D(0,0) = jacob(0,0);
+//                                jacob2D(1,0) = jacob(1,0);
+//                                jacob2D(0,1) = jacob(0,1);
+//                                jacob2D(1,1) = jacob(1,1);
+//
+//                                // computing the inverse
+//                                Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
+//
+//                                // computing the transpose of the inverse
+//                                Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
+//                                //compute the G_Matrix
+//
+//                                for(int l = 0; l < numNodes; ++l)
+//                                {// looping over the number of shape functions
+//                                    for(int m = 0; m < numNodes; ++m)
+//                                    {
+//                                        if(m != l)
+//                                        {
+//
+//                                        }
+//                                        if(m == l)
+//                                        {
+//
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                            /*-----------computing the f vector components related to this Neumann BC---------*/
+//                            /*//looping over the elements
+//                             vector<double> f_vector(2*numNodes);
+//                             for (int el = 0; el < elementTags[i].size(); el++){
+//                             for (int j = 0; j < 2*numNodes; ++j){
+//                             f_vector[j] = 0.;
+//                             }
+//                             // looping over the Gauss points (formula of slide 17)
+//                             for (int j = 0; j < weights.size(); ++j){
+//                             // looping over the number of shape functions
+//                             for (int l = 0; l < numNodes; ++l){
+//                             f_vector[2*l] = f_vector[2*l] + basisFunctions[l+numNodes*j]*tx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
+//                             f_vector[2*l+1] = f_vector[2*l+1] + basisFunctions[l+numNodes*j]*ty*determinants[j+weights.size()*el]*weights[j]; // le weight non plus !
+//                             }
+//                             }
+//                             cout << "\telemental f vector of element " << elementTags[i][el] << ": ";
+//                             for (int j = 0; j < f_vector.size(); ++j)
+//                             cout << f_vector[j] << " ";
+//                             cout << '\n';*/
+//                            /*------------- ASSEMBLY PROCESS ------------*/
+//                            /*for (int j = 0; j < 2*numNodes; ++j)
+//                             {
+//                             int first_node_index = (int) j/2;
+//                             int first_node = nodeTags[i][numNodes*el+first_node_index];
+//                             int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
+//                             full_f_vector[my_row] += f_vector[j];
+//                             //cout << my_row << "\n";
+//                             }
+//                             }*/
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
+//    return 0;
+//}
+
+
+//int initialise_G_matrix(vector<size_t> &all_nodeTags, map<string, pair<int, int>> &groups, string &integration_rule, double bx, double rho, double by, Matrix<double, 3, 3> &G_matrix, Matrix<double, 3, 3> &full_G_matrix, string groupname)
+//{
+//    //attribue dim et tag au groupname = "boundary". attention, il doit map avec le fichier geo
+//    int dim = groups[groupname].first;
+//    int tag = groups[groupname].second;
+//    //on s'assure que le vecteur n'est pas vide
+//    if (tag == 0)
+//    {
+//        cerr << "Group '" << groupname << "' does not exist!\n";
+//        return 1;
+//    }
+//
+//    // getting entities of the boundary
+//    vector<int> tags;
+//    model::getEntitiesForPhysicalGroup(dim, tag, tags);
+//
+//    cout << "Entities in group named '" << groupname << "': ";
+//    for (int i = 0; i < tags.size(); ++i)
+//    {
+//        cout << tags[i] << " ";
+//    }
+//    cout << endl;
+//
+//    //hierarchie => model: getPhysicalGroups => physical group1,2,3,...: getEntitiesForPhysicalGroup => entity1,2,3,...: getElements => element type1,2,3,...
+//
+//    //looping over entities
+//    for(int k = 0; k < tags.size(); ++k)
+//    {
+//        cout << "Entity (" << dim << "," << tags[k] << "):\n";
+//        vector<int> elementTypes;
+//        vector<vector<size_t>> elementTags;
+//        vector<vector<size_t>> nodeTags;
+//
+//        model::mesh::getElements(elementTypes, elementTags, nodeTags, dim, tags[k]);
+//        // looping over element types
+//        for(int i = 0; i < elementTypes.size(); ++i)
+//        {
+//            cout << "\telement type " << elementTypes[i] << endl;
+//             cout << "\t\telements: ";
+//             for (int j = 0; j < elementTags[i].size(); ++j)
+//             {
+//                 cout << elementTags[i][j] << " ";
+//             }
+//             cout << endl;
+//             cout << "\t\tnodes: ";
+//             for (int j = 0; j < nodeTags[i].size(); ++j)
+//             {
+//                 cout << nodeTags[i][j] << " ";
+//             }
+//             cout << endl;
+//        }
+//    }
+//
+//    return 0;
+//}
