@@ -9,6 +9,23 @@
 
 double compute_f_value(const int, const Eigen::SparseMatrix<double> &, const std::vector<double> &);
 
+Eigen::Matrix<double, 3, 3> ComputeH_matrix(const double E, const double nu){
+    Eigen::Matrix<double, 3, 3> H_matrix;
+    H_matrix(0,0) = 1.;
+    H_matrix(1,0) = nu;
+    H_matrix(2,0) = 0.;
+    H_matrix(0,1) = nu;
+    H_matrix(1,1) = 1.;
+    H_matrix(2,1) = 0.;
+    H_matrix(0,2) = 0.;
+    H_matrix(1,2) = 0.;
+    H_matrix(2,2) = (1-nu)/2;
+    H_matrix = E/(1-nu*nu)*H_matrix;
+
+    return H_matrix;
+}
+
+
 // This code is only a functional DRAFT, it returns correct results, but can be improved
 int main(int argc, char **argv)
 {
@@ -90,17 +107,8 @@ int main(int argc, char **argv)
     }
 
     /*-----------------H matrix involved in stress computation------------------*/
-    Eigen::Matrix<double, 3, 3> H_matrix;
-    H_matrix(0,0) = 1.;
-    H_matrix(1,0) = nu;
-    H_matrix(2,0) = 0.;
-    H_matrix(0,1) = nu;
-    H_matrix(1,1) = 1.;
-    H_matrix(2,1) = 0.;
-    H_matrix(0,2) = 0.;
-    H_matrix(1,2) = 0.;
-    H_matrix(2,2) = (1-nu)/2;
-    H_matrix = E/(1-nu*nu)*H_matrix;
+    Eigen::Matrix<double, 3, 3> H_matrix = ComputeH_matrix(E, nu);
+
 
     /*------------computing K matrix and f vector------------------------*/
     // we first consider the K matrix and the volumic part of the f vector
