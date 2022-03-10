@@ -9,6 +9,7 @@
 //#include "code_louis_function.hpp"
 //#include "code_louis.hpp"
 #include "code_kevin.hpp"
+#include "code_louis.hpp"
 
 
 using namespace std;
@@ -17,6 +18,8 @@ using namespace Eigen;
 
 int main(int argc, char **argv)
 {
+    //code_louis(argc,argv);
+
     code_kevin(argc,argv);
 
     return 0;
