@@ -16,11 +16,9 @@ void show_mat(Matrix<double, Dynamic, Dynamic> &A);
 
 int code_kevin(int argc, char **argv);
 
-//todo:séparer en différentes fonctions
-//todo:gérer les conditions de dirichlet et neumann
+//todo: séparer en différentes fonctions
+//todo: gérer les conditions de dirichlet et neumann
 //todo: comparer au livre BEM
-//todo: générer matrice H et G
-// ordre (pour l'instant) initialisation, générer G, générer H
 
 int code_kevin(int argc, char **argv)
 {
@@ -65,18 +63,10 @@ int code_kevin(int argc, char **argv)
     // could be useful to pass it as an argument in the .geo file
     string integration_rule = "CompositeGauss4"; // tested with other methods, OK too.
     //H matrix
-    Matrix<double, Dynamic, Dynamic> H_matrix; //projet d'avenir
-    Matrix<double, Dynamic, Dynamic> G_matrix; //projet d'avenir
+    Matrix<double, Dynamic, Dynamic> H_matrix;
+    Matrix<double, Dynamic, Dynamic> G_matrix;
 
-    /*-----------------compute the matrix G------------------*/
-
-    //compute_G_matrix(groups, all_nodeTags, all_nodecoord, all_nodeparametricCoord, keys, groupname, tags, integration_rule, dimTags); //en travaux pour l'instant
-
-
-    //initialise_G_matrix(all_nodeTags, groups, integration_rule,bx,rho,by,G_matrix,full_G_matrix,groupname);
-
-    /*-----------------compute the matrix H------------------*/
-    //initialise_H_matrix(H_matrix,nu,E);
+    /*-----------------compute the matrix G and H------------------*/
 
     /*--------get physical groups--------------*/
     model::getPhysicalGroups(dimTags,1);// 1 car dans notre cas la frontière est de dimension 1.
