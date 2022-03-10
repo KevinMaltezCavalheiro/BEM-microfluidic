@@ -13,11 +13,7 @@ using namespace Eigen;
 
 int code_kevin(int argc, char **argv);
 
-int initialisation(map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys, string &groupname,vector<int> &tags,string &integration_rule, vectorpair &dimTags);
-
-int compute_G_matrix(map<string, pair<int, int>> &groups,vector<size_t> &all_nodeTags,vector<double> &all_nodecoord,vector<double> &all_nodeparametricCoord,vector<string> &keys, string &groupname,vector<int> &tags,string &integration_rule, vectorpair &dimTags);
-
-void sorting_nodes(vector<size_t> &nodeTags,vector<double> &boundary_nodes_coordinates_x,vector<double> &boundary_nodes_coordinates_y,vector<double> &boundary_sort_nodes_tags, vector<double> &boundary_sort_length_elements);
+void show_mat(Matrix<double, Dynamic, Dynamic> &A);
 
 
 
