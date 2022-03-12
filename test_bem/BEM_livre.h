@@ -39,3 +39,5 @@ void reorder(vector<double> &ub,vector<double> &unb,vector<int> &index,int N);
 
 void uinter(vector<double> &xl,vector<double> &yl,vector<double> &xin,vector<double> &yin,vector<double> &ub,vector<double> &unb,vector<double> &uin,int N, double IN);
 
+void input(vector<double> &xl,vector<double> &yl,vector<double> &xin,vector<double> &yin,vector<int> &index,vector<double> &ub,int &N,int &IN);
+

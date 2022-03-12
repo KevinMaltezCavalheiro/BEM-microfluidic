@@ -1,7 +1,7 @@
-Lx = 5;
-Ly = 2;
-nx = 3;
-ny = 2;
+Lx = 1;
+Ly = 1;
+nx = 4;
+ny = 4;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {Lx, 0, 0, 1.0};
@@ -37,19 +37,19 @@ Physical Curve("left_edge", 4) = {4};
 //SetNumber("Volumic Forces/domain/by",0.); //set to -9.81 for gravity
 
 //BC top edge
-SetNumber("Boundary Conditions/top_edge/tx", 0.); // ALWAYS NEED TO IMPOSE BOTH tx AND ty ON A GIVEN EDGE (realiste, OK) !
-SetNumber("Boundary Conditions/top_edge/ty", 0.); //set to some non-zero value to induce vertical deflection
+SetNumber("Boundary Conditions/top_edge/neumann", 0.); // ALWAYS NEED TO IMPOSE BOTH tx AND ty ON A GIVEN EDGE (realiste, OK) !
+//SetNumber("Boundary Conditions/top_edge/neumann_y", 0.); //set to some non-zero value to induce vertical deflection
 
 //BC right edge
-SetNumber("Boundary Conditions/right_edge/tx", 21e3); // for simple tension conditions
-SetNumber("Boundary Conditions/right_edge/ty", 0.);
+SetNumber("Boundary Conditions/right_edge/dirichlet", 200); // for simple tension conditions
+//SetNumber("Boundary Conditions/right_edge/neumann_y", 0.);
 
 //BC bottom edge
-SetNumber("Boundary Conditions/bottom_edge/tx", 21e3);
-SetNumber("Boundary Conditions/bottom_edge/ty", 0.);
+SetNumber("Boundary Conditions/bottom_edge/neumann", 0.);
+//SetNumber("Boundary Conditions/bottom_edge/neumann_y", 0.);
 
 // BC left edge
-SetNumber("Boundary Conditions/left_edge/ux", 0.); // HERE YOU DO NOT HAVE TO IMPOSE BOTH ux and uy simultaneously ! (permet aussi de simuler appuis à roulettes)
-//SetNumber("Boundary Conditions/left_edge/uy", 0.);
+SetNumber("Boundary Conditions/left_edge/dirichlet", 100); // HERE YOU DO NOT HAVE TO IMPOSE BOTH ux and uy simultaneously ! (permet aussi de simuler appuis à roulettes)
+//SetNumber("Boundary Conditions/left_edge/dirichlet_y", 0.);
 //+
 Show "*";
