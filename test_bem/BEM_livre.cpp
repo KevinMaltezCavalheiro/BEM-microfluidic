@@ -42,6 +42,8 @@ void reorder(vector<double> &ub,vector<double> &unb,vector<int> &index,int N);
 
 void uinter(vector<double> &xl,vector<double> &yl,vector<double> &xin,vector<double> &yin,vector<double> &ub,vector<double> &unb,vector<double> &uin,int N, double IN);
 
+void input(vector<double> &xl,vector<double> &yl,vector<double> &xin,vector<double> &yin,vector<int> &index,vector<double> &ub,int &N,int &IN);
+
 /*
 main program: defines N and |N and calls the subroutines (N: Number of boundary elements and boundary nodes and |N: Number of internal points where the solution is computed)
 input: reads the data and writes them in outputfile
@@ -86,8 +88,8 @@ void bem(int argc, char **argv)
   int IN = 9; //number of internal points where the function u is calculated
   int lsing = 0;
   vector<int> index(N,0);
-  vector<double> xl(N+1,0);
-  vector<double> yl(N+1,0);
+  vector<double> xl(N,0);
+  vector<double> yl(N,0);
   vector<double> xm(N,0);
   vector<double> ym(N,0);
   vector<double> G(N*N,0);
@@ -130,9 +132,16 @@ void bem(int argc, char **argv)
 }
 
 //à faire
-void input(vector<double> &xl,vector<double> &yl,vector<double> &xin,vector<double> &yin,vector<int> &index,vector<double> &ub,int N,int IN)
+void input(vector<double> &xl,vector<double> &yl,vector<double> &xin,vector<double> &yin,vector<int> &index,vector<double> &ub,int &N,int &IN)
 {
-
+    xl = {0.0,0.25,0.5,0.75,1,1,1,1,1,0.75,0.5,0.25,0,0,0,0};
+    yl = {0,0,0,0,0,0.25,0.5,0.75,1,1,1,1,1,0.75,0.5,0.25};
+    index = {1,1,1,1,0,0,0,0,1,1,1,1,0,0,0,0};
+    ub = {0,0,0,0,200,200,200,200,0,0,0,0,100,100,100,100};
+    xin = {0.25,0.5,0.75,0.25,0.5,0.75,0.25,0.5,0.75};
+    yin = {0.25,0.25,0.25,0.5,0.5,0.5,0.75,0.75,0.75};
+    N = 16;
+    IN = 9;
 }
 
 void gmatr(vector<double> &xl,vector<double> &yl,vector<double> &xm,vector<double> &ym,vector<double> &G,int N)
