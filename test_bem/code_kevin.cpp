@@ -1,10 +1,8 @@
-#include <gmsh.h>       // gmsh main header
-#include <iostream>     // for cout
+#include <gmsh.h>
+#include <iostream>
 #include <map>
-#include <sstream>  // for stringstream
-#include <Eigen/Dense> // Eigen library
-#include <Eigen/Sparse> // Eigen library for sparse matrices (QUESTION: OK to use it ?)
-#include <Eigen/SparseCholesky> // solving sparse linear systems (QUESTION: OK to use it ?)
+#include <sstream>
+#include <Eigen/Dense>
 #include <cmath>
 #include <iomanip>
 #include "code_kevin.hpp"
@@ -20,17 +18,10 @@ void show_vec(VectorXd &A);
 int code_kevin(int argc, char **argv);
 
 //todo: séparer en différentes fonctions
-//todo: gérer les conditions de dirichlet et neumann
 //todo: comparer au livre BEM
-//double boucle sur les éléments, faire G et H
-//première boucle
-//position du point i milieu
-//calculer aj et aj+1
-//calculer tous les élements G et H, vérifier s'ils sont bon
-//trier en fonction des conditions
-
-//attention il y a une somme sur les j pour H et G avec les u
-//parcourir la boucle 2 fois pour trier ce qui est neumann et ce qui est dirichlet
+//todo: faire fonctionner le code :p
+//todo: voir pour gérer des trous dans les surfaces
+//todo: combiner avec la FEM
 
 int code_kevin(int argc, char **argv)
 {
@@ -50,37 +41,38 @@ int code_kevin(int argc, char **argv)
     /*PARAMETERS*/
 
     //physical
-    /*-----------first focus on neumann BC's (surface traction) into full_f_vector------------*/
-    double neumann(0); // imposed neumann condition
-    double dirichlet(0); // imposed dirichlet condition
+    double neumann(0); // value of one neumann boundary condition
+    double dirichlet(0); // value of one dirichlet boundary condition
+    vector<int> index; // contain the value 0 if the element has a neumann boundary condition and 1 if it is a dirichlet
+    VectorXd boundary_conditions_values(0); // contain the values relative the boundary conditions. The index vector tells if it is a neumann or a dirichlet
+    VectorXd sol_neumann(0);// contain the final solution for the boundary values of du/dn.
+    VectorXd sol_dirichlet(0);// contain the final solution for the boundary values of u.
+    int N = 0;//total number of elements
 
-    //number of nodes
+
+    //vectors to contain all the nodes information
     vector<size_t> all_nodeTags;
     vector<double> all_nodecoord;
     vector<double> all_nodeparametricCoord;
 
     //physical group
     map<string, pair<int, int>> groups;
-    int number_removed_lines = 0;
     vector<string> names;
-    vector<int> index;
-    VectorXd boundary_conditions_values(0);
-    VectorXd sol_neumann(0);
-    VectorXd sol_dirichlet(0);
     vectorpair dimTags;
-    int N = 0;
 
     //physical properties of the boundary
     vector<string> keys;
-    string groupname = "boundary"; // on considère la frontière du domaine
+    string groupname = "boundary"; // on considère la frontière du domaine (ce sera principalement pour plus tard quand on combinera avec la FEM)
 
     /*-----------------BOUNDARY CONDITIONS------------*/
     /*-----------get group_names related to BC's----------------------*/
-    model::getPhysicalGroups(dimTags,1);// 1 car dans notre cas la frontière est de dimension 1.
+    model::getPhysicalGroups(dimTags,1);// 1 car dans notre cas la frontière est de dimension 1 (on n'a pas besoin de la surface)
     model::mesh::getNodes(all_nodeTags, all_nodecoord, all_nodeparametricCoord);
-    N = all_nodeTags.size();
-    index.resize(N,-1);
+    N = all_nodeTags.size();//number of nodes = number of elements
+    index.resize(N,-1);//set all the values at -1 to be sure it is fill with 0 or 1.
     boundary_conditions_values.resize(N);
+
+    //fill the map groups to gather all the information about the geometry
     for (int i = 0; i < dimTags.size(); ++i)
     {
         int dim = dimTags[i].first;
@@ -89,6 +81,8 @@ int code_kevin(int argc, char **argv)
         model::getPhysicalName(dim, tag, name);
         groups[name] = {dim, tag};
     }
+
+    //read the .geo file to obtain all information about the boundary conditions.
     onelab::getNames(keys, "(Boundary Conditions).+");
     for (auto &key : keys)
     {
@@ -106,27 +100,17 @@ int code_kevin(int argc, char **argv)
         }
         if(words.size()==3)
         {
-            groupname = ""; // will remain empty only if neumann_x == neumann_y == 0
+            groupname = "";
             if(words[2].compare("neumann") == 0)
             {
                 neumann = value[0];
-                //string new_key = "Boundary Conditions/" + words[1] + "/neumann_y";
-                //onelab::getNumber(new_key, value);
-                //neumann_y = value[0];
-                //if(neumann != 0 /*|| neumann_y != 0*/) // there is no need the consider Neumann BC if it is homogeneous
-                //{
-                    groupname = words[1];
-                //}
+                groupname = words[1];
             }
             else if(words[2].compare("dirichlet") == 0)
             {
                 dirichlet = value[0];
-                //if(dirichlet != 0)// there is no need the consider dirichlet BC if it is homogeneous
-                //{
-                    groupname = words[1];
-                //}
+                groupname = words[1];
             }
-            //here, if we are dealing with neumann BC's, we should have retrieved a non-empty group_name
             if(groupname.compare("") != 0)
             {
                 cout << "------------------------------------" << "\n";
@@ -138,7 +122,6 @@ int code_kevin(int argc, char **argv)
                 {
                     cout << groupname << ", neumann: " << neumann << endl;
                 }
-                //cout << groupname << ", neumann x: " << neumann_x << ", neumann y: " << neumann_y << "\n";
                 //loop over elements of group_name
                 int dim = groups[groupname].first;
                 int tag = groups[groupname].second;
@@ -159,7 +142,7 @@ int code_kevin(int argc, char **argv)
                 // loop over entities
                 for (int k = 0; k < tags.size(); ++k)
                 {
-                    cout << "Entity (" << dim << "," << tags[k] << "):\n";
+                    //cout << "Entity (" << dim << "," << tags[k] << "):\n";
                     vector<int> elementTypes;
                     vector<size_t> elementTags;
                     vector<size_t> nodeTags;
@@ -168,11 +151,13 @@ int code_kevin(int argc, char **argv)
                     {
                         if(words[2].compare("neumann") == 0)
                         {
+                            //if the element has a neumann boundary condition, we store it this information by puting a 0 in the index vector and we store the value of this BC in the vector boundary_conditions_values
                             index[elementTags[l]-1] = 0;
                             boundary_conditions_values(elementTags[l]-1) = neumann;
                         }
                         else if(words[2].compare("dirichlet") == 0)
                         {
+                            //if the element has a dirichlet boundary condition, we store it this information by puting a 1 in the index vector and we store the value of this BC in the vector boundary_conditions_values
                             index[elementTags[l]-1] = 1;
                             boundary_conditions_values(elementTags[l]-1) = dirichlet;
                         }
@@ -181,10 +166,11 @@ int code_kevin(int argc, char **argv)
             }
         }
     }
+
     /*--------Integration rule used in the code----------*/
-    // could be useful to pass it as an argument in the .geo file
-    string integration_rule = "CompositeGauss4"; // tested with other methods, OK too.
-    //H matrix
+    string integration_rule = "CompositeGauss4";
+
+    //defines all matrices related to the BEM method
     MatrixXd H_matrix;
     MatrixXd G_matrix;
     MatrixXd A_matrix;
@@ -193,6 +179,7 @@ int code_kevin(int argc, char **argv)
 
     /*-----------------compute the matrix G and H------------------*/
 
+    //resize all the matrices and initilize them to 0.
     G_matrix.resize(N,N);
     H_matrix.resize(N,N);
     A_matrix.resize(N,N);
@@ -202,10 +189,8 @@ int code_kevin(int argc, char **argv)
     H_matrix.array() = 0.;
     A_matrix.array() = 0.;
     B_matrix.array() = 0.;
-    //show_mat(G_matrix);
-    cout << endl;
-    //show_mat(H_matrix);
 
+    // first loop over the elements: indices i -> k -> l
     for (int i = 0; i < dimTags.size(); ++i)
     {
         int dim_1 = dimTags[i].first;
@@ -228,13 +213,13 @@ int code_kevin(int argc, char **argv)
             //cout << elementTags.size() << " " << nodeTags.size() << endl;
             for(int l = 0; l < elementTags_1.size(); l++)
             {
-                unsigned long element_l = elementTags_1[l]-1;
-                unsigned long node_1_tag_l = nodeTags_1[2*l];
-                unsigned long node_2_tag_l = nodeTags_1[2*l+1];
-                double node_1_coord_x_l = all_nodecoord[3*(node_1_tag_l-1)];
-                double node_1_coord_y_l = all_nodecoord[3*(node_1_tag_l-1)+1];
-                double node_2_coord_x_l = all_nodecoord[3*(node_2_tag_l-1)];
-                double node_2_coord_y_l = all_nodecoord[3*(node_2_tag_l-1)+1];
+                unsigned long element_l = elementTags_1[l]-1;//to avoid the -1 between the tag notation and the c++
+                unsigned long node_1_tag_l = nodeTags_1[2*l];//first node of element l
+                unsigned long node_2_tag_l = nodeTags_1[2*l+1];//second node of element l
+                double node_1_coord_x_l = all_nodecoord[3*(node_1_tag_l-1)];//x coordinate of the first node of element l
+                double node_1_coord_y_l = all_nodecoord[3*(node_1_tag_l-1)+1];//y coordinate of the first node of element l
+                double node_2_coord_x_l = all_nodecoord[3*(node_2_tag_l-1)];//x coordinate of the second node of element l
+                double node_2_coord_y_l = all_nodecoord[3*(node_2_tag_l-1)+1];//y coordinate of the second node of element l
 
                 /*-------affiche les différents tags et les coordonnées de noeuds-------*/
                 //                cout << "element " << elementTags[l] << " nodes = " << nodeTags[2*l] << "," << nodeTags[2*l+1] <<
@@ -242,11 +227,12 @@ int code_kevin(int argc, char **argv)
                 //                " x2= " << all_nodecoord[3*(nodeTags[2*l+1]-1)] << " ,y2= " << all_nodecoord[3*(nodeTags[2*l+1]-1)+1]<<               endl;
                 //cout << "element " << element << " nodes = " << node_1_tag << "," << node_2_tag << " x1= " << node_1_coord_x << " ,y1= " << node_1_coord_y << " x2= " << node_2_coord_x << " ,y2= " << node_2_coord_y << endl;
 
-                /*-------calcule ne noeud au milieu du segment-------*/
+                /*-------compute the node at the middle of the element-------*/
                 double middle_node_element_x_l = (node_1_coord_x_l+node_2_coord_x_l)/2.0;
                 double middle_node_element_y_l = (node_1_coord_y_l+node_2_coord_y_l)/2.0;
                 //cout << "middle node element: (" << middle_node_element_x << "," << middle_node_element_y << ")" << endl;
 
+                // second loop over the elements: indices j -> n -> m
                 for(int j = 0; j < dimTags.size(); j++)
                 {
                     int dim_2 = dimTags[j].first;
@@ -260,20 +246,29 @@ int code_kevin(int argc, char **argv)
                     {
                         vector<size_t> elementTags_2, nodeTags_2;
                         model::mesh::getElementsByType(1,elementTags_2,nodeTags_2,tags_2[n]);
-                        for(int m = 0; m < elementTags_2.size(); m++)//chez nous element type = 1;
+                        for(int m = 0; m < elementTags_2.size(); m++)
                         {
-                            unsigned long element_m = elementTags_2[m]-1;
-                            cout << element_l << " " << element_m << endl;
+                            unsigned long element_m = elementTags_2[m]-1;//to avoid the -1 between the tag notation and the c++
+
+                            //just to display the elements for debugging
+                            //cout << element_l << " " << element_m << endl;
+
+                            //condition i == j in the slides, to compute Hii and Gii
                             if(element_l == element_m)
                             {
-                                double length_element_l = sqrt((node_1_coord_x_l-node_2_coord_x_l)*(node_1_coord_x_l-node_2_coord_x_l)+(node_1_coord_y_l-node_2_coord_y_l)*(node_1_coord_y_l-node_2_coord_y_l));
+                                //computation of Gii
+                                double length_element_l = sqrt((node_1_coord_x_l-node_2_coord_x_l)*(node_1_coord_x_l-node_2_coord_x_l)+(node_1_coord_y_l-node_2_coord_y_l)*(node_1_coord_y_l-node_2_coord_y_l)); //equivalent to li in the slides
                                 double g_ii = length_element_l/(2.0*M_PI)*(log(length_element_l/2.0)-1);
                                 G_matrix(element_l,element_m) = g_ii;
+
+                                //computation of Hii
                                 double h_ii = -1.0/2.0;
                                 H_matrix(element_l,element_m) = h_ii;
                             }
+                            // condition i != j in the slides
                             else if(element_l != element_m)
                             {
+                                //I have defined temporary variables to help debug the code.
                                 unsigned long node_1_tag_m = nodeTags_2[2*m];
                                 unsigned long node_2_tag_m = nodeTags_2[2*m+1];
                                 double node_1_coord_x_m = all_nodecoord[3*(node_1_tag_m-1)];
@@ -284,8 +279,15 @@ int code_kevin(int argc, char **argv)
                                 double temp2 = (node_1_coord_y_m - middle_node_element_y_l)/(node_1_coord_x_m - middle_node_element_x_l);
                                 double a_jp1 = atan(temp1);
                                 double a_j = atan(temp2);
+                                //to check the angles
+//                                cout << a_jp1*(180.0/M_PI) << endl;
+//                                cout << a_j*(180.0/M_PI) << endl;
+//                                cout << endl;
                                 double temp3 = (a_jp1 - a_j)/(2*M_PI);
                                 H_matrix(element_l,element_m) = temp3;
+
+                                // pi = position of the middle node of element i, pj and pj+1 for the position of the nodes
+
                                 //                                cout << "pi: " << "(" << middle_node_element_x_l << "," << middle_node_element_y_l << ")" << endl;
                                 //                                cout << "pj: " << "(" << node_1_coord_x_m << "," << node_1_coord_y_m << ")" << endl;
                                 //                                cout << "pj+1: " << "(" << node_2_coord_x_m << "," << node_2_coord_y_m << ")" << endl;
@@ -293,6 +295,8 @@ int code_kevin(int argc, char **argv)
                                 //                                cout << temp2 << endl;
                                 //                                cout << temp3 << endl;
                                 //                                cout << endl;
+
+                                //equivalent to lj in the slides
                                 double length_element_m = sqrt((node_1_coord_x_m-node_2_coord_x_m)*(node_1_coord_x_m-node_2_coord_x_m)+(node_1_coord_y_m-node_2_coord_y_m)*(node_1_coord_y_m-node_2_coord_y_m));
 
                                 string elementName;
@@ -303,6 +307,9 @@ int code_kevin(int argc, char **argv)
                                 // get Gauss points coordinates and weights
                                 vector<double> localCoords, weights;
                                 model::mesh::getIntegrationPoints(1, integration_rule, localCoords, weights);
+
+                                //To chech the weights and local coordinates given by gmsh
+
                                 //                                cout << "\t" << weights.size() << " integration points\n";
                                 //
                                 //                                cout << "\tweights: ";
@@ -314,18 +321,27 @@ int code_kevin(int argc, char **argv)
                                 //                                for (int j = 0; j < localCoords.size(); ++j)
                                 //                                    cout << localCoords[j] << " ";
                                 //                                cout << '\n';
+
+                                //compute the sum over the gauss points
                                 double sum_gauss = 0;
+                                vector<double> distance(weights.size(),0);
                                 for(int g = 0; g < weights.size(); g++)
                                 {
-                                    double xi_local_x = localCoords[3*g];
-                                    double xi_local_y = localCoords[3*g+1];
-                                    double x_local = (node_2_coord_x_m + node_1_coord_x_m)/2.0 + ((node_2_coord_x_m - node_1_coord_x_m)/2.0)*xi_local_x;
-                                    double y_local = (node_2_coord_y_m + node_1_coord_y_m)/2.0 + ((node_2_coord_y_m - node_1_coord_y_m)/2.0)*xi_local_y;
+                                    //the variable xi is for the greek letter xi in the slides
+                                    double xi = localCoords[3*g];
+                                    //local coordinate x and y
+                                    double x_local = (node_2_coord_x_m + node_1_coord_x_m)/2.0 + ((node_2_coord_x_m - node_1_coord_x_m)/2.0)*xi;
+                                    double y_local = (node_2_coord_y_m + node_1_coord_y_m)/2.0 + ((node_2_coord_y_m - node_1_coord_y_m)/2.0)*xi;
+                                    //compute the norm of the r vector
                                     double r = sqrt((x_local - middle_node_element_x_l)*(x_local - middle_node_element_x_l) + (y_local - middle_node_element_y_l)*(y_local - middle_node_element_y_l));
+                                    distance[g] = r;
+                                    //sum over the number of gauss points
                                     sum_gauss = sum_gauss + log(r)*weights[g];
                                 }
+                                distance;
                                 G_matrix(element_l,element_m) = (length_element_m/(4.0*M_PI))*sum_gauss;
                             }
+                            //create the matrix A and B(which need to be multiplied by the vector boundary conditions values to form vector b of the system Ax=b)
                             if(index[element_m] == 0)//0 = neumann
                             {
                                 A_matrix(element_l,element_m) = H_matrix(element_l,element_m);
@@ -343,6 +359,9 @@ int code_kevin(int argc, char **argv)
         }
     }
 
+    //Scans the index vector and displays whether it is a neumann or dirichlet condition
+    cout << endl;
+    cout << "index vector:" << endl;
     for(int i = 0; i < index.size(); i++)
     {
         if(index[i] == 0)
@@ -354,6 +373,8 @@ int code_kevin(int argc, char **argv)
             cout << "dirichlet" << endl;
         }
     }
+
+    //display the differents matrices
     cout << endl;
     cout << "matrice G" << endl;
     show_mat(G_matrix);
@@ -382,27 +403,39 @@ int code_kevin(int argc, char **argv)
     cout << endl;
     cout << "vector x" << endl;
     show_vec(x_vector);
-    /*--------get number of nodes-----------------*/
 
-    /*for(int i = 0; i < all_nodecoord.size(); i++)
-     {
-     cout << all_nodecoord[i] << endl;
-     }
+    //sort x_vector and boundary_conditions_values to gather the solution for neumann and for dirichlet
+    sol_neumann.resize(N);
+    sol_dirichlet.resize(N);
 
-     for(int i = 0; i < all_nodeTags.size(); i++)
-     {
-     double x = all_nodecoord[i*3];
-     double y = all_nodecoord[i*3+1];
-     double z = all_nodecoord[i*3+2];
-     cout << "x:" << x << " y:" << y << " z:" << z << endl;
-     }*/
+    for(int i = 0; i < N; i++)
+    {
+        if(index[i] == 0)
+        {
+            sol_neumann[i] = boundary_conditions_values[i];
+            sol_dirichlet[i] = x_vector[i];
+        }
+        else if(index[i] == 1)
+        {
+            sol_dirichlet[i] = boundary_conditions_values[i];
+            sol_neumann[i] = x_vector[i];
+        }
+    }
 
+    cout << endl;
+    cout << "solution neumann" << endl;
+    show_vec(sol_neumann);
+
+    cout << endl;
+    cout << "solution dirichlet" << endl;
+    show_vec(sol_dirichlet);
 
     //fltk::run(); // opens the gmsh window
     finalize();
     return 0;
 }
 
+//function to display the matrices
 void show_mat(MatrixXd &A)
 {
     for(int i = 0; i < A.rows(); i++)
@@ -417,6 +450,7 @@ void show_mat(MatrixXd &A)
     }
 }
 
+//function to display the vectors
 void show_vec(VectorXd &A)
 {
     for(int i = 0; i < A.rows(); i++)

@@ -1,10 +1,8 @@
-#include <gmsh.h>       // gmsh main header
-#include <iostream>     // for cout
+#include <gmsh.h>
+#include <iostream>
 #include <map>
-#include <sstream>  // for stringstream
-#include <Eigen/Dense> // Eigen library
-#include <Eigen/Sparse> // Eigen library for sparse matrices (QUESTION: OK to use it ?)
-#include <Eigen/SparseCholesky> // solving sparse linear systems (QUESTION: OK to use it ?)
+#include <sstream>
+#include <Eigen/Dense>
 #include <cmath>
 #include <iomanip>
 
