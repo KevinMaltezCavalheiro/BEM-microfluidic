@@ -473,6 +473,387 @@ void Fill_K_F_Reduced(const std::vector<double> & full_f_vector, const Eigen::Sp
     reduced_K_matrix.setFromTriplets(reduced_k_tripletList.begin(), reduced_k_tripletList.end());
 }
 
+void Reaction_Forces(double & Rx, double & Ry, int & dim, int & tag, 
+                     std::vector<int> & tags, std::string & groupname,
+                     std::map<std::string, std::pair<int, int>> & groups,
+                     const Eigen::SparseMatrix<double> full_K_matrix, 
+                     const std::vector<std::string> keys, 
+                     const std::vector<double> full_d_vector){
+    for (auto &key : keys)
+    {
+        // get corresponding value
+        std::vector<double> value;
+        gmsh::onelab::getNumber(key, value);
+        // expected key structure is "type/group_name/field"
+        // => split the key string into components
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
+        while(std::getline(ss, word, '/')) // read string until '/'
+            words.push_back(word);
+        if(words.size()==3) 
+        {
+            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
+                Rx = 0;
+                Ry = 0;
+                groupname = words[1];
+                std::cout << "-------------------- " << groupname << " ------------------- \n";
+                
+                //loop over elements of group_name
+                dim = groups[groupname].first;
+                tag = groups[groupname].second;
+                if (tag == 0)
+                {
+                    std::cerr << "Group '" << groupname << "' does not exist!\n";
+                    return;
+                }
+                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+
+                // loop over entities
+                for (std::size_t k = 0; k < tags.size(); ++k)
+                {
+                    std::vector<std::size_t> nodeTags;
+                    std::vector<double> coord; //useless
+                    std::vector<double> parametricCoord; //useless
+
+                    // retrieving all the nodes in this particular entity
+                    gmsh::model::mesh::getNodes(nodeTags, coord, parametricCoord, dim, tags[k], true);
+                    
+                    /*std::cout << "node tags: ";
+                    for (int j = 0; j < (int) nodeTags.size(); ++j){
+                        std::cout << nodeTags[j] << " ";
+                    }
+                    std::cout << "\n";*/
+
+                    for (std::size_t j = 0; j < nodeTags.size(); ++j){
+                        if(words[2].compare("ux") == 0){    // computing Rx
+                            int my_new_col = (nodeTags[j] - 1)*2; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
+                            //std::cout << "my col: " << my_new_col << "\n";
+                            Rx += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
+                        }
+                        if(words[2].compare("uy") == 0){    // computing Ry
+                            int my_new_col = (nodeTags[j] - 1)*2 + 1; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
+                            //std::cout << "my col: " << my_new_col << "\n";
+                            Ry += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
+                        }
+                    }
+                }
+                std::cout << "Rx: " << Rx << " [N/m], Ry: " << Ry << " [N/m] \n";
+            }
+        }
+    }
+}
+
+std::vector<std::string> Plot_Save_ux_uy(const std::vector<std::size_t> all_nodeTags, const std::vector<double> full_d_vector){
+    int viewtag1 = gmsh::view::add("ux");
+    int viewtag2 = gmsh::view::add("uy");
+    std::vector<std::vector<double>> data1(all_nodeTags.size());
+    std::vector<std::vector<double>> data2(all_nodeTags.size());
+    for (std::size_t i = 0; i < all_nodeTags.size(); ++i)
+    {
+        data1[i].resize(1);
+        data1[i][0] = full_d_vector[2*i]; //ux
+        data2[i].resize(1);
+        data2[i][0] = full_d_vector[2*i+1]; //uy
+    }
+
+    std::vector<std::string> names;
+    gmsh::model::list(names);
+    gmsh::view::addModelData(viewtag1, 0, names[0], "NodeData",
+                            all_nodeTags, data1); //independent of time here
+    gmsh::view::addModelData(viewtag2, 0, names[0], "NodeData",
+                            all_nodeTags, data2); //independent of time here
+
+    // save the results to disk
+    gmsh::view::write(viewtag1, "ux.msh");
+    gmsh::view::write(viewtag2, "uy.msh");
+
+    // set display options & view results
+    gmsh::option::setNumber("View[0].IntervalsType", 3);
+    gmsh::option::setNumber("View[0].AdaptVisualizationGrid", 1);
+    gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+    gmsh::option::setNumber("View[0].TargetError", -0.0001);
+    gmsh::option::setNumber("View[1].IntervalsType", 3);
+    gmsh::option::setNumber("View[1].AdaptVisualizationGrid", 1);
+    gmsh::option::setNumber("View[1].MaxRecursionLevel", 3);
+    gmsh::option::setNumber("View[1].TargetError", -0.0001);
+    return names;
+}
+
+void Compute_Stress_Strain(const std::vector<int> elementTypes, const std::vector<std::vector<std::size_t>> elementTags,
+                           const std::vector<std::vector<std::size_t>> elnodeTags, const std::string integration_rule,
+                           const std::vector<double> full_d_vector, std::vector<std::size_t> & elems2D,
+                           const Eigen::Matrix<double, 3, 3> H_matrix, int & k, const double nu, const double E,
+                           std::vector<std::vector<double>> & data3, std::vector<std::vector<double>> & data4,
+                           std::vector<std::vector<double>> & data5, std::vector<std::vector<double>> & data6,
+                           std::vector<std::vector<double>> & data7, std::vector<std::vector<double>> & data8,
+                           std::vector<std::vector<double>> & data9, std::vector<std::vector<double>> & data10){
+    for (std::size_t ityp = 0; ityp < elementTypes.size(); ++ityp)
+    {
+        // get info about this type of element
+        std::string name;
+        int dim, order, numNodes, numPrimaryNodes;
+        std::vector<double> paramCoord;
+        gmsh::model::mesh::getElementProperties(elementTypes[ityp], name, dim, order,
+                                                numNodes, paramCoord, numPrimaryNodes);
+
+        // select element/node tags for this type of element
+        auto &etags = elementTags[ityp];
+        auto &enods = elnodeTags[ityp];
+
+        // will contain the d vector inside each element
+        Eigen::VectorXd nodal_displacement(2*numNodes); //use eigen vector to use Eigen matric product later
+
+        // get Gauss points coordinates and weights (only coordinates useful here)
+        std::vector<double> localCoords, weights;
+        gmsh::model::mesh::getIntegrationPoints(elementTypes[ityp], 
+                                                integration_rule, 
+                                                localCoords, weights);
+
+        // get determinants and Jacobians (only jacob useful here)
+        std::vector<double> jacobians, determinants, coords;
+        gmsh::model::mesh::getJacobians(elementTypes[ityp], 
+                                        localCoords, jacobians, 
+                                        determinants, coords);
+
+        // derivatives of the shape functions at the Gauss points of the reference element
+        // we are here working with derivatives in the reference space, same for all elements
+        int numComponents, numOrientations;
+        std::vector<double> basisFunctionsGradient;
+
+        gmsh::model::mesh::getBasisFunctions(elementTypes[ityp], localCoords, 
+                                                "GradLagrange", numComponents, 
+                                                basisFunctionsGradient, 
+                                                numOrientations);
+
+        Eigen::Vector3d epsilon; // will contain mean elemental values of the strains
+        Eigen::Vector3d sigma; // will contain mean elemental values of the stresses
+        Eigen::Vector3d tmp_epsilon; // will store temporary values
+
+        // loop over elements of type "ityp"
+        for (std::size_t i = 0; i < etags.size(); ++i)
+        {
+            elems2D[k] = etags[i];
+
+            data3[k].resize(1);
+            data4[k].resize(1);
+            data5[k].resize(1);
+            data6[k].resize(1);
+            data7[k].resize(1);
+            data8[k].resize(1);
+            data9[k].resize(1);
+            data10[k].resize(1);
+            epsilon(0) = 0.;
+            epsilon(1) = 0.;
+            epsilon(2) = 0.;
+            sigma(0) = 0.;
+            sigma(1) = 0.;
+            sigma(2) = 0.;
+            // loop over nodes of the element, filling the local nodal displacement vector "d"
+            for (int j = 0; j < numNodes; ++j)
+            {
+                int nodeTag = enods[numNodes * i + j];
+                nodal_displacement(2*j) = full_d_vector[2*(nodeTag-1)];
+                nodal_displacement(2*j+1) = full_d_vector[2*(nodeTag-1)+1];
+            }
+            // looping over the Gauss points (formula of slide 17)
+            for (std::size_t j = 0; j < weights.size(); ++j){
+                // converting jacobian to Eigen format
+                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
+                    jacob(&jacobians[9*j+9*weights.size()*i], 3, 3);
+                // 3D to 2D (plane stress case)
+                Eigen::Matrix<double, 2, 2> jacob2D;
+                jacob2D(0,0) = jacob(0,0);
+                jacob2D(1,0) = jacob(1,0);
+                jacob2D(0,1) = jacob(0,1);
+                jacob2D(1,1) = jacob(1,1);
+                        
+                // computing the inverse
+                Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
+
+                // computing the transpose of the inverse
+                Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
+
+                // computing the B matrix (formula slide 19)
+                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
+                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
+                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1]; //ici faudrait pas un weights.size() à la place de numNodes ?? pense pas, ça fonctionne
+                    B_matrix(1,2*l) = 0.;
+                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+                    B_matrix(0,2*l+1) = 0.;
+                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
+                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
+                }
+                tmp_epsilon = B_matrix*nodal_displacement;
+                epsilon += tmp_epsilon;
+                sigma += H_matrix*tmp_epsilon;
+                //std::cout << "sigma at GP: " << H_matrix*tmp_epsilon << "\n";
+            }
+            epsilon = epsilon / weights.size(); // performing an arithmetic mean value
+            sigma = sigma / weights.size();
+            data3[k][0] = epsilon(0);
+            data4[k][0] = epsilon(1);
+            data5[k][0] = epsilon(2);
+            if (E != 0){
+                data6[k][0] = -nu/E*(sigma(0)+sigma(1));// formula slide 11/20 elasticity
+            }
+            else{
+                data6[k][0] = 0;
+            }
+            data7[k][0] = sigma(0);
+            data8[k][0] = sigma(1);
+            data9[k][0] = sigma(2);
+            data10[k][0] = sqrt(sigma(0)*sigma(0) + sigma(1)*sigma(1) - sigma(0)*sigma(1) + 3*sigma(2)*sigma(2)); // VM stress in plane stress configuration
+
+            k++;
+        }
+    }
+}
+
+void Compute_Stress_Strain_Elemental(const std::vector<int> elementTypes, const std::vector<std::vector<std::size_t>> elementTags,
+                           const std::vector<std::vector<std::size_t>> elnodeTags,
+                           const std::vector<double> full_d_vector, std::vector<std::size_t> & elems2D_bis,
+                           const Eigen::Matrix<double, 3, 3> H_matrix, int & k, const double nu, const double E,
+                           std::vector<int> & nb_adjacent_elements, std::vector<double> & nodal_sigma_x, 
+                           std::vector<double> & nodal_sigma_y, std::vector<double> & nodal_sigma_xy,
+                           std::vector<std::vector<double>> & data11, std::vector<std::vector<double>> & data12,
+                           std::vector<std::vector<double>> & data13, std::vector<std::vector<double>> & data14,
+                           std::vector<std::vector<double>> & data15, std::vector<std::vector<double>> & data16,
+                           std::vector<std::vector<double>> & data17, std::vector<std::vector<double>> & data18){
+    for (std::size_t ityp = 0; ityp < elementTypes.size(); ++ityp)
+    {
+        // get info about this type of element
+        std::string name;
+        int dim, order, numNodes, numPrimaryNodes;
+        std::vector<double> paramCoord2D;
+        gmsh::model::mesh::getElementProperties(elementTypes[ityp], name, dim, order,
+                                                numNodes, paramCoord2D, numPrimaryNodes);
+        //paramCoord contains the coordinates of the nodes in 2D
+        // passage en 3D pour utiliser getJacobians
+        std::vector<double> paramCoord(3*paramCoord2D.size()/2);
+        for(std::size_t j = 0; j < paramCoord2D.size()/2; ++j){
+            paramCoord[3*j] = paramCoord2D[2*j];
+            paramCoord[3*j+1] = paramCoord2D[2*j+1];
+            paramCoord[3*j+2] = 0.;
+        }
+        
+
+        // select element/node tags for this type of element
+        auto &etags = elementTags[ityp];
+        auto &enods = elnodeTags[ityp];
+
+        // will contain the d vector inside each element
+        Eigen::VectorXd nodal_displacement(2*numNodes); //use eigen vector to use Eigen matric product later
+
+        // get determinants and Jacobians (only jacob useful here) AT NODES AND NOT AT GAUSS POINTS
+        std::vector<double> jacobians, determinants, coords;
+        gmsh::model::mesh::getJacobians(elementTypes[ityp], 
+                                        paramCoord, jacobians, 
+                                        determinants, coords);
+
+        /*std::cout << "jacobians: " << "\n";
+        for(int j = 0; j < jacobians.size(); ++j)
+            std::cout << jacobians[j] << " ";
+        std::cout << "\n";*/
+
+        // derivatives of the shape functions at the nodes of the reference element
+        // we are here working with derivatives in the reference space, same for all elements
+        int numComponents, numOrientations;
+        std::vector<double> basisFunctionsGradient;
+
+        gmsh::model::mesh::getBasisFunctions(elementTypes[ityp], paramCoord, 
+                                                "GradLagrange", numComponents, 
+                                                basisFunctionsGradient, 
+                                                numOrientations);
+
+        Eigen::Vector3d epsilon; // will contain local values of the strains
+        Eigen::Vector3d sigma; // will contain local values of the stresses
+
+        // loop over elements of type "ityp"
+        for (std::size_t i = 0; i < etags.size(); ++i)
+        {
+            elems2D_bis[k] = etags[i];
+
+            data11[k].resize(numNodes);
+            data12[k].resize(numNodes);
+            data13[k].resize(numNodes);
+            data14[k].resize(numNodes);
+            data15[k].resize(numNodes);
+            data16[k].resize(numNodes);
+            data17[k].resize(numNodes);
+            data18[k].resize(numNodes);
+
+            // loop over nodes of the element, filling the local nodal displacement vector "d"
+            for (int j = 0; j < numNodes; ++j)
+            {
+                int nodeTag = enods[numNodes * i + j];
+                nodal_displacement(2*j) = full_d_vector[2*(nodeTag-1)];
+                nodal_displacement(2*j+1) = full_d_vector[2*(nodeTag-1)+1];
+
+                nb_adjacent_elements[nodeTag-1] +=1; // -1 is because nodeTags begin at 1
+            }
+            // looping over the nodes
+            for (int j = 0; j < numNodes; ++j){
+                int nodeTag = enods[numNodes * i + j];
+                // converting jacobian to Eigen format
+                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
+                    jacob(&jacobians[9*j+9*numNodes*i], 3, 3);
+                // 3D to 2D (plane stress case)
+                Eigen::Matrix<double, 2, 2> jacob2D;
+                jacob2D(0,0) = jacob(0,0);
+                jacob2D(1,0) = jacob(1,0);
+                jacob2D(0,1) = jacob(0,1);
+                jacob2D(1,1) = jacob(1,1);
+                        
+                // computing the inverse
+                Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
+
+                // computing the transpose of the inverse
+                Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
+
+                // computing the B matrix (formula slide 19) 
+                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
+                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
+                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+                    B_matrix(1,2*l) = 0.;
+                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+                    B_matrix(0,2*l+1) = 0.;
+                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
+                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
+                }
+                epsilon = B_matrix*nodal_displacement;
+                sigma = H_matrix*epsilon;
+                //std::cout << "sigma at node " << nodeTag << ": " << H_matrix*epsilon << "\n";
+
+                data11[k][j] = epsilon(0);
+                data12[k][j] = epsilon(1);
+                data13[k][j] = epsilon(2);
+                data14[k][j] = -nu/E*(sigma(0)+sigma(1));// formula slide 11/20 elasticity
+                data15[k][j] = sigma(0);
+                data16[k][j] = sigma(1);
+                data17[k][j] = sigma(2);
+                data18[k][j] = sqrt(sigma(0)*sigma(0) + sigma(1)*sigma(1) - sigma(0)*sigma(1) + 3*sigma(2)*sigma(2)); // VM stress in plane stress configuration
+
+                nodal_sigma_x[nodeTag - 1] += sigma(0);
+                nodal_sigma_y[nodeTag - 1] += sigma(1);
+                nodal_sigma_xy[nodeTag - 1] += sigma(2);
+            }
+            k++;
+        }
+    }
+}
+
+double compute_f_value(const int col, const Eigen::SparseMatrix<double> & full_K_matrix, const std::vector<double> & full_d_vector){
+    int row;
+    double k_value;
+    double f_value = 0.;
+    for (Eigen::SparseMatrix<double>::InnerIterator it(full_K_matrix,col); it; ++it){
+        k_value = it.value();
+        row = it.row();   // row index
+        f_value += k_value*full_d_vector[row];
+    }
+    return f_value;
+}
 
 // This code is only a functional DRAFT, it returns correct results, but can be improved
 int main(int argc, char **argv)
@@ -636,40 +1017,16 @@ int main(int argc, char **argv)
         }
     }
 
+    /*--------------REACTION FORCES COMPUTATION------------------*/
+
+    double Rx = 0.;
+    double Ry = 0.;
+    Reaction_Forces(Rx, Ry, dim, tag, tags, groupname, groups, full_K_matrix, keys, full_d_vector);
+
     /*--------------PLOTTING AND SAVING THEM------------------*/
     // loop over the nodes
-    int viewtag1 = gmsh::view::add("ux");
-    int viewtag2 = gmsh::view::add("uy");
-    std::vector<std::vector<double>> data1(all_nodeTags.size());
-    std::vector<std::vector<double>> data2(all_nodeTags.size());
-    for (std::size_t i = 0; i < all_nodeTags.size(); ++i)
-    {
-        data1[i].resize(1);
-        data1[i][0] = full_d_vector[2*i]; //ux
-        data2[i].resize(1);
-        data2[i][0] = full_d_vector[2*i+1]; //uy
-    }
-
-    std::vector<std::string> names;
-    gmsh::model::list(names);
-    gmsh::view::addModelData(viewtag1, 0, names[0], "NodeData",
-                            all_nodeTags, data1); //independent of time here
-    gmsh::view::addModelData(viewtag2, 0, names[0], "NodeData",
-                            all_nodeTags, data2); //independent of time here
-
-    // save the results to disk
-    gmsh::view::write(viewtag1, "ux.msh");
-    gmsh::view::write(viewtag2, "uy.msh");
-
-    // set display options & view results
-    gmsh::option::setNumber("View[0].IntervalsType", 3);
-    gmsh::option::setNumber("View[0].AdaptVisualizationGrid", 1);
-    gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
-    gmsh::option::setNumber("View[0].TargetError", -0.0001);
-    gmsh::option::setNumber("View[1].IntervalsType", 3);
-    gmsh::option::setNumber("View[1].AdaptVisualizationGrid", 1);
-    gmsh::option::setNumber("View[1].MaxRecursionLevel", 3);
-    gmsh::option::setNumber("View[1].TargetError", -0.0001);
+    std::vector<std::string> names = Plot_Save_ux_uy(all_nodeTags, full_d_vector);
+    
 
     /*-------------POST PROCESSING---------------*/
     /*-------------Computing and saving strains/stresses-----------------*/
@@ -685,7 +1042,6 @@ int main(int argc, char **argv)
     int nbelems=0;
     for(std::size_t i=0; i< elementTags.size(); ++i)
         nbelems+=elementTags[i].size();
-    //std::cout << "the mesh has " << nbelems << " elements\n";
 
     int viewtag3 = gmsh::view::add("eps_x");
     int viewtag4 = gmsh::view::add("eps_y");
@@ -709,126 +1065,9 @@ int main(int argc, char **argv)
 
     // for each element type
     int k=0;
-    for (std::size_t ityp = 0; ityp < elementTypes.size(); ++ityp)
-    {
-        // get info about this type of element
-        std::string name;
-        int dim, order, numNodes, numPrimaryNodes;
-        std::vector<double> paramCoord;
-        gmsh::model::mesh::getElementProperties(elementTypes[ityp], name, dim, order,
-                                                numNodes, paramCoord, numPrimaryNodes);
+    Compute_Stress_Strain(elementTypes, elementTags, elnodeTags, integration_rule, full_d_vector, elems2D, H_matrix, 
+                          k, nu, E, data3, data4, data5, data6, data7, data8, data9, data10);
 
-        // select element/node tags for this type of element
-        auto &etags = elementTags[ityp];
-        auto &enods = elnodeTags[ityp];
-
-        // will contain the d vector inside each element
-        Eigen::VectorXd nodal_displacement(2*numNodes); //use eigen vector to use Eigen matric product later
-
-        // get Gauss points coordinates and weights (only coordinates useful here)
-        std::vector<double> localCoords, weights;
-        gmsh::model::mesh::getIntegrationPoints(elementTypes[ityp], 
-                                                integration_rule, // "Gauss2", en vrai ne pas le hardcoder (on l'utilise plusieurs fois dans le code)
-                                                localCoords, weights);
-
-        // get determinants and Jacobians (only jacob useful here)
-        std::vector<double> jacobians, determinants, coords;
-        gmsh::model::mesh::getJacobians(elementTypes[ityp], 
-                                        localCoords, jacobians, 
-                                        determinants, coords);
-
-        // derivatives of the shape functions at the Gauss points of the reference element
-        // we are here working with derivatives in the reference space, same for all elements
-        int numComponents, numOrientations;
-        std::vector<double> basisFunctionsGradient;
-
-        gmsh::model::mesh::getBasisFunctions(elementTypes[ityp], localCoords, 
-                                                "GradLagrange", numComponents, 
-                                                basisFunctionsGradient, 
-                                                numOrientations);
-
-        Eigen::Vector3d epsilon; // will contain mean elemental values of the strains
-        Eigen::Vector3d sigma; // will contain mean elemental values of the stresses
-        Eigen::Vector3d tmp_epsilon; // will store temporary values
-
-        // loop over elements of type "ityp"
-        for (std::size_t i = 0; i < etags.size(); ++i)
-        {
-            elems2D[k] = etags[i];
-
-            data3[k].resize(1);
-            data4[k].resize(1);
-            data5[k].resize(1);
-            data6[k].resize(1);
-            data7[k].resize(1);
-            data8[k].resize(1);
-            data9[k].resize(1);
-            data10[k].resize(1);
-            epsilon(0) = 0.;
-            epsilon(1) = 0.;
-            epsilon(2) = 0.;
-            sigma(0) = 0.;
-            sigma(1) = 0.;
-            sigma(2) = 0.;
-            // loop over nodes of the element, filling the local nodal displacement vector "d"
-            for (int j = 0; j < numNodes; ++j)
-            {
-                int nodeTag = enods[numNodes * i + j];
-                nodal_displacement(2*j) = full_d_vector[2*(nodeTag-1)];
-                nodal_displacement(2*j+1) = full_d_vector[2*(nodeTag-1)+1];
-            }
-            // looping over the Gauss points (formula of slide 17)
-            for (std::size_t j = 0; j < weights.size(); ++j){
-                // converting jacobian to Eigen format
-                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
-                    jacob(&jacobians[9*j+9*weights.size()*i], 3, 3);
-                // 3D to 2D (plane stress case)
-                Eigen::Matrix<double, 2, 2> jacob2D;
-                jacob2D(0,0) = jacob(0,0);
-                jacob2D(1,0) = jacob(1,0);
-                jacob2D(0,1) = jacob(0,1);
-                jacob2D(1,1) = jacob(1,1);
-                        
-                // computing the inverse
-                Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
-
-                // computing the transpose of the inverse
-                Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
-
-                // computing the B matrix (formula slide 19)
-                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
-                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
-                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1]; //ici faudrait pas un weights.size() à la place de numNodes ?? pense pas, ça fonctionne
-                    B_matrix(1,2*l) = 0.;
-                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(0,2*l+1) = 0.;
-                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
-                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
-                }
-                tmp_epsilon = B_matrix*nodal_displacement;
-                epsilon += tmp_epsilon;
-                sigma += H_matrix*tmp_epsilon;
-                //std::cout << "sigma at GP: " << H_matrix*tmp_epsilon << "\n";
-            }
-            epsilon = epsilon / weights.size(); // performing an arithmetic mean value
-            sigma = sigma / weights.size();
-            data3[k][0] = epsilon(0);
-            data4[k][0] = epsilon(1);
-            data5[k][0] = epsilon(2);
-            if (E != 0){
-                data6[k][0] = -nu/E*(sigma(0)+sigma(1));// formula slide 11/20 elasticity
-            }
-            else{
-                data6[k][0] = 0;
-            }
-            data7[k][0] = sigma(0);
-            data8[k][0] = sigma(1);
-            data9[k][0] = sigma(2);
-            data10[k][0] = sqrt(sigma(0)*sigma(0) + sigma(1)*sigma(1) - sigma(0)*sigma(1) + 3*sigma(2)*sigma(2)); // VM stress in plane stress configuration
-
-            k++;
-        }
-    }
     gmsh::view::addModelData(viewtag3, 0, names[0], "ElementData",
                                 elems2D, data3);
     gmsh::view::addModelData(viewtag4, 0, names[0], "ElementData",
@@ -879,128 +1118,9 @@ int main(int argc, char **argv)
 
     // for each element type
     k=0;
-    for (std::size_t ityp = 0; ityp < elementTypes.size(); ++ityp)
-    {
-        // get info about this type of element
-        std::string name;
-        int dim, order, numNodes, numPrimaryNodes;
-        std::vector<double> paramCoord2D;
-        gmsh::model::mesh::getElementProperties(elementTypes[ityp], name, dim, order,
-                                                numNodes, paramCoord2D, numPrimaryNodes);
-        //paramCoord contains the coordinates of the nodes in 2D
-        // passage en 3D pour utiliser getJacobians
-        std::vector<double> paramCoord(3*paramCoord2D.size()/2);
-        for(std::size_t j = 0; j < paramCoord2D.size()/2; ++j){
-            paramCoord[3*j] = paramCoord2D[2*j];
-            paramCoord[3*j+1] = paramCoord2D[2*j+1];
-            paramCoord[3*j+2] = 0.;
-        }
-        
-
-        // select element/node tags for this type of element
-        auto &etags = elementTags[ityp];
-        auto &enods = elnodeTags[ityp];
-
-        // will contain the d vector inside each element
-        Eigen::VectorXd nodal_displacement(2*numNodes); //use eigen vector to use Eigen matric product later
-
-        // get determinants and Jacobians (only jacob useful here) AT NODES AND NOT AT GAUSS POINTS
-        std::vector<double> jacobians, determinants, coords;
-        gmsh::model::mesh::getJacobians(elementTypes[ityp], 
-                                        paramCoord, jacobians, 
-                                        determinants, coords);
-
-        /*std::cout << "jacobians: " << "\n";
-        for(int j = 0; j < jacobians.size(); ++j)
-            std::cout << jacobians[j] << " ";
-        std::cout << "\n";*/
-
-        // derivatives of the shape functions at the nodes of the reference element
-        // we are here working with derivatives in the reference space, same for all elements
-        int numComponents, numOrientations;
-        std::vector<double> basisFunctionsGradient;
-
-        gmsh::model::mesh::getBasisFunctions(elementTypes[ityp], paramCoord, 
-                                                "GradLagrange", numComponents, 
-                                                basisFunctionsGradient, 
-                                                numOrientations);
-
-        Eigen::Vector3d epsilon; // will contain local values of the strains
-        Eigen::Vector3d sigma; // will contain local values of the stresses
-
-        // loop over elements of type "ityp"
-        for (std::size_t i = 0; i < etags.size(); ++i)
-        {
-            elems2D_bis[k] = etags[i];
-
-            data11[k].resize(numNodes);
-            data12[k].resize(numNodes);
-            data13[k].resize(numNodes);
-            data14[k].resize(numNodes);
-            data15[k].resize(numNodes);
-            data16[k].resize(numNodes);
-            data17[k].resize(numNodes);
-            data18[k].resize(numNodes);
-
-            // loop over nodes of the element, filling the local nodal displacement vector "d"
-            for (int j = 0; j < numNodes; ++j)
-            {
-                int nodeTag = enods[numNodes * i + j];
-                nodal_displacement(2*j) = full_d_vector[2*(nodeTag-1)];
-                nodal_displacement(2*j+1) = full_d_vector[2*(nodeTag-1)+1];
-
-                nb_adjacent_elements[nodeTag-1] +=1; // -1 is because nodeTags begin at 1
-            }
-            // looping over the nodes
-            for (int j = 0; j < numNodes; ++j){
-                int nodeTag = enods[numNodes * i + j];
-                // converting jacobian to Eigen format
-                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
-                    jacob(&jacobians[9*j+9*numNodes*i], 3, 3);
-                // 3D to 2D (plane stress case)
-                Eigen::Matrix<double, 2, 2> jacob2D;
-                jacob2D(0,0) = jacob(0,0);
-                jacob2D(1,0) = jacob(1,0);
-                jacob2D(0,1) = jacob(0,1);
-                jacob2D(1,1) = jacob(1,1);
-                        
-                // computing the inverse
-                Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
-
-                // computing the transpose of the inverse
-                Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
-
-                // computing the B matrix (formula slide 19) 
-                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
-                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
-                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(1,2*l) = 0.;
-                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(0,2*l+1) = 0.;
-                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
-                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
-                }
-                epsilon = B_matrix*nodal_displacement;
-                sigma = H_matrix*epsilon;
-                //std::cout << "sigma at node " << nodeTag << ": " << H_matrix*epsilon << "\n";
-
-                data11[k][j] = epsilon(0);
-                data12[k][j] = epsilon(1);
-                data13[k][j] = epsilon(2);
-                data14[k][j] = -nu/E*(sigma(0)+sigma(1));// formula slide 11/20 elasticity
-                data15[k][j] = sigma(0);
-                data16[k][j] = sigma(1);
-                data17[k][j] = sigma(2);
-                data18[k][j] = sqrt(sigma(0)*sigma(0) + sigma(1)*sigma(1) - sigma(0)*sigma(1) + 3*sigma(2)*sigma(2)); // VM stress in plane stress configuration
-
-                nodal_sigma_x[nodeTag - 1] += sigma(0);
-                nodal_sigma_y[nodeTag - 1] += sigma(1);
-                nodal_sigma_xy[nodeTag - 1] += sigma(2);
-            }
-
-            k++;
-        }
-    }
+    Compute_Stress_Strain_Elemental(elementTypes, elementTags, elnodeTags, full_d_vector, elems2D_bis, H_matrix, 
+                                    k, nu, E, nb_adjacent_elements, nodal_sigma_x, nodal_sigma_y, nodal_sigma_xy, 
+                                    data11, data12, data13, data14, data15, data16, data17, data18);
 
     gmsh::view::addModelData(viewtag11, 0, names[0], "ElementNodeData",
                                 elems2D_bis, data11, 1);  // the last ,1 is important!
@@ -1033,74 +1153,6 @@ int main(int argc, char **argv)
         nodal_sigma_y[i] = nodal_sigma_y[i] / nb_adjacent_elements[i];
         nodal_sigma_xy[i] = nodal_sigma_xy[i] / nb_adjacent_elements[i];
     }
-    /* computing reaction forces, looping on physical groups on which dirichlet bc's were imposed */
-
-    double Rx = 0.;
-    double Ry = 0.;
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        std::vector<double> value;
-        gmsh::onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        std::stringstream ss(key);
-        std::vector<std::string> words;
-        std::string word;
-        while(std::getline(ss, word, '/')) // read string until '/'
-            words.push_back(word);
-        if(words.size()==3) 
-        {
-            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
-                Rx = 0;
-                Ry = 0;
-                groupname = words[1];
-                std::cout << "-------------------- " << groupname << " ------------------- \n";
-                
-                //loop over elements of group_name
-                dim = groups[groupname].first;
-                tag = groups[groupname].second;
-                if (tag == 0)
-                {
-                    std::cerr << "Group '" << groupname << "' does not exist!\n";
-                    return 1;
-                }
-                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
-
-                // loop over entities
-                for (std::size_t k = 0; k < tags.size(); ++k)
-                {
-                    std::vector<std::size_t> nodeTags;
-                    std::vector<double> coord; //useless
-                    std::vector<double> parametricCoord; //useless
-
-                    // retrieving all the nodes in this particular entity
-                    gmsh::model::mesh::getNodes(nodeTags, coord, parametricCoord, dim, tags[k], true);
-                    
-                    /*std::cout << "node tags: ";
-                    for (int j = 0; j < (int) nodeTags.size(); ++j){
-                        std::cout << nodeTags[j] << " ";
-                    }
-                    std::cout << "\n";*/
-
-                    for (std::size_t j = 0; j < nodeTags.size(); ++j){
-                        if(words[2].compare("ux") == 0){    // computing Rx
-                            int my_new_col = (nodeTags[j] - 1)*2; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
-                            //std::cout << "my col: " << my_new_col << "\n";
-                            Rx += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
-                        }
-                        if(words[2].compare("uy") == 0){    // computing Ry
-                            int my_new_col = (nodeTags[j] - 1)*2 + 1; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
-                            //std::cout << "my col: " << my_new_col << "\n";
-                            Ry += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
-                        }
-                    }
-                }
-                std::cout << "Rx: " << Rx << " [N/m], Ry: " << Ry << " [N/m] \n";
-            }
-        }
-    }
-
     
 
     gmsh::fltk::run(); // opens the gmsh window
@@ -1109,14 +1161,3 @@ int main(int argc, char **argv)
     return 0;
 }
 
-double compute_f_value(const int col, const Eigen::SparseMatrix<double> & full_K_matrix, const std::vector<double> & full_d_vector){
-    int row;
-    double k_value;
-    double f_value = 0.;
-    for (Eigen::SparseMatrix<double>::InnerIterator it(full_K_matrix,col); it; ++it){
-        k_value = it.value();
-        row = it.row();   // row index
-        f_value += k_value*full_d_vector[row];
-    }
-    return f_value;
-}
