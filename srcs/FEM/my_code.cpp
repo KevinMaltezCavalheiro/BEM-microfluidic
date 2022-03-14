@@ -9,7 +9,8 @@
 
 double compute_f_value(const int, const Eigen::SparseMatrix<double> &, const std::vector<double> &);
 
-Eigen::Matrix<double, 3, 3> ComputeH_matrix(const double E, const double nu){
+//Compute the matrix H
+Eigen::Matrix<double, 3, 3> Compute_H_matrix(const double E, const double nu){
     Eigen::Matrix<double, 3, 3> H_matrix;
     H_matrix(0,0) = 1.;
     H_matrix(1,0) = nu;
@@ -23,6 +24,453 @@ Eigen::Matrix<double, 3, 3> ComputeH_matrix(const double E, const double nu){
     H_matrix = E/(1-nu*nu)*H_matrix;
 
     return H_matrix;
+}
+
+//Compute the full matrix "K" and "f".
+void Assembly_K_triplet_F(const int i, const int el, 
+                          const std::vector<std::vector<std::size_t>> nodeTags, 
+                          const int numNodes, std::vector<Eigen::Triplet <double>> & k_tripletList,
+                          std::vector<double> & full_f_vector, 
+                          Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> & K_matrix,
+                          std::vector<double> & f_vector){
+
+    for (int j = 0; j < 2*numNodes; ++j){
+        int first_node_index = (int) j/2;
+        int first_node = nodeTags[i][numNodes*el+first_node_index];
+        int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
+        for(int l = 0; l <= j; ++l){ // to exploit symmetry
+            int second_node_index = (int) l/2;
+            int second_node = nodeTags[i][numNodes*el+second_node_index];
+            int my_col = 2*(second_node-1) + l % 2;
+
+            //full_K_matrix.coeffRef(my_row,my_col) += K_matrix(j,l); //utiliser triplets puis reessayer avec noeuds ordre 2
+            k_tripletList.push_back(Eigen::Triplet<double>(my_row,my_col,K_matrix(j,l)));
+            if(j != l){
+                //full_K_matrix.coeffRef(my_col,my_row) += K_matrix(l,j); // use symmetry
+                k_tripletList.push_back(Eigen::Triplet<double>(my_col,my_row,K_matrix(j,l)));
+            }
+        }
+        full_f_vector[my_row] += f_vector[j];
+    }
+}
+
+
+void Compute_B_K_matrix(const int j, const int el, const double rho, const double bx, const double by,
+                        const int numNodes, const std::vector<double> & basisFunctions, 
+                        const std::vector<double> basisFunctionsGradient,
+                        const std::vector<double> determinants, 
+                        const std::vector<double> weights,
+                        const Eigen::Matrix<double, 2, 2> jacobinvtrans,
+                        const Eigen::Matrix<double, 3, 3> H_matrix,
+                        std::vector<double> & f_vector,
+                        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> & B_matrix,
+                        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> & K_matrix){
+
+    for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
+        B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+        B_matrix(1,2*l) = 0.;
+        B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
+        B_matrix(0,2*l+1) = 0.;
+        B_matrix(1,2*l+1) = B_matrix(2,2*l);
+        B_matrix(2,2*l+1) = B_matrix(0,2*l);
+        f_vector[2*l] = f_vector[2*l] + rho*basisFunctions[l+numNodes*j]*bx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
+        f_vector[2*l+1] = f_vector[2*l+1] + rho*basisFunctions[l+numNodes*j]*by*determinants[j+weights.size()*el]*weights[j]; // pas oublier le weights[j] non plus !
+        }
+    K_matrix = K_matrix + B_matrix.transpose()*H_matrix*B_matrix*determinants[j+weights.size()*el]*weights[j];
+}
+
+
+
+//Get physical properties of domain
+void Get_physical_Prop_Domain(const std::vector<std::string> keys, double & E, double & nu, double & rho,
+                              double & bx, double & by){
+    for (auto &key : keys)
+    {
+        // get corresponding value
+        std::vector<double> value;
+        gmsh::onelab::getNumber(key, value);
+        // expected key structure is "type/group_name/field"
+        // => split the key string into components
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
+        while(std::getline(ss, word, '/')) // read string until '/'
+            words.push_back(word);
+        if(words.size()==3) 
+        {
+            if(words[2].compare("Young") == 0){
+                E = value[0];
+            }
+            if(words[2].compare("Poisson") == 0){
+                nu = value[0];
+            }
+            if(words[2].compare("rho") == 0){
+                rho = value[0];
+            }
+            if(words[2].compare("bx") == 0){
+                bx = value[0];
+            }
+            if(words[2].compare("by") == 0){
+                by = value[0];
+            }
+        }
+    }
+}
+/*------------computing K matrix and f vector------------------------*/
+// we first consider the K matrix and the volumic part of the f vector
+
+void Loop_K_F(const Eigen::Matrix<double, 3, 3> H_matrix, const double rho, const double bx, const double by,
+              const std::string integration_rule, 
+              int & dim, int & tag, std::vector<int> & tags,
+              Eigen::SparseMatrix<double> & full_K_matrix, 
+              std::vector<double> & full_f_vector,
+              std::vector<Eigen::Triplet <double>> & k_tripletList){
+
+    gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+    for (std::size_t k = 0; k < tags.size(); ++k)
+    {
+        //std::cout << "Entity (" << dim << "," << tags[k] << "):\n";
+        std::vector<int> elementTypes;
+        std::vector<std::vector<std::size_t>> elementTags;
+        std::vector<std::vector<std::size_t>> nodeTags;
+        gmsh::model::mesh::getElements(elementTypes, elementTags,
+                                       nodeTags, dim, tags[k]);
+        
+        // looping over element types
+        for (std::size_t i = 0; i < elementTypes.size(); ++i)
+        {
+
+            // getting element properties
+            std::string elementName;
+            int dim, order, numNodes, numPrimaryNodes;
+            std::vector<double> localNodeCoord;
+            gmsh::model::mesh::getElementProperties(elementTypes[i],
+                                            elementName, dim, order,
+                                            numNodes, localNodeCoord, 
+                                            numPrimaryNodes);
+            
+            // get Gauss points coordinates and weights
+            std::vector<double> localCoords, weights;
+            gmsh::model::mesh::getIntegrationPoints(elementTypes[i], 
+                                                    integration_rule, // "Gauss2"
+                                                    localCoords, weights);
+
+            // get determinants and Jacobians
+            std::vector<double> jacobians, determinants, coords;
+            gmsh::model::mesh::getJacobians(elementTypes[i], 
+                                            localCoords, jacobians, 
+                                            determinants, coords);
+
+            // values and derivatives of the shape functions at the Gauss points of the reference element
+            // we are here working with derivatives in the reference space, same for all elements
+            int numComponents, numOrientations;
+            std::vector<double> basisFunctions;
+            std::vector<double> basisFunctionsGradient;
+            gmsh::model::mesh::getBasisFunctions(elementTypes[i], localCoords, 
+                                                 "Lagrange", numComponents, 
+                                                 basisFunctions, 
+                                                 numOrientations);
+
+            gmsh::model::mesh::getBasisFunctions(elementTypes[i], localCoords, 
+                                                 "GradLagrange", numComponents, 
+                                                 basisFunctionsGradient, 
+                                                 numOrientations);
+
+            /*---------computing the K matrix (and f vector, only volumic part for now)------*/
+            // looping over the elements (computing elemental K matrices)
+            for (std::size_t el = 0; el < elementTags[i].size(); el++){
+                // elemental K matrix and f vector initialization
+                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K_matrix(2*numNodes,2*numNodes);
+                std::vector<double> f_vector(2*numNodes);
+                for (int j = 0; j < 2*numNodes; ++j){
+                    for (int l = 0; l < 2*numNodes; ++l){
+                        K_matrix(j,l)=0.;
+                    }
+                    f_vector[j] = 0.;
+                }
+                // looping over the Gauss points (formula of slide 17)
+                for (std::size_t j = 0; j < weights.size(); ++j){
+                    // converting jacobian to Eigen format
+                    Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
+                        jacob(&jacobians[9*j+9*weights.size()*el], 3, 3);
+                    // 3D to 2D (plane stress case)
+                    Eigen::Matrix<double, 2, 2> jacob2D;
+                    jacob2D(0,0) = jacob(0,0);
+                    jacob2D(1,0) = jacob(1,0);
+                    jacob2D(0,1) = jacob(0,1);
+                    jacob2D(1,1) = jacob(1,1);
+                            
+                    // computing the inverse
+                    Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
+
+                    // computing the transpose of the inverse
+                    Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
+
+                    // computing the B matrix (formula slide 19) and the f vector (also using gauss integration)
+                    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
+
+                    Compute_B_K_matrix(j, el, rho, bx, by, numNodes, basisFunctions, basisFunctionsGradient, determinants, 
+                                       weights, jacobinvtrans, H_matrix, f_vector, B_matrix, K_matrix);
+                }
+                /*------------- ASSEMBLY PROCESS ------------*/
+                // USE LIST OF TRIPLETS TO PUSH ONLY ONCE -> more rapid and easier to parallelize
+                Assembly_K_triplet_F(i, el, nodeTags, numNodes, k_tripletList, full_f_vector, K_matrix, f_vector);
+            }
+        }
+    }
+    full_K_matrix.setFromTriplets(k_tripletList.begin(), k_tripletList.end());
+}
+
+/*-----------computing the f vector components related to this Neumann BC---------*/
+void Compute_Neumann_BC(const int numNodes, const int i, const std::vector<std::vector<std::size_t>> elementTags, 
+                        const double tx, const double ty,
+                        std::vector<double> & f_vector,
+                        const std::vector<double> weights, const std::vector<double> & basisFunctions, 
+                        const std::vector<double> determinants, const std::vector<std::vector<std::size_t>> nodeTags,
+                        std::vector<double> & full_f_vector){
+
+    for (std::size_t el = 0; el < elementTags[i].size(); el++){
+        for (int j = 0; j < 2*numNodes; ++j){
+            f_vector[j] = 0.;
+        }
+    // looping over the Gauss points (formula of slide 17)
+        for (std::size_t j = 0; j < weights.size(); ++j){
+            // looping over the number of shape functions
+            for (int l = 0; l < numNodes; ++l){ 
+                f_vector[2*l] = f_vector[2*l] + basisFunctions[l+numNodes*j]*tx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
+                f_vector[2*l+1] = f_vector[2*l+1] + basisFunctions[l+numNodes*j]*ty*determinants[j+weights.size()*el]*weights[j]; // le weight non plus !
+            }
+        }
+    /*------------- ASSEMBLY PROCESS ------------*/
+        for (int j = 0; j < 2*numNodes; ++j){
+            int first_node_index = (int) j/2;
+            int first_node = nodeTags[i][numNodes*el+first_node_index];
+            int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
+            full_f_vector[my_row] += f_vector[j];
+                                    //std::cout << my_row << "\n";
+        }
+    }    
+}
+
+/*-----------focus on neumann BC's (surface traction) into full_f_vector------------*/
+void Neumann_BC(const std::vector<std::string> keys, const std::string integration_rule, 
+                int & dim, int & tag, std::vector<int> & tags,
+                std::map<std::string, std::pair<int, int>> & groups, 
+                std::string & groupname,
+                std::vector<double> & full_f_vector){
+    double tx = 0; // surface traction along x axis
+    double ty = 0; // surface traction along y axis
+    for (auto &key : keys)
+    {
+        // get corresponding value
+        std::vector<double> value;
+        gmsh::onelab::getNumber(key, value);
+        // expected key structure is "type/group_name/field"
+        // => split the key string into components
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
+        while(std::getline(ss, word, '/')) // read string until '/'
+            words.push_back(word);
+        if(words.size()==3) 
+        {
+            groupname = ""; // will remain empty only if tx == ty == 0
+            if(words[2].compare("tx") == 0){
+                tx = value[0];
+                std::string new_key = "Boundary Conditions/" + words[1] + "/ty";
+                gmsh::onelab::getNumber(new_key, value);
+                ty = value[0];
+                if(tx || ty) // there is no need the consider Neumann BC if it is homogeneous
+                    groupname = words[1];
+            }
+            //here, if we are dealing with neumann BC's, we should have retrieved a non-empty group_name
+            if(groupname.compare("") != 0){
+                //loop over elements of group_name
+                dim = groups[groupname].first;
+                tag = groups[groupname].second;
+                if (tag == 0)
+                {
+                    std::cerr << "Group '" << groupname << "' does not exist!\n";
+                    return;
+                }
+                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+
+                // loop over entities
+                for (std::size_t k = 0; k < tags.size(); ++k)
+                {
+                    std::vector<int> elementTypes;
+                    std::vector<std::vector<std::size_t>> elementTags;
+                    std::vector<std::vector<std::size_t>> nodeTags;
+                    gmsh::model::mesh::getElements(elementTypes, elementTags,
+                                                nodeTags, dim, tags[k]);
+                    
+                    for (std::size_t i = 0; i < elementTypes.size(); ++i)
+                    {
+                        // getting element properties
+                        std::string elementName;
+                        int dim, order, numNodes, numPrimaryNodes;
+                        std::vector<double> localNodeCoord;
+                        gmsh::model::mesh::getElementProperties(elementTypes[i],
+                                                        elementName, dim, order,
+                                                        numNodes, localNodeCoord, 
+                                                        numPrimaryNodes);
+                    
+                        // get Gauss points coordinates and weights
+                        std::vector<double> localCoords, weights;
+                        gmsh::model::mesh::getIntegrationPoints(elementTypes[i], 
+                                                                integration_rule, //maybe use different integration method on boundary than in domain
+                                                                localCoords, weights);
+
+                        // get determinants and Jacobians (only determinants will be useful)
+                        std::vector<double> jacobians, determinants, coords;
+                        gmsh::model::mesh::getJacobians(elementTypes[i], 
+                                                        localCoords, jacobians, 
+                                                        determinants, coords,tags[k]); // ai dû rajouter mon tags[k] pr focus on this particular entity
+
+                        int numComponents, numOrientations;
+                        std::vector<double> basisFunctions;
+                        gmsh::model::mesh::getBasisFunctions(elementTypes[i], localCoords, 
+                                                            "Lagrange", numComponents, 
+                                                            basisFunctions, 
+                                                            numOrientations);
+
+                        /*-----------computing the f vector components related to this Neumann BC---------*/
+                        //looping over the elements
+                        std::vector<double> f_vector(2*numNodes);
+                        Compute_Neumann_BC(numNodes, i, elementTags, tx, ty,
+                                           f_vector, weights, basisFunctions, 
+                                           determinants, nodeTags, full_f_vector);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// looping over the boundary conditions imposed in the .geo file, the purpose of the whole loop is
+// to fill the two vectors defined just above
+void Fill_New_indices_Dir_BC(const std::vector<std::string> keys, 
+                             int & dim, int & tag, std::vector<int> & tags,
+                             std::map<std::string, std::pair<int, int>> & groups, 
+                             std::string & groupname, std::vector<int> & new_indices,
+                             std::vector<double> & dir_BC){
+    double ux = 0; // imposed displacement along x axis
+    double uy = 0; // imposed displacement along y axis
+    for (auto &key : keys)
+    {
+        // get corresponding value
+        std::vector<double> value;
+        gmsh::onelab::getNumber(key, value);
+        // expected key structure is "type/group_name/field"
+        // => split the key string into components
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
+        while(std::getline(ss, word, '/')) // read string until '/'
+            words.push_back(word);
+        if(words.size()==3) 
+        {
+            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
+                if(words[2].compare("ux") == 0)
+                    ux = value[0];
+                if(words[2].compare("uy") == 0)
+                    uy = value[0];
+                groupname = words[1];
+                
+                //loop over elements of group_name
+                dim = groups[groupname].first;
+                tag = groups[groupname].second;
+                if (tag == 0)
+                {
+                    std::cerr << "Group '" << groupname << "' does not exist!\n";
+                    return;
+                }
+                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+
+                // loop over entities
+                for (std::size_t k = 0; k < tags.size(); ++k)
+                {
+                    std::vector<int> elementTypes;
+                    std::vector<std::vector<std::size_t>> elementTags;
+                    std::vector<std::vector<std::size_t>> nodeTags;
+                    gmsh::model::mesh::getElements(elementTypes, elementTags,
+                                                nodeTags, dim, tags[k]);
+                    
+                    for (std::size_t i = 0; i < elementTypes.size(); ++i)
+                    {
+
+                        // getting element properties
+                        std::string elementName;
+                        int dim, order, numNodes, numPrimaryNodes;
+                        std::vector<double> localNodeCoord;
+                        gmsh::model::mesh::getElementProperties(elementTypes[i],
+                                                        elementName, dim, order,
+                                                        numNodes, localNodeCoord, 
+                                                        numPrimaryNodes);
+                        //looping over the elements
+                        for (std::size_t el = 0; el < elementTags[i].size(); el++){
+                            for (int j = 0; j < 2*numNodes; ++j){
+                                int first_node_index = (int) j/2;
+                                int first_node = nodeTags[i][numNodes*el+first_node_index];
+                                int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
+                                if(words[2].compare("uy") == 0 && j % 2){ // we are dealing with a uy type of node
+                                    dir_BC[my_row] = uy;
+                                    new_indices[my_row] = -1;
+                                }
+                                if(words[2].compare("ux") == 0 && j % 2 == 0){ // ux type of node
+                                    dir_BC[my_row] = ux;
+                                    new_indices[my_row] = -1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void Fill_K_F_Reduced(const std::vector<double> & full_f_vector, const Eigen::SparseMatrix<double> full_K_matrix,
+                      const std::vector<int> new_indices, const std::vector<double> dir_BC,
+                      Eigen::SparseMatrix<double> & reduced_K_matrix, 
+                      std::vector<double> & reduced_f_vector,
+                      std::vector<Eigen::Triplet <double>> & reduced_k_tripletList){
+    for (std::size_t j = 0; j < reduced_f_vector.size(); ++j){
+        reduced_f_vector[j] = 0.;
+    }
+
+    // looping over the non-zero elements of full_K_matrix
+    int row;
+    int new_row;
+    int new_col;
+    double k_value;
+    for (int col=0; col<full_K_matrix.outerSize(); ++col){
+        new_col = new_indices[col];
+        for (Eigen::SparseMatrix<double>::InnerIterator it(full_K_matrix,col); it; ++it){
+            k_value = it.value();
+            row = it.row();   // row index
+            new_row = new_indices[row];
+            if(new_row >= 0 && new_col >= 0){ // if the given element must not be removed
+                if(new_row < new_col){ // taking advantage of the symmetry
+                    //reduced_K_matrix.coeffRef(new_row,new_col) = k_value;
+                    //reduced_K_matrix.coeffRef(new_col,new_row) = k_value;
+                    reduced_k_tripletList.push_back(Eigen::Triplet<double>(new_row,new_col,k_value));
+                    reduced_k_tripletList.push_back(Eigen::Triplet<double>(new_col,new_row,k_value));
+                }
+                if(new_row == new_col){ // diagonal element
+                    //reduced_K_matrix.coeffRef(new_row,new_col) = k_value;
+                    reduced_k_tripletList.push_back(Eigen::Triplet<double>(new_row,new_col,k_value));
+                }
+            }
+            if(new_col < 0 && new_row >= 0 && dir_BC[col]){ // correction term RHS due to non_homogeneous boundary condition
+                reduced_f_vector[new_row] -= k_value*dir_BC[col];
+            }
+        }
+        if(new_col >= 0 ){ // line must not be removed
+            reduced_f_vector[new_col] += full_f_vector[col];
+        }
+    }
+    reduced_K_matrix.setFromTriplets(reduced_k_tripletList.begin(), reduced_k_tripletList.end());
 }
 
 
@@ -74,41 +522,11 @@ int main(int argc, char **argv)
     double rho = 0; // volumic mass
     double bx = 0; // volumic force along x axis
     double by = 0; // volumic force along y axis
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        std::vector<double> value;
-        gmsh::onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        std::stringstream ss(key);
-        std::vector<std::string> words;
-        std::string word;
-        while(std::getline(ss, word, '/')) // read string until '/'
-            words.push_back(word);
-        if(words.size()==3) 
-        {
-            if(words[2].compare("Young") == 0){
-                E = value[0];
-            }
-            if(words[2].compare("Poisson") == 0){
-                nu = value[0];
-            }
-            if(words[2].compare("rho") == 0){
-                rho = value[0];
-            }
-            if(words[2].compare("bx") == 0){
-                bx = value[0];
-            }
-            if(words[2].compare("by") == 0){
-                by = value[0];
-            }
-        }
-    }
+
+    Get_physical_Prop_Domain(keys, E, nu, rho, bx, by);
 
     /*-----------------H matrix involved in stress computation------------------*/
-    Eigen::Matrix<double, 3, 3> H_matrix = ComputeH_matrix(E, nu);
-
+    Eigen::Matrix<double, 3, 3> H_matrix = Compute_H_matrix(E, nu);
 
     /*------------computing K matrix and f vector------------------------*/
     // we first consider the K matrix and the volumic part of the f vector
@@ -127,322 +545,23 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // getting entities of the domain
+    // Getting entities of the domain
     std::vector<int> tags;
     gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
 
-    /*std::cout << "Entities in group named '" << groupname << "': ";
-    for (int i = 0; i < (int) tags.size(); ++i)
-        std::cout << tags[i] << " ";
-    std::cout << '\n';*/
+    // Looping over entities and compute K and F
+    Loop_K_F(H_matrix, rho, bx, by, integration_rule, dim, tag, tags, full_K_matrix, 
+              full_f_vector, k_tripletList);
 
-    // looping over entities
-    for (std::size_t k = 0; k < tags.size(); ++k)
-    {
-        //std::cout << "Entity (" << dim << "," << tags[k] << "):\n";
-        std::vector<int> elementTypes;
-        std::vector<std::vector<std::size_t>> elementTags;
-        std::vector<std::vector<std::size_t>> nodeTags;
-        gmsh::model::mesh::getElements(elementTypes, elementTags,
-                                       nodeTags, dim, tags[k]);
-        
-        // looping over element types
-        for (std::size_t i = 0; i < elementTypes.size(); ++i)
-        {
-            /*std::cout << "\telement type " << elementTypes[i] << ":\n";
-            std::cout << "\t\telements: ";
-            for (int j = 0; j < elementTags[i].size(); ++j)
-                std::cout << elementTags[i][j] << " ";
-            std::cout << '\n';
-            std::cout << "\t\tnodes: ";
-            for (int j = 0; j < nodeTags[i].size(); ++j)
-                std::cout << nodeTags[i][j] << " ";
-            std::cout << '\n';*/
-
-            // getting element properties
-            std::string elementName;
-            int dim, order, numNodes, numPrimaryNodes;
-            std::vector<double> localNodeCoord;
-            gmsh::model::mesh::getElementProperties(elementTypes[i],
-                                            elementName, dim, order,
-                                            numNodes, localNodeCoord, 
-                                            numPrimaryNodes);
-            
-            // get Gauss points coordinates and weights
-            std::vector<double> localCoords, weights;
-            gmsh::model::mesh::getIntegrationPoints(elementTypes[i], 
-                                                    integration_rule, // "Gauss2"
-                                                    localCoords, weights);
-            /*std::cout << "\t" << weights.size() << " integration points\n";
-
-            std::cout << "\tweights: ";
-            for (int j = 0; j < (int) weights.size(); ++j)
-                std::cout << weights[j] << " ";
-            std::cout << '\n';
-
-            std::cout << "\tlocalCoords (gmsh): ";
-            for (int j = 0; j < (int) localCoords.size(); ++j)
-                std::cout << localCoords[j] << " ";
-            std::cout << '\n';*/
-
-            // get determinants and Jacobians
-            std::vector<double> jacobians, determinants, coords;
-            gmsh::model::mesh::getJacobians(elementTypes[i], 
-                                            localCoords, jacobians, 
-                                            determinants, coords);
-
-            // values and derivatives of the shape functions at the Gauss points of the reference element
-            // we are here working with derivatives in the reference space, same for all elements
-            int numComponents, numOrientations;
-            std::vector<double> basisFunctions;
-            std::vector<double> basisFunctionsGradient;
-            gmsh::model::mesh::getBasisFunctions(elementTypes[i], localCoords, 
-                                                 "Lagrange", numComponents, 
-                                                 basisFunctions, 
-                                                 numOrientations);
-
-            gmsh::model::mesh::getBasisFunctions(elementTypes[i], localCoords, 
-                                                 "GradLagrange", numComponents, 
-                                                 basisFunctionsGradient, 
-                                                 numOrientations);
-
-            /*---------computing the K matrix (and f vector, only volumic part for now)------*/
-            // looping over the elements (computing elemental K matrices)
-            for (std::size_t el = 0; el < elementTags[i].size(); el++){
-            //for (int el = 0; el < 1; el++){
-                // elemental K matrix and f vector initialization
-                Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> K_matrix(2*numNodes,2*numNodes);
-                std::vector<double> f_vector(2*numNodes);
-                for (int j = 0; j < 2*numNodes; ++j){
-                    for (int l = 0; l < 2*numNodes; ++l){
-                        K_matrix(j,l)=0.;
-                    }
-                    f_vector[j] = 0.;
-                }
-                // looping over the Gauss points (formula of slide 17)
-                for (std::size_t j = 0; j < weights.size(); ++j){
-                    // converting jacobian to Eigen format
-                    Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >
-                        jacob(&jacobians[9*j+9*weights.size()*el], 3, 3);
-                    // 3D to 2D (plane stress case)
-                    Eigen::Matrix<double, 2, 2> jacob2D;
-                    jacob2D(0,0) = jacob(0,0);
-                    jacob2D(1,0) = jacob(1,0);
-                    jacob2D(0,1) = jacob(0,1);
-                    jacob2D(1,1) = jacob(1,1);
-                            
-                    // computing the inverse
-                    Eigen::Matrix<double, 2, 2> jacobinv = jacob2D.inverse();
-
-                    // computing the transpose of the inverse
-                    Eigen::Matrix<double, 2, 2> jacobinvtrans = jacobinv.transpose();
-
-                    // computing the B matrix (formula slide 19) and the f vector (also using gauss integration)
-                    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
-                    for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
-                        B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                        B_matrix(1,2*l) = 0.;
-                        B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                        B_matrix(0,2*l+1) = 0.;
-                        B_matrix(1,2*l+1) = B_matrix(2,2*l);
-                        B_matrix(2,2*l+1) = B_matrix(0,2*l);
-                        f_vector[2*l] = f_vector[2*l] + rho*basisFunctions[l+numNodes*j]*bx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
-                        f_vector[2*l+1] = f_vector[2*l+1] + rho*basisFunctions[l+numNodes*j]*by*determinants[j+weights.size()*el]*weights[j]; // pas oublier le weights[j] non plus !
-                    }
-                    
-                    K_matrix = K_matrix + B_matrix.transpose()*H_matrix*B_matrix*determinants[j+weights.size()*el]*weights[j];
-                }
-                /*std::cout << "\telemental f vector of element " << elementTags[i][el] << ": ";
-                for (int j = 0; j < f_vector.size(); ++j)
-                    std::cout << f_vector[j] << " ";
-                std::cout << '\n';*/
-                //std::cout << "\t elemental K matrix of element " << elementTags[i][el] << ":\n" << K_matrix << "\n";
-                /*------------- ASSEMBLY PROCESS ------------*/
-                // USE LIST OF TRIPLETS TO PUSH ONLY ONCE -> more rapid and easier to parallelize
-                for (int j = 0; j < 2*numNodes; ++j){
-                    int first_node_index = (int) j/2;
-                    int first_node = nodeTags[i][numNodes*el+first_node_index];
-                    int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
-                    for(int l = 0; l <= j; ++l){ // to exploit symmetry
-                        int second_node_index = (int) l/2;
-                        int second_node = nodeTags[i][numNodes*el+second_node_index];
-                        int my_col = 2*(second_node-1) + l % 2;
-
-                        //full_K_matrix.coeffRef(my_row,my_col) += K_matrix(j,l); //utiliser triplets puis reessayer avec noeuds ordre 2
-                        k_tripletList.push_back(Eigen::Triplet<double>(my_row,my_col,K_matrix(j,l)));
-                        if(j != l){
-                            //full_K_matrix.coeffRef(my_col,my_row) += K_matrix(l,j); // use symmetry
-                            k_tripletList.push_back(Eigen::Triplet<double>(my_col,my_row,K_matrix(j,l)));
-                        }
-                    }
-                    full_f_vector[my_row] += f_vector[j];
-                }
-            }
-        }
-    }
     full_K_matrix.setFromTriplets(k_tripletList.begin(), k_tripletList.end());
 
-    /*std::cout << "\t full K matrix:\n" << full_K_matrix << "\n";
-    std::cout << "\tfull f vector : ";
-    for (int j = 0; j < full_f_vector.size(); ++j)
-        std::cout << full_f_vector[j] << " ";
-    std::cout << '\n';*/
+
     /*-----------------BOUNDARY CONDITIONS------------*/
     /*-----------get group_names related to BC's----------------------*/
     gmsh::onelab::getNames(keys, "(Boundary Conditions).+");
     /*-----------first focus on neumann BC's (surface traction) into full_f_vector------------*/
-    double tx = 0; // surface traction along x axis
-    double ty = 0; // surface traction along y axis
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        std::vector<double> value;
-        gmsh::onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        std::stringstream ss(key);
-        std::vector<std::string> words;
-        std::string word;
-        while(std::getline(ss, word, '/')) // read string until '/'
-            words.push_back(word);
-        if(words.size()==3) 
-        {
-            groupname = ""; // will remain empty only if tx == ty == 0
-            if(words[2].compare("tx") == 0){
-                tx = value[0];
-                std::string new_key = "Boundary Conditions/" + words[1] + "/ty";
-                gmsh::onelab::getNumber(new_key, value);
-                ty = value[0];
-                if(tx || ty) // there is no need the consider Neumann BC if it is homogeneous
-                    groupname = words[1];
-            }
-            //here, if we are dealing with neumann BC's, we should have retrieved a non-empty group_name
-            if(groupname.compare("") != 0){
-                /*std::cout << "------------------------------------" << "\n";
-                std::cout << groupname << ", tx: " << tx << ", ty: " << ty << "\n";*/
-                //loop over elements of group_name
-                dim = groups[groupname].first;
-                tag = groups[groupname].second;
-                if (tag == 0)
-                {
-                    std::cerr << "Group '" << groupname << "' does not exist!\n";
-                    return 1;
-                }
-                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+    Neumann_BC(keys, integration_rule, dim, tag, tags, groups, groupname, full_f_vector);
 
-                /*std::cout << "Entities in group named '" << groupname << "': ";
-                for (int i = 0; i < (int) tags.size(); ++i)
-                    std::cout << tags[i] << " ";
-                std::cout << '\n';*/
-                // loop over entities
-                for (std::size_t k = 0; k < tags.size(); ++k)
-                {
-                    //std::cout << "Entity (" << dim << "," << tags[k] << "):\n";
-                    std::vector<int> elementTypes;
-                    std::vector<std::vector<std::size_t>> elementTags;
-                    std::vector<std::vector<std::size_t>> nodeTags;
-                    gmsh::model::mesh::getElements(elementTypes, elementTags,
-                                                nodeTags, dim, tags[k]);
-                    
-                    for (std::size_t i = 0; i < elementTypes.size(); ++i)
-                    {
-                        /*std::cout << "\telement type " << elementTypes[i] << ":\n";
-                        std::cout << "\t\telements: ";
-                        for (int j = 0; j < (int) elementTags[i].size(); ++j)
-                            std::cout << elementTags[i][j] << " ";
-                        std::cout << '\n';
-                        std::cout << "\t\tnodes: ";
-                        for (int j = 0; j < (int) nodeTags[i].size(); ++j)
-                            std::cout << nodeTags[i][j] << " ";
-                        std::cout << '\n';*/
-
-                        // getting element properties
-                        std::string elementName;
-                        int dim, order, numNodes, numPrimaryNodes;
-                        std::vector<double> localNodeCoord;
-                        gmsh::model::mesh::getElementProperties(elementTypes[i],
-                                                        elementName, dim, order,
-                                                        numNodes, localNodeCoord, 
-                                                        numPrimaryNodes);
-                        
-                        // get Gauss points coordinates and weights
-                        std::vector<double> localCoords, weights;
-                        gmsh::model::mesh::getIntegrationPoints(elementTypes[i], 
-                                                                integration_rule, //maybe use different integration method on boundary than in domain
-                                                                localCoords, weights);
-                        /*std::cout << "\t" << weights.size() << " integration points\n";
-
-                        std::cout << "\tweights: ";
-                        for (int j = 0; j < (int) weights.size(); ++j)
-                            std::cout << weights[j] << " ";
-                        std::cout << '\n';
-
-                        std::cout << "\tlocalCoords (gmsh): ";
-                        for (int j = 0; j < (int) localCoords.size(); ++j)
-                            std::cout << localCoords[j] << " ";
-                        std::cout << '\n';*/
-
-                        // get determinants and Jacobians (only determinants will be useful)
-                        std::vector<double> jacobians, determinants, coords;
-                        gmsh::model::mesh::getJacobians(elementTypes[i], 
-                                                        localCoords, jacobians, 
-                                                        determinants, coords,tags[k]); // ai dû rajouter mon tags[k] pr focus on this particular entity
-                        /*std::cout << "\tGot " << determinants.size() 
-                                << " Jacobians for type " << elementTypes[i] << "\n";
-
-                        std::cout << "\tdeterminants (gmsh): ";
-                        for (int j = 0; j < (int) determinants.size(); ++j)
-                            std::cout << determinants[j] << " ";
-                        std::cout << '\n';*/
-                        int numComponents, numOrientations;
-                        std::vector<double> basisFunctions;
-                        gmsh::model::mesh::getBasisFunctions(elementTypes[i], localCoords, 
-                                                            "Lagrange", numComponents, 
-                                                            basisFunctions, 
-                                                            numOrientations);
-                        /*std::cout << "\tGot " << basisFunctions.size() 
-                                << " basis functions for type "
-                                << elementTypes[i] << '\n';
-                        for (int j = 0; j < (int) basisFunctions.size(); ++j)
-                            std::cout << basisFunctions[j] << " ";
-                        std::cout << '\n';*/
-                        /*-----------computing the f vector components related to this Neumann BC---------*/
-                        //looping over the elements
-                        std::vector<double> f_vector(2*numNodes);
-                        for (std::size_t el = 0; el < elementTags[i].size(); el++){
-                            for (int j = 0; j < 2*numNodes; ++j){
-                                f_vector[j] = 0.;
-                            }
-                            // looping over the Gauss points (formula of slide 17)
-                            for (std::size_t j = 0; j < weights.size(); ++j){
-                                // looping over the number of shape functions
-                                for (int l = 0; l < numNodes; ++l){ 
-                                    f_vector[2*l] = f_vector[2*l] + basisFunctions[l+numNodes*j]*tx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
-                                    f_vector[2*l+1] = f_vector[2*l+1] + basisFunctions[l+numNodes*j]*ty*determinants[j+weights.size()*el]*weights[j]; // le weight non plus !
-                                }
-                            }
-                            /*std::cout << "\telemental f vector of element " << elementTags[i][el] << ": ";
-                            for (int j = 0; j < (int) f_vector.size(); ++j)
-                                std::cout << f_vector[j] << " ";
-                            std::cout << '\n';*/
-                            /*------------- ASSEMBLY PROCESS ------------*/
-                            for (int j = 0; j < 2*numNodes; ++j){
-                                int first_node_index = (int) j/2;
-                                int first_node = nodeTags[i][numNodes*el+first_node_index];
-                                int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
-                                full_f_vector[my_row] += f_vector[j];
-                                //std::cout << my_row << "\n";
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    /*std::cout << "\tfull f vector : ";
-    for (int j = 0; j < full_f_vector.size(); ++j)
-        std::cout << full_f_vector[j] << " ";
-    std::cout << '\n';*/
     /*------------FOCUS ON DIRICHLET BC'S---------------*/
     // new_indices vector will contain the new indices of the K matrix after the rows/columns corresponding
     // to dirichlet boundary conditions have been removed
@@ -458,103 +577,10 @@ int main(int argc, char **argv)
     std::vector<double> dir_BC(2*all_nodeTags.size());
     for (std::size_t j = 0; j < dir_BC.size(); ++j){
         dir_BC[j] = 0;
-    } 
-
-    // looping over the boundary conditions imposed in the .geo file, the purpose of the whole loop is
-    // to fill the two vectors defined just above
-    double ux = 0; // imposed displacement along x axis
-    double uy = 0; // imposed displacement along y axis
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        std::vector<double> value;
-        gmsh::onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        std::stringstream ss(key);
-        std::vector<std::string> words;
-        std::string word;
-        while(std::getline(ss, word, '/')) // read string until '/'
-            words.push_back(word);
-        if(words.size()==3) 
-        {
-            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
-                if(words[2].compare("ux") == 0)
-                    ux = value[0];
-                if(words[2].compare("uy") == 0)
-                    uy = value[0];
-                groupname = words[1];
-                
-                //loop over elements of group_name
-                dim = groups[groupname].first;
-                tag = groups[groupname].second;
-                if (tag == 0)
-                {
-                    std::cerr << "Group '" << groupname << "' does not exist!\n";
-                    return 1;
-                }
-                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
-
-                /*std::cout << "Entities in group named '" << groupname << "': ";
-                for (int i = 0; i < (int) tags.size(); ++i)
-                    std::cout << tags[i] << " ";
-                std::cout << '\n';*/
-                // loop over entities
-                for (std::size_t k = 0; k < tags.size(); ++k)
-                {
-                    //std::cout << "Entity (" << dim << "," << tags[k] << "):\n";
-                    std::vector<int> elementTypes;
-                    std::vector<std::vector<std::size_t>> elementTags;
-                    std::vector<std::vector<std::size_t>> nodeTags;
-                    gmsh::model::mesh::getElements(elementTypes, elementTags,
-                                                nodeTags, dim, tags[k]);
-                    
-                    for (std::size_t i = 0; i < elementTypes.size(); ++i)
-                    {
-                        /*std::cout << "\telement type " << elementTypes[i] << ":\n";
-                        std::cout << "\t\telements: ";
-                        for (int j = 0; j < (int) elementTags[i].size(); ++j)
-                            std::cout << elementTags[i][j] << " ";
-                        std::cout << '\n';
-                        std::cout << "\t\tnodes: ";
-                        for (int j = 0; j < (int) nodeTags[i].size(); ++j)
-                            std::cout << nodeTags[i][j] << " ";
-                        std::cout << '\n';*/
-
-                        // getting element properties
-                        std::string elementName;
-                        int dim, order, numNodes, numPrimaryNodes;
-                        std::vector<double> localNodeCoord;
-                        gmsh::model::mesh::getElementProperties(elementTypes[i],
-                                                        elementName, dim, order,
-                                                        numNodes, localNodeCoord, 
-                                                        numPrimaryNodes);
-                        //looping over the elements
-                        for (std::size_t el = 0; el < elementTags[i].size(); el++){
-                            for (int j = 0; j < 2*numNodes; ++j){
-                                int first_node_index = (int) j/2;
-                                int first_node = nodeTags[i][numNodes*el+first_node_index];
-                                int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
-                                if(words[2].compare("uy") == 0 && j % 2){ // we are dealing with a uy type of node
-                                    dir_BC[my_row] = uy;
-                                    new_indices[my_row] = -1;
-                                }
-                                if(words[2].compare("ux") == 0 && j % 2 == 0){ // ux type of node
-                                    dir_BC[my_row] = ux;
-                                    new_indices[my_row] = -1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
-    /*std::cout << "\t\tdir_BC: ";
-    for (int j = 0; j < dir_BC.size(); ++j)
-        std::cout << dir_BC[j] << " ";
-    std::cout << '\n';*/
+    // Fill the two vectors defined just above
+    Fill_New_indices_Dir_BC(keys, dim, tag, tags, groups, groupname, new_indices, dir_BC);
 
     int number_removed_lines = 0;
     for (std::size_t j = 0; j < new_indices.size(); ++j){
@@ -566,10 +592,6 @@ int main(int argc, char **argv)
         }
     }
 
-    /*std::cout << "\t\tnew indices: ";
-    for (int j = 0; j < new_indices.size(); ++j)
-        std::cout << new_indices[j] << " ";
-    std::cout << '\n';*/
 
     /*------------FILLING THE REDUCED K MATRIX AND F VECTOR--------------*/
     //the correction term on the f vector comes from the "FEM" theoretical course (JP Ponthot), Chap2 Slide 38/50
@@ -578,48 +600,7 @@ int main(int argc, char **argv)
 
     std::vector<Eigen::Triplet <double>> reduced_k_tripletList;
 
-    for (std::size_t j = 0; j < reduced_f_vector.size(); ++j){
-        reduced_f_vector[j] = 0.;
-    }
-
-    // looping over the non-zero elements of full_K_matrix
-    int row;
-    int new_row;
-    int new_col;
-    double k_value;
-    for (int col=0; col<full_K_matrix.outerSize(); ++col){
-        new_col = new_indices[col];
-        for (Eigen::SparseMatrix<double>::InnerIterator it(full_K_matrix,col); it; ++it){
-            k_value = it.value();
-            row = it.row();   // row index
-            new_row = new_indices[row];
-            if(new_row >= 0 && new_col >= 0){ // if the given element must not be removed
-                if(new_row < new_col){ // taking advantage of the symmetry
-                    //reduced_K_matrix.coeffRef(new_row,new_col) = k_value;
-                    //reduced_K_matrix.coeffRef(new_col,new_row) = k_value;
-                    reduced_k_tripletList.push_back(Eigen::Triplet<double>(new_row,new_col,k_value));
-                    reduced_k_tripletList.push_back(Eigen::Triplet<double>(new_col,new_row,k_value));
-                }
-                if(new_row == new_col){ // diagonal element
-                    //reduced_K_matrix.coeffRef(new_row,new_col) = k_value;
-                    reduced_k_tripletList.push_back(Eigen::Triplet<double>(new_row,new_col,k_value));
-                }
-            }
-            if(new_col < 0 && new_row >= 0 && dir_BC[col]){ // correction term RHS due to non_homogeneous boundary condition
-                reduced_f_vector[new_row] -= k_value*dir_BC[col];
-            }
-        }
-        if(new_col >= 0 ){ // line must not be removed
-            reduced_f_vector[new_col] += full_f_vector[col];
-        }
-    }
-    reduced_K_matrix.setFromTriplets(reduced_k_tripletList.begin(), reduced_k_tripletList.end());
-    //std::cout << "\t full K matrix:\n" << full_K_matrix << "\n";
-    //std::cout << "\t reduced K matrix:\n" << reduced_K_matrix << "\n";
-    /*std::cout << "\treduced f vector : ";
-    for (int j = 0; j < reduced_f_vector.size(); ++j)
-        std::cout << reduced_f_vector[j] << " ";
-    std::cout << '\n';*/
+    Fill_K_F_Reduced(full_f_vector, full_K_matrix, new_indices, dir_BC, reduced_K_matrix, reduced_f_vector, reduced_k_tripletList);
 
     /*--------------SOLVING THE REDUCED SYSTEM--------------------*/
     Eigen::VectorXd final_reduced_d(2*all_nodeTags.size() - number_removed_lines);
@@ -628,8 +609,6 @@ int main(int argc, char **argv)
     for (std::size_t j = 0; j < reduced_f_vector.size(); ++j){
         final_reduced_f(j) = reduced_f_vector[j];
     }
-    //std::cout << "final f vector: " << final_reduced_f << "\n";
-
 
     // solve Kd=f
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > solver;
@@ -656,10 +635,6 @@ int main(int argc, char **argv)
             full_d_vector[j] = final_reduced_d(new_indices[j]);
         }
     }
-    /*std::cout << "\t final d vector : ";
-    for (int j = 0; j < full_d_vector.size(); ++j)
-        std::cout << full_d_vector[j] << " ";
-    std::cout << '\n';*/
 
     /*--------------PLOTTING AND SAVING THEM------------------*/
     // loop over the nodes
