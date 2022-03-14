@@ -5,6 +5,7 @@
 #include <math.h>
 #include <Eigen/Dense>
 
+// test for commit
 // Each element has all its information gathered as in this structure.
 struct elementStruct{
     std::string bcType; // "dirichlet" or "neumann"
