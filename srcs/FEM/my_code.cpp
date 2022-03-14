@@ -48,6 +48,23 @@ int main(int argc, char **argv)
     std::vector<double> all_nodeparametricCoord;
 
     gmsh::model::mesh::getNodes(all_nodeTags, all_nodecoord, all_nodeparametricCoord);
+    /*std::cout << "nodeTags: ";
+    for (std::size_t i = 0; i < all_nodeTags.size(); ++i)
+    {
+        std::cout << all_nodeTags[i] << " ";
+    }
+    std::cout << "\n";*/
+
+    /*-------map between nodeTag and index of first nodal displacement associated to the node (second one is the same +1)------*/
+    std::map<int, int> node_index;
+    for (std::size_t i = 0; i < all_nodeTags.size(); ++i)
+    {
+        int nodeTag = all_nodeTags[i];
+        int node_first_index = 2*i; // use i à la place de nodeTag pour traiter cas ou le nodeTag n'est pas une suite continue
+        node_index[nodeTag] = node_first_index;
+        //std::cout << node_index[nodeTag] << " ";
+    }
+
 
     /*-----------get physical properties of domain----------------------*/
     std::vector<std::string> keys;
@@ -253,12 +270,14 @@ int main(int argc, char **argv)
                 // USE LIST OF TRIPLETS TO PUSH ONLY ONCE -> more rapid and easier to parallelize
                 for (int j = 0; j < 2*numNodes; ++j){
                     int first_node_index = (int) j/2;
-                    int first_node = nodeTags[i][numNodes*el+first_node_index];
-                    int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
+                    int first_node = nodeTags[i][numNodes*el+first_node_index]; 
+                    //int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
+                    int my_row = node_index[first_node] + j % 2; // j % 2 == 1 corresponds to y nodal displacement
                     for(int l = 0; l <= j; ++l){ // to exploit symmetry
                         int second_node_index = (int) l/2;
                         int second_node = nodeTags[i][numNodes*el+second_node_index];
-                        int my_col = 2*(second_node-1) + l % 2;
+                        // int my_col = 2*(second_node-1) + l % 2;
+                        int my_col = node_index[second_node] + l % 2;
 
                         //full_K_matrix.coeffRef(my_row,my_col) += K_matrix(j,l); //utiliser triplets puis reessayer avec noeuds ordre 2
                         k_tripletList.push_back(Eigen::Triplet<double>(my_row,my_col,K_matrix(j,l)));
@@ -419,6 +438,8 @@ int main(int argc, char **argv)
                             std::cout << '\n';*/
                             /*------------- ASSEMBLY PROCESS ------------*/
                             for (int j = 0; j < 2*numNodes; ++j){
+                                //works well only if the nodes are arranged from 1 to numbernodes
+                                // idea, make a map between nodeTag and two indices (corresponding to x and y)
                                 int first_node_index = (int) j/2;
                                 int first_node = nodeTags[i][numNodes*el+first_node_index];
                                 int my_row = 2*(first_node-1) + j % 2; // node list begins at 1, '-1' correction to begin at 0
@@ -653,7 +674,76 @@ int main(int argc, char **argv)
         std::cout << full_d_vector[j] << " ";
     std::cout << '\n';*/
 
-    /*--------------PLOTTING AND SAVING THEM------------------*/
+    /*--------------REACTION FORCES COMPUTATION------------------*/
+    //looping on physical groups on which dirichlet bc's were imposed 
+
+    double Rx = 0.;
+    double Ry = 0.;
+    for (auto &key : keys)
+    {
+        // get corresponding value
+        std::vector<double> value;
+        gmsh::onelab::getNumber(key, value);
+        // expected key structure is "type/group_name/field"
+        // => split the key string into components
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
+        while(std::getline(ss, word, '/')) // read string until '/'
+            words.push_back(word);
+        if(words.size()==3) 
+        {
+            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
+                Rx = 0;
+                Ry = 0;
+                groupname = words[1];
+                std::cout << "-------------------- " << groupname << " ------------------- \n";
+                
+                //loop over elements of group_name
+                dim = groups[groupname].first;
+                tag = groups[groupname].second;
+                if (tag == 0)
+                {
+                    std::cerr << "Group '" << groupname << "' does not exist!\n";
+                    return 1;
+                }
+                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+
+                // loop over entities
+                for (std::size_t k = 0; k < tags.size(); ++k)
+                {
+                    std::vector<std::size_t> nodeTags;
+                    std::vector<double> coord; //useless
+                    std::vector<double> parametricCoord; //useless
+
+                    // retrieving all the nodes in this particular entity
+                    gmsh::model::mesh::getNodes(nodeTags, coord, parametricCoord, dim, tags[k], true);
+                    
+                    /*std::cout << "node tags: ";
+                    for (int j = 0; j < (int) nodeTags.size(); ++j){
+                        std::cout << nodeTags[j] << " ";
+                    }
+                    std::cout << "\n";*/
+
+                    for (std::size_t j = 0; j < nodeTags.size(); ++j){
+                        if(words[2].compare("ux") == 0){    // computing Rx
+                            int my_new_col = (nodeTags[j] - 1)*2; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
+                            //std::cout << "my col: " << my_new_col << "\n";
+                            Rx += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
+                        }
+                        if(words[2].compare("uy") == 0){    // computing Ry
+                            int my_new_col = (nodeTags[j] - 1)*2 + 1; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
+                            //std::cout << "my col: " << my_new_col << "\n";
+                            Ry += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
+                        }
+                    }
+                }
+                std::cout << "Rx: " << Rx << " [N/m], Ry: " << Ry << " [N/m] \n";
+            }
+        }
+    }
+
+    /*--------------PLOTTING AND SAVING NODAL VALUES------------------*/
     // loop over the nodes
     int viewtag1 = gmsh::view::add("ux");
     int viewtag2 = gmsh::view::add("uy");
@@ -1049,73 +1139,6 @@ int main(int argc, char **argv)
         nodal_sigma_x[i] = nodal_sigma_x[i] / nb_adjacent_elements[i];
         nodal_sigma_y[i] = nodal_sigma_y[i] / nb_adjacent_elements[i];
         nodal_sigma_xy[i] = nodal_sigma_xy[i] / nb_adjacent_elements[i];
-    }
-    /* computing reaction forces, looping on physical groups on which dirichlet bc's were imposed */
-
-    double Rx = 0.;
-    double Ry = 0.;
-    for (auto &key : keys)
-    {
-        // get corresponding value
-        std::vector<double> value;
-        gmsh::onelab::getNumber(key, value);
-        // expected key structure is "type/group_name/field"
-        // => split the key string into components
-        std::stringstream ss(key);
-        std::vector<std::string> words;
-        std::string word;
-        while(std::getline(ss, word, '/')) // read string until '/'
-            words.push_back(word);
-        if(words.size()==3) 
-        {
-            if(words[2].compare("ux") == 0 || words[2].compare("uy") == 0){
-                Rx = 0;
-                Ry = 0;
-                groupname = words[1];
-                std::cout << "-------------------- " << groupname << " ------------------- \n";
-                
-                //loop over elements of group_name
-                dim = groups[groupname].first;
-                tag = groups[groupname].second;
-                if (tag == 0)
-                {
-                    std::cerr << "Group '" << groupname << "' does not exist!\n";
-                    return 1;
-                }
-                gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
-
-                // loop over entities
-                for (std::size_t k = 0; k < tags.size(); ++k)
-                {
-                    std::vector<std::size_t> nodeTags;
-                    std::vector<double> coord; //useless
-                    std::vector<double> parametricCoord; //useless
-
-                    // retrieving all the nodes in this particular entity
-                    gmsh::model::mesh::getNodes(nodeTags, coord, parametricCoord, dim, tags[k], true);
-                    
-                    /*std::cout << "node tags: ";
-                    for (int j = 0; j < (int) nodeTags.size(); ++j){
-                        std::cout << nodeTags[j] << " ";
-                    }
-                    std::cout << "\n";*/
-
-                    for (std::size_t j = 0; j < nodeTags.size(); ++j){
-                        if(words[2].compare("ux") == 0){    // computing Rx
-                            int my_new_col = (nodeTags[j] - 1)*2; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
-                            //std::cout << "my col: " << my_new_col << "\n";
-                            Rx += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
-                        }
-                        if(words[2].compare("uy") == 0){    // computing Ry
-                            int my_new_col = (nodeTags[j] - 1)*2 + 1; // le noeud numéro nodeTags[j] correspond à la ligne/colonne dans K, f
-                            //std::cout << "my col: " << my_new_col << "\n";
-                            Ry += compute_f_value(my_new_col, full_K_matrix, full_d_vector);
-                        }
-                    }
-                }
-                std::cout << "Rx: " << Rx << " [N/m], Ry: " << Ry << " [N/m] \n";
-            }
-        }
     }
 
     
