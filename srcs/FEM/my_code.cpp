@@ -22,7 +22,6 @@ Eigen::Matrix<double, 3, 3> Compute_H_matrix(const double E, const double nu){
     H_matrix(1,2) = 0.;
     H_matrix(2,2) = (1-nu)/2;
     H_matrix = E/(1-nu*nu)*H_matrix;
-
     return H_matrix;
 }
 
@@ -55,16 +54,11 @@ void Assembly_K_triplet_F(const int i, const int el,
 }
 
 
-void Compute_B_K_matrix(const int j, const int el, const double rho, const double bx, const double by,
-                        const int numNodes, const std::vector<double> & basisFunctions, 
-                        const std::vector<double> basisFunctionsGradient,
-                        const std::vector<double> determinants, 
-                        const std::vector<double> weights,
-                        const Eigen::Matrix<double, 2, 2> jacobinvtrans,
-                        const Eigen::Matrix<double, 3, 3> H_matrix,
-                        std::vector<double> & f_vector,
-                        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> & B_matrix,
-                        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> & K_matrix){
+void Compute_B_matrix(const int j, const int numNodes, const std::vector<double> basisFunctionsGradient,
+                      const std::vector<double> determinants, 
+                      const Eigen::Matrix<double, 2, 2> jacobinvtrans,
+                      const Eigen::Matrix<double, 3, 3> H_matrix,
+                      Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> & B_matrix){
 
     for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
         B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
@@ -73,13 +67,8 @@ void Compute_B_K_matrix(const int j, const int el, const double rho, const doubl
         B_matrix(0,2*l+1) = 0.;
         B_matrix(1,2*l+1) = B_matrix(2,2*l);
         B_matrix(2,2*l+1) = B_matrix(0,2*l);
-        f_vector[2*l] = f_vector[2*l] + rho*basisFunctions[l+numNodes*j]*bx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
-        f_vector[2*l+1] = f_vector[2*l+1] + rho*basisFunctions[l+numNodes*j]*by*determinants[j+weights.size()*el]*weights[j]; // pas oublier le weights[j] non plus !
-        }
-    K_matrix = K_matrix + B_matrix.transpose()*H_matrix*B_matrix*determinants[j+weights.size()*el]*weights[j];
+    }
 }
-
-
 
 //Get physical properties of domain
 void Get_physical_Prop_Domain(const std::vector<std::string> keys, double & E, double & nu, double & rho,
@@ -209,8 +198,16 @@ void Loop_K_F(const Eigen::Matrix<double, 3, 3> H_matrix, const double rho, cons
                     // computing the B matrix (formula slide 19) and the f vector (also using gauss integration)
                     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
 
-                    Compute_B_K_matrix(j, el, rho, bx, by, numNodes, basisFunctions, basisFunctionsGradient, determinants, 
-                                       weights, jacobinvtrans, H_matrix, f_vector, B_matrix, K_matrix);
+
+                    Compute_B_matrix(j, numNodes, basisFunctionsGradient, determinants, 
+                                     jacobinvtrans, H_matrix, B_matrix);
+                    
+                    for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
+                        f_vector[2*l] = f_vector[2*l] + rho*basisFunctions[l+numNodes*j]*bx*determinants[j+weights.size()*el]*weights[j]; //pas oublier le dét !
+                        f_vector[2*l+1] = f_vector[2*l+1] + rho*basisFunctions[l+numNodes*j]*by*determinants[j+weights.size()*el]*weights[j]; // pas oublier le weights[j] non plus !
+                    }
+
+                    K_matrix = K_matrix + B_matrix.transpose()*H_matrix*B_matrix*determinants[j+weights.size()*el]*weights[j];
                 }
                 /*------------- ASSEMBLY PROCESS ------------*/
                 // USE LIST OF TRIPLETS TO PUSH ONLY ONCE -> more rapid and easier to parallelize
@@ -580,7 +577,7 @@ std::vector<std::string> Plot_Save_ux_uy(const std::vector<std::size_t> all_node
     return names;
 }
 
-void Compute_Stress_Strain(const std::vector<int> elementTypes, const std::vector<std::vector<std::size_t>> elementTags,
+void Compute_Stress_Strain_Nodal(const std::vector<int> elementTypes, const std::vector<std::vector<std::size_t>> elementTags,
                            const std::vector<std::vector<std::size_t>> elnodeTags, const std::string integration_rule,
                            const std::vector<double> full_d_vector, std::vector<std::size_t> & elems2D,
                            const Eigen::Matrix<double, 3, 3> H_matrix, int & k, const double nu, const double E,
@@ -676,14 +673,10 @@ void Compute_Stress_Strain(const std::vector<int> elementTypes, const std::vecto
 
                 // computing the B matrix (formula slide 19)
                 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
-                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
-                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1]; //ici faudrait pas un weights.size() à la place de numNodes ?? pense pas, ça fonctionne
-                    B_matrix(1,2*l) = 0.;
-                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(0,2*l+1) = 0.;
-                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
-                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
-                }
+
+                Compute_B_matrix(j, numNodes, basisFunctionsGradient, determinants, 
+                                 jacobinvtrans, H_matrix, B_matrix);
+
                 tmp_epsilon = B_matrix*nodal_displacement;
                 epsilon += tmp_epsilon;
                 sigma += H_matrix*tmp_epsilon;
@@ -813,14 +806,10 @@ void Compute_Stress_Strain_Elemental(const std::vector<int> elementTypes, const 
 
                 // computing the B matrix (formula slide 19) 
                 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> B_matrix(3,2*numNodes);
-                for (int l = 0; l < numNodes; ++l){ // looping over the number of shape functions
-                    B_matrix(0,2*l) = jacobinvtrans(0,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(0,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(1,2*l) = 0.;
-                    B_matrix(2,2*l) = jacobinvtrans(1,0)*basisFunctionsGradient[3*l+numNodes*3*j]+jacobinvtrans(1,1)*basisFunctionsGradient[3*l+numNodes*3*j+1];
-                    B_matrix(0,2*l+1) = 0.;
-                    B_matrix(1,2*l+1) = B_matrix(2,2*l);
-                    B_matrix(2,2*l+1) = B_matrix(0,2*l);
-                }
+
+                Compute_B_matrix(j, numNodes, basisFunctionsGradient, determinants, 
+                                 jacobinvtrans, H_matrix, B_matrix);
+
                 epsilon = B_matrix*nodal_displacement;
                 sigma = H_matrix*epsilon;
                 //std::cout << "sigma at node " << nodeTag << ": " << H_matrix*epsilon << "\n";
@@ -994,17 +983,9 @@ int main(int argc, char **argv)
     // solve Kd=f
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > solver;
     solver.compute(reduced_K_matrix);
-    /*if(solver.info()!=Success) {
-    // decomposition failed
-    return;
-    }*/
-    final_reduced_d = solver.solve(final_reduced_f);
-    /*if(solver.info()!=Success) {
-    // solving failed
-    return;
-    }*/
 
-    //std::cout << "final d vector: " << final_reduced_d << "\n";
+    final_reduced_d = solver.solve(final_reduced_f);
+
 
     /*-----------RECONSTRUCTING FULL NODAL VALUES--------------*/
     std::vector<double> full_d_vector(2*all_nodeTags.size());
@@ -1032,7 +1013,7 @@ int main(int argc, char **argv)
     /*-------------Computing and saving strains/stresses-----------------*/
     // ELEMENTAL STRAIN/STRESS COMPUTATION for now (mean value of values computed at GP's)
 
-    // get all the elements for dim=2
+    // get all the elements for dim = 2
     std::vector<int> elementTypes;
     std::vector<std::vector<std::size_t>> elementTags;
     std::vector<std::vector<std::size_t>> elnodeTags;
@@ -1065,7 +1046,7 @@ int main(int argc, char **argv)
 
     // for each element type
     int k=0;
-    Compute_Stress_Strain(elementTypes, elementTags, elnodeTags, integration_rule, full_d_vector, elems2D, H_matrix, 
+    Compute_Stress_Strain_Nodal(elementTypes, elementTags, elnodeTags, integration_rule, full_d_vector, elems2D, H_matrix, 
                           k, nu, E, data3, data4, data5, data6, data7, data8, data9, data10);
 
     gmsh::view::addModelData(viewtag3, 0, names[0], "ElementData",
