@@ -18,9 +18,6 @@ IF(APPLE)
     # on macOS, do not give priority to frameworks/apps
     SET(CMAKE_FIND_APPBUNDLE LAST)
     SET(CMAKE_FIND_FRAMEWORK LAST)
-    SET(CMAKE_OSX_ARCHITECTURES "x86_64" CACHE STRING "Build architectures for Mac OS X" FORCE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xpreprocessor -fopenmp -I/opt/homebrew/include")
-    list(APPEND EXTERNAL_LIBRARIES "-L/opt/homebrew/lib -lomp")
 ENDIF()
 
 # find gmsh-sdk
@@ -47,6 +44,8 @@ IF(NOT EIGEN_INCLUDE_DIRS)
     MESSAGE(FATAL_ERROR "Eigen include dir not found!")
 ENDIF()
 INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIRS})
+
+SET(CMAKE_CXX_FLAGS "${CXX_FLAGS} -Wall")
 
 # ------------------------------------------------------------------------------
 
