@@ -525,15 +525,12 @@ int main(int argc, char **argv)
     }
 
     /*--------------COMPUTING NODAL FORCES-------------*/
-    std::cout << "nodal forces: ";
     Eigen::VectorXd eigen_d(2*all_nodeTags.size());
     for(size_t i = 0 ; i < 2*all_nodeTags.size(); ++i){
         eigen_d(i) = full_d_vector[i];
     }
     Eigen::VectorXd nodal_forces(2*all_nodeTags.size());
     nodal_forces = full_K_matrix*eigen_d;
-    std::cout << nodal_forces << "\n";
-    // HOW TO PLOT THEM ? AU FINAL IL SUFFIRAIT DE FAIRE CA DANS LA BOUCLE JUSTE AU-DESSUS
 
     /*--------------REACTION FORCES COMPUTATION------------------*/
     //looping on physical groups on which dirichlet bc's were imposed 
@@ -709,11 +706,6 @@ int main(int argc, char **argv)
         gmsh::model::mesh::getJacobians(elementTypes[ityp], 
                                         paramCoord, jacobians, 
                                         determinants, coords);
-
-        /*std::cout << "jacobians: " << "\n";
-        for(int j = 0; j < jacobians.size(); ++j)
-            std::cout << jacobians[j] << " ";
-        std::cout << "\n";*/
 
         // derivatives of the shape functions at the nodes of the reference element
         // we are here working with derivatives in the reference space, same for all elements
