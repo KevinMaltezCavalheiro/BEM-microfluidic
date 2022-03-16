@@ -8,7 +8,7 @@
 // Each element has all its information gathered as in this structure.
 struct elementStruct{
     int tag;            // tag of the element
-    std::string bcType; // "dirichlet" or "neumann"
+    std::string bcType; // "dirichlet" or "neumann" (at the end, should replace this by an int or boolean)
     double bcValue [2]; // values of [u, u_n]
     int nodeTags [2];   // tags of the [first, second] nodes of the element
 };
@@ -113,14 +113,15 @@ int main(int argc, char **argv)
 
             for(int el = 0; el < elementTags.size(); el++)
             {
-                // Stores the boundary type and the index of the element.
+                // Stores the tag, the boundary type, the boundary value and the node tags of the element.
                 int elTag = elementTags[el];
                 
                 elementStruct element;
-                element.bcType = bcType;
                 element.tag = elTag;
+                element.bcType = bcType;
                 element.nodeTags[0] = nodeTags[2*el];
                 element.nodeTags[1] = nodeTags[2*el + 1];
+                // The elementVector should be "sorted" => push from front or from back depending on element type.
                 if(bcType == "dirichlet")
                 {
                     element.bcValue[0] = bcValue;
@@ -146,14 +147,15 @@ int main(int argc, char **argv)
         }
     }
 
-    // Declaration of matrices A, B and vector c;
+    // Declaration of matrices A, B and vector c (the matrix type is perhaps not the most efficient).
     Eigen::MatrixXd A = Eigen::MatrixXd::Zero(elementVector.size(), elementVector.size());
     Eigen::MatrixXd B = Eigen::MatrixXd::Zero(elementVector.size(), elementVector.size());
     Eigen::MatrixXd c = Eigen::MatrixXd::Zero(elementVector.size(), 1);
-    
+
     //  Double loop over each element in order to compute the element h and g that will be given to the matrices A and B.
     for(int i = 0; i < elementVector.size(); i++)
     {
+        // All these usefull i/j values could be stored in the elementStruct type, so that we only compute it once.
         // Indices '1'/'2' stand for 'Node 1'/'Node 2' (of element 'i' here).
         int i1Tag = elementVector[i].nodeTags[0];
         int i2Tag = elementVector[i].nodeTags[1];
@@ -200,9 +202,9 @@ int main(int argc, char **argv)
                 double jLength = sqrt(pow(jDeltaX, 2.0) + pow(jDeltaY, 2.0));
 
                 // Compute the angles between mid point of element 'i' and nodes 1/2 of element 'j' (in radian).
-                double a1 = atan2((j1Y - iMidY),(j1X - iMidX));
-                double a2 = atan2((j2Y - iMidY),(j2X - iMidX));
-                while(a2 < a1)  // This is not general and should be reviewed !
+                double a1 = atan2(j1Y - iMidY, j1X - iMidX);
+                double a2 = atan2(j2Y - iMidY, j2X - iMidX);
+                while(a2 < a1)  // This is not general and should be reviewed (concave surfaces)!
                     a2 += 2*M_PI;
 
                 // Angle verification
@@ -231,11 +233,11 @@ int main(int argc, char **argv)
                     // Parametric coordinate
                     double xi = localCoord[3*k];
                     // Global coordinates
-                    double x = jMidX + jDeltaX*xi/2;
-                    double y = jMidY + jDeltaY*xi/2;
+                    double gX = jMidX + jDeltaX*xi/2;
+                    double gY = jMidY + jDeltaY*xi/2;
 
                     // Distance between mid point of element 'i' and integration point.
-                    double r = sqrt(pow(iMidX - x, 2.0) + pow(iMidY - y, 2.0));
+                    double r = sqrt(pow(iMidX - gX, 2.0) + pow(iMidY - gY, 2.0));
                     gSum += log(r) * weights[k];
                 }
                 
@@ -316,6 +318,9 @@ int main(int argc, char **argv)
             // Indices '1'/'2' stand for 'Node 1'/'Node 2' (of element i here).
             int j1Tag = elementVector[j].nodeTags[0];
             int j2Tag = elementVector[j].nodeTags[1];
+            
+            // This is certainly not the most efficient way to do.
+            // Should also find an alternative for the ambiguity at the corner nodes.
             if(j1Tag == i+1 || j2Tag == i+1)
             {
                 phi = elementVector[j].bcValue[0];
