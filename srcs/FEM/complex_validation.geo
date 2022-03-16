@@ -30,7 +30,7 @@ Plane Surface(2) = {2};
 //Transfinite Surface {2};
 
 
-Mesh.ElementOrder = 1;
+Mesh.ElementOrder = 2;
 
 Recombine Surface {1}; // quads instead of triangles
 
