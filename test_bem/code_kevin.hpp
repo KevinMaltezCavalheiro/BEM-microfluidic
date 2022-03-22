@@ -16,5 +16,11 @@ void show_mat(MatrixXd &A);
 
 void show_vec(VectorXd &A);
 
+void range_angle(double &angle);
+
+int code_py(int argc, char **argv);
+
+
+
 
 
