@@ -16,9 +16,9 @@ int main(int argc, char **argv)
 {
     //cout << setprecision(2) << fixed;
 
-    code_kevin(argc,argv);
+    //code_kevin(argc,argv);
 
-    //code_py(argc,argv);
+    code_py(argc,argv);
 
     return 0;
 }
