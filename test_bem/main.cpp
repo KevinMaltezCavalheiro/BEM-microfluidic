@@ -5,6 +5,7 @@
 #include <Eigen/Dense> 
 #include <cmath>
 #include <iomanip>
+# include <stdio.h>
 #include "code_kevin.hpp"
 
 
