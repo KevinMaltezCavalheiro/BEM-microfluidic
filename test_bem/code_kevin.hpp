@@ -34,6 +34,6 @@ void compute_g(double &jMidX, double &jDeltaX, double &jMidY, double &jDeltaY, d
 
 void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d, vector<elementStruct> &elementVector, vector<vector<double>> &data_boundary_nodes, vector<vector<double>> &data2d, map<int,double> &nodeMapDomain);
 
-void en_chantier();
+void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data);
 
 

@@ -7,13 +7,19 @@
 #include <iomanip>
 #include <stdio.h>
 #include "code_kevin.hpp"
-#define getName(var, str)  sprintf(str, "%s", #var)
 
 //todo: séparer en différentes fonctions
 //todo: comparer au livre BEM
 //todo: voir pour gérer des trous dans les surfaces
 //todo: champs electrostatique
 //todo: combiner avec la FEM
+//todo: faire plein de tests différent (dans les .geo)
+//todo: afficher et calculer la force electrostatique
+//todo: test surface avec des trous
+//todo: afficher champ en fonction de la distance
+//todo: convergence
+//todo: on a besoin de la pression electrostatique à la frontière mais on peut essayer de l'afficher partout dans le domaine
+//todo: hybrid mesh
 
 using namespace gmsh;
 using namespace std;
@@ -35,7 +41,7 @@ void compute_g(double &jMidX, double &jDeltaX, double &jMidY, double &jDeltaY, d
 
 void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d, vector<elementStruct> &elementVector, vector<vector<double>> &data_boundary_nodes, vector<vector<double>> &data2d, map<int,double> &nodeMapDomain);
 
-void en_chantier();
+void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data);
 
 int code_py(int argc, char **argv)
 {
@@ -53,6 +59,7 @@ int code_py(int argc, char **argv)
     bool dispValues = 0;     // Elements and their values of u and u_n.
     bool openGUI = 1;        // Graphical interface of GMSH.
     bool show_potential = 0;
+    bool show_element_node_data = 0;
 
     initialize();
 
@@ -81,10 +88,10 @@ int code_py(int argc, char **argv)
         cout << endl;
     }
 
-    vector<size_t> NodeTags2d;
-    vector<double> NodeCoord2d;
-    vector<double> NodeParametricCoord2d;
-    model::mesh::getNodes(NodeTags2d, NodeCoord2d, NodeParametricCoord2d,2);
+    vector<size_t> NodeTags2d_domain;
+    vector<double> NodeCoord2d_domain;
+    vector<double> NodeParametricCoord2d_domain;
+    model::mesh::getNodes(NodeTags2d_domain, NodeCoord2d_domain, NodeParametricCoord2d_domain,2);
 
     vector<int> elementTypes_boundary;
     vector<vector<size_t> > elementTags_boundary;
@@ -236,7 +243,7 @@ int code_py(int argc, char **argv)
 
     vector<vector<vector<double>>> data;
     vector<vector<double>> data_boundary_nodes(allNodeTags.size(),vector<double> (1,0));
-    vector<vector<double>> data2d(NodeTags2d.size(),vector<double> (1,0));
+    vector<vector<double>> data2d(NodeTags2d_domain.size(),vector<double> (1,0));
     map<int, double> nodeMapDomain;
     double phi;
     vector<double> phi_value;
@@ -245,7 +252,7 @@ int code_py(int argc, char **argv)
         data_boundary_nodes[elementVector[i].nodeTags[0]-1][0] = elementVector[i].bcValue[0];
     }
 
-    compute_internal_phi(allCoord,NodeTags2d,elementVector,data_boundary_nodes,data2d,nodeMapDomain);
+    compute_internal_phi(allCoord,NodeTags2d_domain,elementVector,data_boundary_nodes,data2d,nodeMapDomain);
 
     if(show_potential)
     {
@@ -255,12 +262,16 @@ int code_py(int argc, char **argv)
         }
     }
 
-    //en_chantier();
+    element_node_data(data,elementTags2d,elementTypes2d,nodeTags2d,elementVector, nodeMapDomain,show_element_node_data);
 
-    int viewNodeTag = view::add("NodeData");
+    int viewNodeTag = view::add("ElementNodeData");
 
-    view::addModelData(viewNodeTag, 0, names[0], "NodeData", allNodeTags, data_boundary_nodes, 0.0, 1);
+    //view::addModelData(viewNodeTag, 0, names[0], "NodeData", allNodeTags, data_boundary_nodes, 0.0, 1);
     //view::addModelData(viewNodeTag, 0, names[0], "NodeData", NodeTags2d, data2d, 0.0, 1);
+    for(int i = 0; i < data.size(); i++)
+    {
+        view::addModelData(viewNodeTag, 0, names[0], "ElementNodeData", elementTags2d[i], data[i], 0.0, 1);
+    }
     view::write(viewNodeTag, "results.msh");
 
     option::setNumber("View[0].IntervalsType", 3);
@@ -459,13 +470,13 @@ void compute_g(double &jMidX, double &jDeltaX, double &jMidY, double &jDeltaY, d
     g = gSum * jLength / (4*M_PI);
 }
 
-void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d, vector<elementStruct> &elementVector, vector<vector<double>> &data_boundary_nodes, vector<vector<double>> &data2d, map<int,double> &nodeMapDomain)
+void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_domain, vector<elementStruct> &elementVector, vector<vector<double>> &data_boundary_nodes, vector<vector<double>> &data2d, map<int,double> &nodeMapDomain)
 {
-    for(int i = 0; i < NodeTags2d.size(); i++)
+    for(int i = 0; i < NodeTags2d_domain.size(); i++)
     {
         // Coordinates of the node
-        double x = allCoord[3*(NodeTags2d[i]-1)];
-        double y = allCoord[3*(NodeTags2d[i]-1) + 1];
+        double x = allCoord[3*(NodeTags2d_domain[i]-1)];
+        double y = allCoord[3*(NodeTags2d_domain[i]-1) + 1];
 
         double phi = 0;
         for(int j = 0; j < elementVector.size(); j++)
@@ -526,228 +537,265 @@ void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d, v
             phi += h*elementVector[j].bcValue[0] - g*elementVector[j].bcValue[1];
         }
         // Potential at the node is phi.
-        data_boundary_nodes[NodeTags2d[i]-1][0] = phi;
+        data_boundary_nodes[NodeTags2d_domain[i]-1][0] = phi;
         data2d[i][0] = phi;
-        nodeMapDomain[NodeTags2d[i]] = phi;
+        nodeMapDomain[NodeTags2d_domain[i]] = phi;
     }
 }
 
-void en_chantier()
+void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data)
 {
-//    data.resize(elementTags2d.size());
-//    for(int i = 0; i < elementTags2d.size(); i++)
-//    {
-//        data[i].resize(elementTags2d[i].size());
-//        for(int j = 0; j < elementTags2d[i].size(); j++)
-//        {
-//            int element_2d_tag = elementTags2d[i][j];
-//            int nb_nodes_element2d = elementTypes2d[i]+1;
-//            vector<int> elements_commun_tag(0,0);
-//            vector<int> elements_commun_indice(0,0);
-//            vector<int> nodes_commun_tag(0,0);
-//            data[i][j].resize(nb_nodes_element2d);
-//            for(int k = 0; k < nb_nodes_element2d; k++)
-//            {
-//                int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
-//                for(int l = 0; l < elementVector.size(); l++)
-//                {
-//                    if(elementVector[l].nodeTags[0] == loop_element_2d_nodes_tag||elementVector[l].nodeTags[1] == loop_element_2d_nodes_tag)
-//                    {
-//                        int compteur_node = 0;
-//                        for(int m = 0; m < nodes_commun_tag.size(); m++)
-//                        {
-//                            if(nodes_commun_tag[m] == elementVector[l].nodeTags[0]||nodes_commun_tag[m] == elementVector[l].nodeTags[1])
-//                            {
-//                                compteur_node++;
-//                            }
-//                        }
-//                        if(compteur_node == 0)
-//                        {
-//                            nodes_commun_tag.push_back(loop_element_2d_nodes_tag);
-//                        }
-//                        int compteur_element = 0;
-//                        for(int m = 0; m < elements_commun_tag.size(); m++)
-//                        {
-//                            if(elements_commun_tag[m] == elementVector[l].tag)
-//                            {
-//                                compteur_element++;
-//                            }
-//                        }
-//                        if(compteur_element == 0)
-//                        {
-//                            elements_commun_tag.push_back(elementVector[l].tag);
-//                            elements_commun_indice.push_back(l);
-//                        }
-//                    }
-//                }
-//            }
-//            cout << nodes_commun_tag.size() << ": ";
-//            for(int m = 0; m < nodes_commun_tag.size(); m++)
-//            {
-//                cout << nodes_commun_tag[m] << " ";
-//            }
-//            cout << endl;
-//            cout << elements_commun_tag.size() << ": ";
-//            for(int m = 0; m < elements_commun_tag.size(); m++)
-//            {
-//                cout << elements_commun_tag[m] << " ";
-//            }
-//            cout << endl;
-//            cout << endl;
-//            if(nodes_commun_tag.size() == 0)
-//            {
-//                for(int k = 0; k < nb_nodes_element2d; k++)
-//                {
-//                    int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
-//                    data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
-//                }
-//            }
-//            if(nodes_commun_tag.size() == 1)
-//            {
-//                if(elements_commun_tag.size() == 2)
-//                {
-//                    for(int k = 0; k < nb_nodes_element2d; k++)
-//                    {
-//                        int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
-//                        if(loop_element_2d_nodes_tag == nodes_commun_tag[0])
-//                        {
-//                            phi = 0;
-//                            phi = elementVector[elements_commun_indice[0]].bcValue[0];
-//                            phi = phi + elementVector[elements_commun_indice[1]].bcValue[0];
-//                            phi = phi/2.0;
-//                            data[i][j][k] = phi;
-//                        }
-//                        else if(data[i][j][k] == 0)
-//                        {
-//                            data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
-//                        }
-//                    }
-//                }
-//                else
-//                {
-//                    cout << "problème dans la géométrie node = 1" << endl;
-//                    cout << nodes_commun_tag.size() << ": ";
-//                    for(int m = 0; m < nodes_commun_tag.size(); m++)
-//                    {
-//                        cout << nodes_commun_tag[m] << " ";
-//                    }
-//                    cout << endl;
-//                    cout << elements_commun_tag.size() << ": ";
-//                    for(int m = 0; m < elements_commun_tag.size(); m++)
-//                    {
-//                        cout << elements_commun_tag[m] << " ";
-//                    }
-//                    cout << endl;
-//                    cout << endl;
-//                }
-//            }
-//            if(nodes_commun_tag.size() == 2)
-//            {
-//                if(elements_commun_tag.size() == 3)
-//                {
-//                    for(int k = 0; k < nb_nodes_element2d; k++)
-//                    {
-//                        phi = 0;
-//                        int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
-//                        for(int l = 0; l < elements_commun_tag.size(); l++)
-//                        {
-//                            int compteur = 0;
-//                            for(int m = 0; m < nodes_commun_tag.size(); m++)
-//                            {
-//                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
-//                                {
-//                                    compteur++;
-//                                }
-//                            }
-//                            if(compteur == 2)
-//                            {
-//                                phi = elementVector[elements_commun_indice[l]].bcValue[0];
-//                            }
-//                        }
-//                        data[i][j][k] = phi;
-//                    }
-//                }
-//                else
-//                {
-//                    cout << "problème dans la géométrie node = 2" << endl;
-//                    cout << nodes_commun_tag.size() << ": ";
-//                    for(int m = 0; m < nodes_commun_tag.size(); m++)
-//                    {
-//                        cout << nodes_commun_tag[m] << " ";
-//                    }
-//                    cout << endl;
-//                    cout << elements_commun_tag.size() << ": ";
-//                    for(int m = 0; m < elements_commun_tag.size(); m++)
-//                    {
-//                        cout << elements_commun_tag[m] << " ";
-//                    }
-//                    cout << endl;
-//                    cout << endl;
-//                }
-//            }
-//            if(nodes_commun_tag.size() == 3)
-//            {
-//                if(elements_commun_tag.size() == 4)
-//                {
-//                    for(int k = 0; k < nb_nodes_element2d; k++)
-//                    {
-//                        phi = 0;
-//                        int moyenne = 0;
-//                        int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
-//                        for(int l = 0; l < elements_commun_tag.size(); l++)
-//                        {
-//                            int compteur = 0;
-//                            for(int m = 0; m < nodes_commun_tag.size(); m++)
-//                            {
-//                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
-//                                {
-//                                    compteur++;
-//                                }
-//                            }
-//                            if(compteur == 2)
-//                            {
-//                                if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
-//                                {
-//                                    phi = phi + elementVector[elements_commun_indice[l]].bcValue[0];
-//                                        moyenne++;
-//                                }
-//                            }
-//                        }
-//                        phi = phi/moyenne;
-//                        data[i][j][k] = phi;
-//                    }
-//                }
-//                else
-//                {
-//                    cout << "problème dans la géométrie node = 3" << endl;
-//                    cout << nodes_commun_tag.size() << ": ";
-//                    for(int m = 0; m < nodes_commun_tag.size(); m++)
-//                    {
-//                        cout << nodes_commun_tag[m] << " ";
-//                    }
-//                    cout << endl;
-//                    cout << elements_commun_tag.size() << ": ";
-//                    for(int m = 0; m < elements_commun_tag.size(); m++)
-//                    {
-//                        cout << elements_commun_tag[m] << " ";
-//                    }
-//                    cout << endl;
-//                    cout << endl;
-//                }
-//                for(int k = 0; k < nb_nodes_element2d; k++)
-//                {
-//                    int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
-//                    if(data[i][j][k] == 0)
-//                    {
-//                        data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
-//                    }
-//                }
-//            }
-//            elements_commun_tag.clear();
-//            elements_commun_indice.clear();
-//            nodes_commun_tag.clear();
-//        }
-//    }
-//
-//    data;
+    data.resize(elementTags2d.size());
+    for(int i = 0; i < elementTags2d.size(); i++)
+    {
+        data[i].resize(elementTags2d[i].size());
+        for(int j = 0; j < elementTags2d[i].size(); j++)
+        {
+            int nb_nodes_element2d = elementTypes2d[i]+1;
+            vector<int> elements_commun_tag(0,0);
+            vector<int> elements_commun_indice(0,0);
+            vector<int> nodes_commun_tag(0,0);
+            data[i][j].resize(nb_nodes_element2d,HUGE_VAL);
+            for(int k = 0; k < nb_nodes_element2d; k++)
+            {
+                int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
+                for(int l = 0; l < elementVector.size(); l++)
+                {
+                    if(elementVector[l].nodeTags[0] == loop_element_2d_nodes_tag||elementVector[l].nodeTags[1] == loop_element_2d_nodes_tag)
+                    {
+                        int compteur_node = 0;
+                        for(int m = 0; m < nodes_commun_tag.size(); m++)
+                        {
+                            if(nodes_commun_tag[m] == loop_element_2d_nodes_tag)
+                            {
+                                compteur_node++;
+                            }
+                        }
+                        if(compteur_node == 0)
+                        {
+                            nodes_commun_tag.push_back(loop_element_2d_nodes_tag);
+                        }
+                        int compteur_element = 0;
+                        for(int m = 0; m < elements_commun_tag.size(); m++)
+                        {
+                            if(elements_commun_tag[m] == elementVector[l].tag)
+                            {
+                                compteur_element++;
+                            }
+                        }
+                        if(compteur_element == 0)
+                        {
+                            elements_commun_tag.push_back(elementVector[l].tag);
+                            elements_commun_indice.push_back(l);
+                        }
+                    }
+                }
+            }
+            if(show_element_node_data)
+            {
+                cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
+                for(int m = 0; m < nodes_commun_tag.size(); m++)
+                {
+                    cout << nodes_commun_tag[m] << " ";
+                }
+                cout << endl;
+                cout << "elements commun: " << elements_commun_tag.size() << ": ";
+                for(int m = 0; m < elements_commun_tag.size(); m++)
+                {
+                    cout << elements_commun_tag[m] << " ";
+                }
+                cout << endl;
+                cout << endl;
+            }
+            if(nodes_commun_tag.size() == 0)
+            {
+                for(int k = 0; k < nb_nodes_element2d; k++)
+                {
+                    int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
+                    data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                }
+            }
+            if(nodes_commun_tag.size() == 1)
+            {
+                if(elements_commun_tag.size() == 2)
+                {
+                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    {
+                        int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
+                        if(loop_element_2d_nodes_tag == nodes_commun_tag[0])
+                        {
+                            double phi = 0;
+                            phi = elementVector[elements_commun_indice[0]].bcValue[0];
+                            phi = phi + elementVector[elements_commun_indice[1]].bcValue[0];
+                            phi = phi/2.0;
+                            data[i][j][k] = phi;
+                        }
+                        else if(data[i][j][k] == HUGE_VAL)
+                        {
+                            data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                        }
+                    }
+                }
+                else
+                {
+                    cout << "problème dans la géométrie node = 1" << endl;
+                    cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
+                    for(int m = 0; m < nodes_commun_tag.size(); m++)
+                    {
+                        cout << nodes_commun_tag[m] << " ";
+                    }
+                    cout << endl;
+                    cout << "elements commun: " << elements_commun_tag.size() << ": ";
+                    for(int m = 0; m < elements_commun_tag.size(); m++)
+                    {
+                        cout << elements_commun_tag[m] << " ";
+                    }
+                    cout << endl;
+                    cout << endl;
+                }
+            }
+            if(nodes_commun_tag.size() == 2)
+            {
+                if(elements_commun_tag.size() == 3)
+                {
+                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    {
+                        int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
+                        for(int l = 0; l < elements_commun_tag.size(); l++)
+                        {
+                            int compteur = 0;
+                            for(int m = 0; m < nodes_commun_tag.size(); m++)
+                            {
+                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
+                                {
+                                    compteur++;
+                                }
+                            }
+                            if(compteur == 2)
+                            {
+                                if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
+                                {
+
+                                    data[i][j][k] = elementVector[elements_commun_indice[l]].bcValue[0];
+                                }
+                            }
+                        }
+                        if(data[i][j][k] == HUGE_VAL)
+                        {
+                            data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                        }
+                    }
+                }
+                else if(elements_commun_tag.size() == 4)
+                {
+                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    {
+                        int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
+                        for(int l = 0; l < elements_commun_tag.size(); l++)
+                        {
+                            if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
+                            {
+                                if(data[i][j][k] == HUGE_VAL)
+                                {
+                                    data[i][j][k] = elementVector[elements_commun_indice[l]].bcValue[0];
+                                }
+                                else
+                                {
+                                    data[i][j][k] = (data[i][j][k] + elementVector[elements_commun_indice[l]].bcValue[0])/2.0;
+                                }
+                            }
+                        }
+                        if(data[i][j][k] == HUGE_VAL)
+                        {
+                            data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                        }
+                    }
+                }
+                else
+                {
+                    cout << "problème dans la géométrie node = 2" << endl;
+                    cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
+                    for(int m = 0; m < nodes_commun_tag.size(); m++)
+                    {
+                        cout << nodes_commun_tag[m] << " ";
+                    }
+                    cout << endl;
+                    cout << "elements commun: " << elements_commun_tag.size() << ": ";
+                    for(int m = 0; m < elements_commun_tag.size(); m++)
+                    {
+                        cout << elements_commun_tag[m] << " ";
+                    }
+                    cout << endl;
+                    cout << endl;
+                }
+            }
+            if(nodes_commun_tag.size() == 3)
+            {
+                if(elements_commun_tag.size() == 4)
+                {
+                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    {
+                        int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
+                        for(int l = 0; l < elements_commun_tag.size(); l++)
+                        {
+                            int compteur = 0;
+                            for(int m = 0; m < nodes_commun_tag.size(); m++)
+                            {
+                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
+                                {
+                                    compteur++;
+                                }
+                            }
+                            if(compteur == 2)
+                            {
+                                if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
+                                {
+                                    if(data[i][j][k] == HUGE_VAL)
+                                    {
+                                        data[i][j][k] = elementVector[elements_commun_indice[l]].bcValue[0];
+                                    }
+                                    else
+                                    {
+                                        data[i][j][k] = (data[i][j][k] + elementVector[elements_commun_indice[l]].bcValue[0])/2.0;
+                                    }
+                                }
+                            }
+                        }
+                        if(data[i][j][k] == HUGE_VAL)
+                        {
+                            data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                        }
+                    }
+                }
+                else
+                {
+                    cout << "problème dans la géométrie node = 3" << endl;
+                    cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
+                    for(int m = 0; m < nodes_commun_tag.size(); m++)
+                    {
+                        cout << nodes_commun_tag[m] << " ";
+                    }
+                    cout << endl;
+                    cout << "elements commun: " << elements_commun_tag.size() << ": ";
+                    for(int m = 0; m < elements_commun_tag.size(); m++)
+                    {
+                        cout << elements_commun_tag[m] << " ";
+                    }
+                    cout << endl;
+                    cout << endl;
+                }
+                for(int k = 0; k < nb_nodes_element2d; k++)
+                {
+                    int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
+                    if(data[i][j][k] == HUGE_VAL)
+                    {
+                        data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                    }
+                }
+            }
+            elements_commun_tag.clear();
+            elements_commun_indice.clear();
+            nodes_commun_tag.clear();
+        }
+    }
 }
