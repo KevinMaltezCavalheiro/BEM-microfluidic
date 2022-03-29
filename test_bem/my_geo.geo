@@ -1,7 +1,7 @@
 Lx = 1;
 Ly = 1;
-nx = 10;
-ny = 10;
+nx = 4;
+ny = 4;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {Lx, 0, 0, 1.0};
@@ -17,7 +17,7 @@ Transfinite Curve {3, 1} = nx+1 Using Progression 1;
 Transfinite Curve {4, 2} = ny+1 Using Progression 1;
 Transfinite Surface {1};
 
-//Recombine Surface {1}; // quads instead of triangles
+Recombine Surface {1}; // quads instead of triangles
 
 //à gauche c'est le tag qu'on donne, il doit être différent pour chaque curve ou surface et à droite c'est l'élément définit correspondant 4 courbes et 1 surface
 Physical Curve("bottom_edge", 1) = {1};

@@ -784,14 +784,6 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                     cout << endl;
                     cout << endl;
                 }
-                for(int k = 0; k < nb_nodes_element2d; k++)
-                {
-                    int loop_element_2d_nodes_tag = nodeTags2d[i][nb_nodes_element2d*j+k];
-                    if(data[i][j][k] == HUGE_VAL)
-                    {
-                        data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
-                    }
-                }
             }
             elements_commun_tag.clear();
             elements_commun_indice.clear();
