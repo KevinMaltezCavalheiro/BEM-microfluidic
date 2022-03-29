@@ -11,32 +11,58 @@ struct elementStruct{
     std::string bcType; // "dirichlet" or "neumann" (at the end, should replace this by an int or boolean)
     double bcValue [2]; // values of [u, u_n]
     int nodeTags [2];   // tags of the [first, second] nodes of the element
+
+    double length;
+    double x1, y1, x2, y2;
+    double midX, midY;
+    double deltaX, deltaY;
 };
 
-int main(int argc, char **argv)
+void dispNodeCoordFun(const std::vector<size_t> &allNodeTags, const std::vector<double> &allCoord);
+void dispMatricesFun(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, const Eigen::MatrixXd &c, const Eigen::MatrixXd &b, const Eigen::MatrixXd &x);
+void dispValuesFun(const std::vector<elementStruct> &elementVector);
+
+void getBC(const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy);
+void computeGeometricParam(elementStruct &element, const std::vector<double> &allCoord);
+double computeH(const double x, const double y, const elementStruct &element);
+double computeG(const double x, const double y, const elementStruct &element, const std::string integrationType);
+
+void computeData(const std::vector<elementStruct> &elementVector, const std::vector<int> &elementTypes, const std::vector<std::vector<size_t>> &elementTags, std::vector<size_t> &tags, std::vector<std::vector<double>> &data);
+void displayData(const std::string viewName, const std::string modelName, const std::string fileName, const std::vector<size_t> &tags, const std::vector<std::vector<double>> &data);
+
+void dispNodeCoordFun(const std::vector<size_t> &allNodeTags, const std::vector<double> &allCoord)
 {
-    if (argc < 2)
+    for(int i = 0; i < allNodeTags.size(); i++)
+        std::cout << "Node '" << allNodeTags[i] << "': (" << allCoord[3*i] << "; " << allCoord[3*i + 1] << "; " << allCoord[3*i + 2] << ")\n";
+    std::cout << "\n";
+}
+void dispMatricesFun(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, const Eigen::MatrixXd &c, const Eigen::MatrixXd &b, const Eigen::MatrixXd &x)
+{
+    std::cout << "A matrix:\n";
+    std::cout << A << std::endl;
+    std::cout << "\nB matrix:\n";
+    std::cout << B << std::endl;
+    std::cout << "\nc vector:\n";
+    std::cout << c << std::endl;
+    std::cout << "\nb vector:\n";
+    std::cout << b << std::endl;
+    std::cout << "\nx vector:\n";
+    std::cout << x << std::endl;
+}
+void dispValuesFun(const std::vector<elementStruct> &elementVector)
+{
+    for(int i = 0; i < elementVector.size(); i++)
     {
-        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
-        return 0;
+        std::cout << "Element '" << elementVector[i].tag << "': from node " << elementVector[i].nodeTags[0] << " to node " << elementVector[i].nodeTags[1] << " (" << elementVector[i].bcType << "):\tDirichlet: " << elementVector[i].bcValue[0] << "\tNeumann: " << elementVector[i].bcValue[1] << "\n";
     }
+}
 
-    // Parameters for displaying variables (for debugging).
-    int dispNodeCoord = 0;  // Coordinates of the nodes.
-    int dispHierarchy = 0;  // Hierarchy (physical groups -> entities -> elements -> nodes).
-    int dispAngles = 0;     // Angles used for the computation of h. /!\ Displays ~n^2 angles.
-    int dispMatrices = 0;   // Matrices A, B, c, b, x. /!\ May lead to visualisation problems for large matrices.
-    int dispValues = 0;     // Elements and their values of u and u_n.
-    int openGUI = 1;        // Graphical interface of GMSH.
 
-    gmsh::initialize();
-
-    gmsh::open(argv[1]);
-    gmsh::model::mesh::generate(2);
-    
+void getBC(const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy)
+{
     // Gets the dim and the tags of the physical groups
     gmsh::vectorpair physicalGroupsDimTags;
-    gmsh::model::getPhysicalGroups(physicalGroupsDimTags, 1);
+    gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
     // Gets the boundary conditions from onelab and create a map: "name of the physical group" -> ("dirichlet"/"neumann", value)
     std::map<std::string, std::pair<std::string, double>> bcMap;
@@ -58,27 +84,8 @@ int main(int argc, char **argv)
             bcMap[words[1]] = {words[2], values[0]};
     }
 
-    // Initialises a vector of elements (that will contain all the elements of interrest)
-    std::vector<elementStruct> elementVector;
-    
     // Initially, these are 0 and are incremented each time a dirichlet/neumann-element is encountered.
-    int dirichletCount = 0;
-
-    // Gets the tags, the coordinates and the parametric coordinates of the nodes.
-    std::vector<std::size_t> allNodeTags;
-    std::vector<double> allCoord;
-    std::vector<double> allParametricCoord;
-    gmsh::model::mesh::getNodes(allNodeTags, allCoord, allParametricCoord);
-    
-    // Print the coordinates of all nodes if dispNodeCoord != 0
-    if(dispNodeCoord)
-    {
-        for(int i = 0; i < allNodeTags.size(); i++)
-            std::cout << "Node '" << allNodeTags[i] << "': (" << allCoord[3*i] << "; " << allCoord[3*i + 1] << "; " << allCoord[3*i + 2] << ")\n";
-        std::cout << "\n";
-    }
-
-    for (int i = 0; i < physicalGroupsDimTags.size(); ++i)
+    for (int i = 0; i < physicalGroupsDimTags.size(); i++)
     {
         int physicalGroupsDim = physicalGroupsDimTags[i].first;
         int physicalGroupsTag = physicalGroupsDimTags[i].second;
@@ -121,6 +128,7 @@ int main(int argc, char **argv)
                 element.bcType = bcType;
                 element.nodeTags[0] = nodeTags[2*el];
                 element.nodeTags[1] = nodeTags[2*el + 1];
+                computeGeometricParam(element, allCoord);
                 // The elementVector should be "sorted" => push from front or from back depending on element type.
                 if(bcType == "dirichlet")
                 {
@@ -146,6 +154,154 @@ int main(int argc, char **argv)
                 std::cout << "\n";
         }
     }
+}
+
+
+void computeGeometricParam(elementStruct &element, const std::vector<double> &allCoord)
+{
+    int i1Tag = element.nodeTags[0];
+    int i2Tag = element.nodeTags[1];
+
+    // Get the coordinates of the nodes from their tag.
+    element.x1 = allCoord[3*(i1Tag-1)];
+    element.y1 = allCoord[3*(i1Tag-1) + 1];
+    element.x2 = allCoord[3*(i2Tag-1)];
+    element.y2 = allCoord[3*(i2Tag-1) + 1];
+
+    element.midX = (element.x1 + element.x2) / 2;
+    element.midY = (element.y1 + element.y2) / 2;
+    element.deltaX = element.x2 - element.x1;
+    element.deltaY = element.y2 - element.y1;
+    element.length = sqrt(pow(element.deltaX, 2.0) + pow(element.deltaY, 2.0));
+}
+
+
+double computeH(const double x, const double y, const elementStruct &element)
+{
+    double deltaX1 = element.x1 - x;
+    double deltaX2 = element.x2 - x;
+    double deltaY1 = element.y1 - y;
+    double deltaY2 = element.y2 - y;
+    
+    double cosAlpha = (deltaX1*deltaX2 + deltaY1*deltaY2) / sqrt((pow(deltaX1,2.0) + pow(deltaY1,2.0))*(pow(deltaX2,2.0) + pow(deltaY2,2.0)));
+    if(cosAlpha < -1.0)
+        cosAlpha = -1.0;
+    else if(cosAlpha > 1.0)
+        cosAlpha = 1.0;
+
+    double alpha = acos(cosAlpha);
+
+    double crossProduct = deltaX1*deltaY2 - deltaY1*deltaX2;
+    if(crossProduct < 0)
+        alpha = -alpha;
+    
+    return alpha / (2*M_PI);
+}
+
+
+double computeG(const double x, const double y, const elementStruct &element, const std::string integrationType)
+{
+    // Computation of the integration points (parametric) and weights.
+    std::vector<double> localCoord;
+    std::vector<double> weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+
+    // Computation of the sum (of integrand evaluated at integration point * weight)
+    double gSum = 0;
+    for(int k = 0; k < weights.size(); k++)
+    {
+        // Parametric coordinate
+        double xi = localCoord[3*k];
+        // Global coordinates
+        double gX = element.midX + element.deltaX*xi/2;
+        double gY = element.midY + element.deltaY*xi/2;
+
+        // Distance between mid point of element 'i' and integration point.
+        double r = sqrt(pow(x - gX, 2.0) + pow(y - gY, 2.0));
+        gSum += log(r) * weights[k];
+    }
+    
+    return gSum * element.length / (4*M_PI);
+}
+
+
+void computeData(const std::vector<elementStruct> &elementVector, const std::vector<int> &elementTypes, const std::vector<std::vector<size_t>> &elementTags, std::vector<size_t> &tags, std::vector<std::vector<double>> &data)
+{
+    int elementCount = 0;
+    for(int i = 0; i < elementTypes.size(); i++)
+    {
+        int elType = elementTypes[i];
+        std::vector<double> barycenters;
+        gmsh::model::mesh::getBarycenters(elType, -1, false, false, barycenters);
+        
+        for(int j = 0; j < elementTags[i].size(); j++)
+        {
+            double x = barycenters[3*j];
+            double y = barycenters[3*j + 1];
+
+            double phi = 0;
+            for(int k = 0; k < elementVector.size(); k++)
+            {
+                double h = computeH(x, y, elementVector[k]);
+                double g = computeG(x, y, elementVector[k], "Gauss4");
+                phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
+            }
+            // Potential at the node is phi.
+            tags[elementCount] = elementTags[i][j];
+            data[elementCount] = std::vector<double> (1);
+            data[elementCount][0] = phi;
+            elementCount++;
+        }
+    }
+}
+
+void displayData(const std::string viewName, const std::string modelName, const std::string fileName, const std::vector<size_t> &tags, const std::vector<std::vector<double>> &data)
+{
+    int viewTag = gmsh::view::add(viewName);
+    gmsh::view::addModelData(viewTag, 0, modelName, "ElementData", tags, data);
+    gmsh::view::write(viewTag, fileName);
+
+    gmsh::option::setNumber("View[0].IntervalsType", 3);
+    // gmsh::option::setNumber("View[0].AdaptVisualizationGrid", 1); // Problem with this command !
+    gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+    gmsh::option::setNumber("View[0].TargetError", -0.0001);
+}
+
+
+int main(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
+        return 0;
+    }
+
+    // Parameters for displaying variables (for debugging).
+    bool dispNodeCoord = false;  // Coordinates of the nodes.
+    bool dispHierarchy = false;  // Hierarchy (physical groups -> entities -> elements -> nodes).
+    bool dispMatrices = false;   // Matrices A, B, c, b, x. /!\ May lead to visualisation problems for large matrices.
+    bool dispValues = false;     // Elements and their values of u and u_n.
+    bool openGUI = true;        // Graphical interface of GMSH.
+
+    gmsh::initialize();
+
+    gmsh::open(argv[1]);
+    gmsh::model::mesh::generate(2);
+
+    std::vector<elementStruct> elementVector;
+
+    // Gets the tags, the coordinates and the parametric coordinates of the nodes.
+    std::vector<std::size_t> allNodeTags;
+    std::vector<double> allCoord;
+    std::vector<double> allParametricCoord;
+    gmsh::model::mesh::getNodes(allNodeTags, allCoord, allParametricCoord);
+    
+    // Print the coordinates of all nodes if dispNodeCoord != 0
+    if(dispNodeCoord)
+        dispNodeCoordFun(allNodeTags, allCoord);
+
+    int dirichletCount = 0;
+    getBC(allCoord, elementVector, dirichletCount, dispHierarchy);
 
     // Declaration of matrices A, B and vector c (the matrix type is perhaps not the most efficient).
     Eigen::MatrixXd A = Eigen::MatrixXd::Zero(elementVector.size(), elementVector.size());
@@ -154,23 +310,6 @@ int main(int argc, char **argv)
 
     //  Double loop over each element in order to compute the element h and g that will be given to the matrices A and B.
     for(int i = 0; i < elementVector.size(); i++)
-    {
-        // All these usefull i/j values could be stored in the elementStruct type, so that we only compute it once.
-        // Indices '1'/'2' stand for 'Node 1'/'Node 2' (of element 'i' here).
-        int i1Tag = elementVector[i].nodeTags[0];
-        int i2Tag = elementVector[i].nodeTags[1];
-
-        // Get the coordinates of the nodes from their tag.
-        double i1X = allCoord[3*(i1Tag-1)];
-        double i1Y = allCoord[3*(i1Tag-1) + 1];
-        double i2X = allCoord[3*(i2Tag-1)];
-        double i2Y = allCoord[3*(i2Tag-1) + 1];
-
-        // Compute the coordinates of the mid point of element 'i' and its length.
-        double iMidX = (i1X + i2X) / 2;
-        double iMidY = (i1Y + i2Y) / 2;
-        double iLength = sqrt(pow(i1X - i2X, 2.0) + pow(i1Y - i2Y, 2.0));
-
         for(int j = 0; j < elementVector.size(); j++)
         {
             // Will be computed and stored in A and B.
@@ -180,68 +319,12 @@ int main(int argc, char **argv)
             if(i == j)  // Formula for diagonal elements.
             {
                 h = -0.5;
-                g = (iLength/(2*M_PI)) * (log(iLength/2)-1);
+                g = (elementVector[i].length/(2*M_PI)) * (log(elementVector[i].length/2)-1);
             }
             else    // General case
             {
-                // Indices '1'/'2' stand for 'Node 1'/'Node 2' (of element 'j' here).
-                int j1Tag = elementVector[j].nodeTags[0];
-                int j2Tag = elementVector[j].nodeTags[1];
-
-                // Get the coordinates of the nodes from their tag.
-                double j1X = allCoord[3*(j1Tag-1)];
-                double j1Y = allCoord[3*(j1Tag-1) + 1];
-                double j2X = allCoord[3*(j2Tag-1)];
-                double j2Y = allCoord[3*(j2Tag-1) + 1];
-
-                // Compute the coordinates of the mid point of element 'j', deltaX and deltaY and its length.
-                double jMidX = (j1X + j2X) / 2;
-                double jMidY = (j1Y + j2Y) / 2;
-                double jDeltaX = j2X - j1X;
-                double jDeltaY = j2Y - j1Y;
-                double jLength = sqrt(pow(jDeltaX, 2.0) + pow(jDeltaY, 2.0));
-
-                // Compute the angles between mid point of element 'i' and nodes 1/2 of element 'j' (in radian).
-                double a1 = atan2(j1Y - iMidY, j1X - iMidX);
-                double a2 = atan2(j2Y - iMidY, j2X - iMidX);
-                while(a2 < a1)  // This is not general and should be reviewed (concave surfaces)!
-                    a2 += 2*M_PI;
-
-                // Angle verification
-                if(dispAngles)
-                {
-                    double angleConst = 180 / M_PI;
-                    double a1_deg = angleConst * a1;
-                    double a2_deg = angleConst * a2;
-                    std::cout << "Angles from element with tag '" << elementVector[i].tag << "' to element with tag '" << elementVector[j].tag << "':\n";
-                    std::cout << "\tNode: tag '" << j1Tag << "': " << a1_deg << "\n";
-                    std::cout << "\tNode: tag '" << j2Tag << "': " << a2_deg << "\n";
-                }
-                
-                h = (a2 - a1) / (2*M_PI);
-                
-                // Computation of the integration points (parametric) and weights.
-                std::string integrationType = "Gauss4"; // Could vary depending on the distance between the elements.
-                std::vector<double> localCoord;
-                std::vector<double> weights;
-                gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
-
-                // Computation of the sum (of integrand evaluated at integration point * weight)
-                double gSum = 0;
-                for(int k = 0; k < weights.size(); k++)
-                {
-                    // Parametric coordinate
-                    double xi = localCoord[3*k];
-                    // Global coordinates
-                    double gX = jMidX + jDeltaX*xi/2;
-                    double gY = jMidY + jDeltaY*xi/2;
-
-                    // Distance between mid point of element 'i' and integration point.
-                    double r = sqrt(pow(iMidX - gX, 2.0) + pow(iMidY - gY, 2.0));
-                    gSum += log(r) * weights[k];
-                }
-                
-                g = gSum * jLength / (4*M_PI);
+                h = computeH(elementVector[i].midX, elementVector[i].midY, elementVector[j]);
+                g = computeG(elementVector[i].midX, elementVector[i].midY, elementVector[j], "Gauss4");
             }
             
             // Storage of h and g at the right place (in matrices A and B).
@@ -258,27 +341,13 @@ int main(int argc, char **argv)
                 c(j) = elementVector[j].bcValue[1];
             }
         }
-    }
 
-    // Compute b then x.
     Eigen::MatrixXd b = B*c;
-    //Eigen::MatrixXd x = A.householderQr().solve(b);
     Eigen::MatrixXd x = A.fullPivLu().solve(b);
     
     // Matrices verification
     if(dispMatrices)
-    {
-        std::cout << "A matrix:\n";
-        std::cout << A << std::endl;
-        std::cout << "\nB matrix:\n";
-        std::cout << B << std::endl;
-        std::cout << "\nc vector:\n";
-        std::cout << c << std::endl;
-        std::cout << "\nb vector:\n";
-        std::cout << b << std::endl;
-        std::cout << "\nx vector:\n";
-        std::cout << x << std::endl;
-    }
+        dispMatricesFun(A, B, c, b, x);
 
     // Assign each value of x to the right element.
     for(int i = 0; i < elementVector.size(); i++)
@@ -287,101 +356,30 @@ int main(int argc, char **argv)
             elementVector[i].bcValue[1] = x(i);
         else
             elementVector[i].bcValue[0] = x(i);
-        
-        if(dispValues)
-            std::cout << "Element '" << elementVector[i].tag << "': from node " << elementVector[i].nodeTags[0] << " to node " << elementVector[i].nodeTags[1] << " (" << elementVector[i].bcType << "):\tDirichlet: " << elementVector[i].bcValue[0] << "\tNeumann: " << elementVector[i].bcValue[1] << "\n";
     }
+    if(dispValues)
+        dispValuesFun(elementVector);
 
     /*
      *  Visualisation
      */
-
     std::vector<std::string> names;
     gmsh::model::list(names);
-    std::cout << "the file contains " << names.size() << " model names\n";
+    
+    std::vector<int> elementTypes;
+    std::vector<std::vector<std::size_t>> elementTags;
+    std::vector<std::vector<std::size_t>> nodeTags;
+    gmsh::model::mesh::getElements(elementTypes, elementTags, nodeTags, 2);
+    
+    int nb2dElements = 0;
+    for(int i = 0; i < elementTypes.size(); i++)
+        nb2dElements += elementTags[i].size();
 
-    int viewNodeTag = gmsh::view::add("NodeData");
-    std::vector<std::vector<double>> data(allNodeTags.size());
+    std::vector<std::vector<double>> phi(nb2dElements);
+    std::vector<std::size_t> tags(nb2dElements);
 
-    for(int i = 0; i < allNodeTags.size(); i++)
-    {
-        // Coordinates of the node
-        double x = allCoord[3*i];
-        double y = allCoord[3*i + 1];
-
-        double phi = 0;
-        for(int j = 0; j < elementVector.size(); j++)
-        {
-            double h;
-            double g;
-            
-            // Indices '1'/'2' stand for 'Node 1'/'Node 2' (of element i here).
-            int j1Tag = elementVector[j].nodeTags[0];
-            int j2Tag = elementVector[j].nodeTags[1];
-            
-            // This is certainly not the most efficient way to do.
-            // Should also find an alternative for the ambiguity at the corner nodes.
-            if(j1Tag == i+1 || j2Tag == i+1)
-            {
-                phi = elementVector[j].bcValue[0];
-                break;
-            }
-
-            // Get the coordinates of the nodes from their tag.
-            double j1X = allCoord[3*(j1Tag-1)];
-            double j1Y = allCoord[3*(j1Tag-1) + 1];
-            double j2X = allCoord[3*(j2Tag-1)];
-            double j2Y = allCoord[3*(j2Tag-1) + 1];
-
-            // Compute the coordinates of the mid point of element i and its length.
-            double jMidX = (j1X + j2X) / 2;
-            double jMidY = (j1Y + j2Y) / 2;
-            double jDeltaX = j2X - j1X;
-            double jDeltaY = j2Y - j1Y;
-            double jLength = sqrt(pow(jDeltaX, 2.0) + pow(jDeltaY, 2.0));
-
-            double a1 = atan2((j1Y - y),(j1X - x));
-            double a2 = atan2((j2Y - y),(j2X - x));
-            while(a2 < a1)
-                a2 += 2*M_PI;
-            h = (a2 - a1) / (2*M_PI);
-            
-            // Computation of the integration points (parametric) and weights.
-            std::string integrationType = "Gauss4"; // Could vary depending on the distance between the elements.
-            std::vector<double> localCoord;
-            std::vector<double> weights;
-            gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
-
-            // Computation of the sum (of integrand evaluated at integration point * weight)
-            double gSum = 0;
-            for(int k = 0; k < weights.size(); k++)
-            {
-                // Parametric coordinate
-                double xi = localCoord[3*k];
-                // Global coordinates
-                double gX = jMidX + jDeltaX*xi/2;
-                double gY = jMidY + jDeltaY*xi/2;
-
-                // Distance between mid point of element i and integration point.
-                double r = sqrt(pow(x - gX, 2.0) + pow(y - gY, 2.0));
-                gSum += log(r) * weights[k];
-            }
-            
-            g = gSum * jLength / (4*M_PI);
-
-            phi += h*elementVector[j].bcValue[0] - g*elementVector[j].bcValue[1];
-        }
-        // Potential at the node is phi.
-        data[i].resize(1);
-        data[i][0] = phi;
-    }
-    gmsh::view::addModelData(viewNodeTag, 0, names[0], "NodeData", allNodeTags, data, 0.0, 1);
-    gmsh::view::write(viewNodeTag, "results.msh");
-
-    gmsh::option::setNumber("View[0].IntervalsType", 3);
-    gmsh::option::setNumber("View[0].AdaptVisualizationGrid", 1);
-    gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
-    gmsh::option::setNumber("View[0].TargetError", -0.0001);
+    computeData(elementVector, elementTypes, elementTags, tags, phi);
+    displayData("phi", names[0], "results.msh", tags, phi);
 
     if(openGUI)
         gmsh::fltk::run();
