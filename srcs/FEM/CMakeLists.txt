@@ -45,6 +45,8 @@ IF(NOT EIGEN_INCLUDE_DIRS)
 ENDIF()
 INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIRS})
 
+SET(CMAKE_CXX_FLAGS "${CXX_FLAGS} -Wall")
+
 # ------------------------------------------------------------------------------
 
 FILE(GLOB SRCS *.cpp)
