@@ -7,12 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0A85288E27D395CB00D1C30F /* code_kevin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A85288C27D395CB00D1C30F /* code_kevin.cpp */; };
 		0A85289727D3ECBC00D1C30F /* test.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A85289627D3ECBC00D1C30F /* test.cpp */; };
 		0A85289A27D3EDE500D1C30F /* code_louis_function.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A85289827D3EDE500D1C30F /* code_louis_function.cpp */; };
 		0A85289D27D6D39C00D1C30F /* BEM_livre.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A85289B27D6D39C00D1C30F /* BEM_livre.cpp */; };
 		0A8528A227D6D69F00D1C30F /* code_louis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A8528A027D6D69F00D1C30F /* code_louis.cpp */; };
 		0AAB3F3827DEB40100FF9C2C /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0AAB3F3727DEB40100FF9C2C /* main.cpp */; };
+		0AEC8AF227F4671300A2B3C8 /* code_kevin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0AEC8AF027F4671300A2B3C8 /* code_kevin.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -31,8 +31,6 @@
 		0A85287A27D22FD700D1C30F /* test_bem */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_bem; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A85287B27D242A400D1C30F /* rectangle.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = rectangle.geo; sourceTree = SOURCE_ROOT; };
 		0A85287C27D242F200D1C30F /* my_geo.geo */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = my_geo.geo; sourceTree = "<group>"; };
-		0A85288C27D395CB00D1C30F /* code_kevin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = code_kevin.cpp; sourceTree = "<group>"; };
-		0A85288D27D395CB00D1C30F /* code_kevin.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = code_kevin.hpp; sourceTree = "<group>"; };
 		0A85289527D3ECBC00D1C30F /* test.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = test.h; sourceTree = "<group>"; };
 		0A85289627D3ECBC00D1C30F /* test.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = test.cpp; sourceTree = "<group>"; };
 		0A85289827D3EDE500D1C30F /* code_louis_function.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = code_louis_function.cpp; path = "code louis/code_louis_function.cpp"; sourceTree = SOURCE_ROOT; };
@@ -42,6 +40,8 @@
 		0A8528A027D6D69F00D1C30F /* code_louis.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = code_louis.cpp; sourceTree = "<group>"; };
 		0A8528A127D6D69F00D1C30F /* code_louis.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = code_louis.hpp; sourceTree = "<group>"; };
 		0AAB3F3727DEB40100FF9C2C /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		0AEC8AF027F4671300A2B3C8 /* code_kevin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = code_kevin.cpp; sourceTree = "<group>"; };
+		0AEC8AF127F4671300A2B3C8 /* code_kevin.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = code_kevin.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,8 +68,8 @@
 			children = (
 				0A85287B27D242A400D1C30F /* rectangle.geo */,
 				0A85287C27D242F200D1C30F /* my_geo.geo */,
-				0A85288C27D395CB00D1C30F /* code_kevin.cpp */,
-				0A85288D27D395CB00D1C30F /* code_kevin.hpp */,
+				0AEC8AF027F4671300A2B3C8 /* code_kevin.cpp */,
+				0AEC8AF127F4671300A2B3C8 /* code_kevin.hpp */,
 				0AAB3F3727DEB40100FF9C2C /* main.cpp */,
 				0A85289B27D6D39C00D1C30F /* BEM_livre.cpp */,
 				0A85289C27D6D39C00D1C30F /* BEM_livre.h */,
@@ -141,9 +141,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				0A8528A227D6D69F00D1C30F /* code_louis.cpp in Sources */,
-				0A85288E27D395CB00D1C30F /* code_kevin.cpp in Sources */,
 				0AAB3F3827DEB40100FF9C2C /* main.cpp in Sources */,
 				0A85289727D3ECBC00D1C30F /* test.cpp in Sources */,
+				0AEC8AF227F4671300A2B3C8 /* code_kevin.cpp in Sources */,
 				0A85289D27D6D39C00D1C30F /* BEM_livre.cpp in Sources */,
 				0A85289A27D3EDE500D1C30F /* code_louis_function.cpp in Sources */,
 			);
