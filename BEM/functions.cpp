@@ -10,6 +10,7 @@
 #include "functions.hpp"
 #include <omp.h>
 
+/*-----------------todo déjà fait mais il faudra peut être en refaire certains par après donc je les garde------------------*/
 //todo: séparer en différentes fonctions
 //todo: comparer au livre BEM
 //todo: voir pour gérer des trous dans les surfaces
@@ -21,11 +22,12 @@
 //todo: potentiel2d fonction
 //todo: gérer permuttation matrice plus efficacement (en vrai mnt, osef)
 //todo: hybrid mesh + éléments 1d 3 noeuds
-
-//todo: convergence
 //todo: mettre en parallèle
-//todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
 //todo: elementtype pour optimiser elementnodedata
+
+/*-----------------todo qu'il reste vraiment à faire------------------*/
+//todo: convergence
+//todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
 //todo: commenter le code
 
 using namespace gmsh;
