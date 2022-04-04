@@ -51,7 +51,9 @@ Transfinite Curve {6} = nx_in + 1 Using Progression 1;
 Transfinite Curve {7} = ny_in + 1 Using Progression 1;
 Transfinite Curve {8} = nx_in + 1 Using Progression 1;
 
-//Recombine Surface {1};
+Recombine Surface {1};
+
+Mesh.ElementOrder = 2;
 
 Physical Curve("inside", 5) = {5, 6, 7, 8};
 Physical Curve("outside", 6) = {1, 2, 3, 4};

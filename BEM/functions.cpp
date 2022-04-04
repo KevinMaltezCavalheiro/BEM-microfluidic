@@ -63,8 +63,8 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     bool dispValues = 0;     // Elements and their values of u and u_n.
     bool openGUI = 1;        // Graphical interface of GMSH.
     bool show_element_node_data = 0;
-    bool show_time = 1;
-    int visualisation = 2;  //0: no visualisation, 1: element node data, 2: element data
+    bool show_time = 1; //display the elapsed time for the internal potential calculus in the terminal
+    int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
 
     // Initialises a vector of elements (that will contain all the elements of interrest)
     vector<elementStruct> elementVector;
