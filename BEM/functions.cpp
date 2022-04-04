@@ -30,6 +30,8 @@
 //todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
 //todo: commenter le code
 
+//just for test commit
+
 using namespace gmsh;
 using namespace std;
 using namespace Eigen;
