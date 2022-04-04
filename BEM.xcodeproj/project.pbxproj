@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		0A591E4927F9CE1700B1D4E1 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E4827F9CE1700B1D4E1 /* main.cpp */; };
+		0A591E5527F9D06200B1D4E1 /* functions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5027F9D06200B1D4E1 /* functions.cpp */; };
+		0A591E5627F9D06200B1D4E1 /* code_louis_function.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5227F9D06200B1D4E1 /* code_louis_function.cpp */; };
+		0A591E5727F9D06200B1D4E1 /* code_louis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5427F9D06200B1D4E1 /* code_louis.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -25,6 +28,19 @@
 /* Begin PBXFileReference section */
 		0A591E4527F9CE1700B1D4E1 /* BEM */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = BEM; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A591E4827F9CE1700B1D4E1 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		0A591E4F27F9D06200B1D4E1 /* code_louis.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = code_louis.hpp; sourceTree = "<group>"; };
+		0A591E5027F9D06200B1D4E1 /* functions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functions.cpp; sourceTree = "<group>"; };
+		0A591E5127F9D06200B1D4E1 /* functions.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functions.hpp; sourceTree = "<group>"; };
+		0A591E5227F9D06200B1D4E1 /* code_louis_function.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = code_louis_function.cpp; sourceTree = "<group>"; };
+		0A591E5327F9D06200B1D4E1 /* code_louis_function.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = code_louis_function.hpp; sourceTree = "<group>"; };
+		0A591E5427F9D06200B1D4E1 /* code_louis.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = code_louis.cpp; sourceTree = "<group>"; };
+		0A591E5827F9D26900B1D4E1 /* hole.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = hole.geo; sourceTree = "<group>"; };
+		0A591E5927F9D26900B1D4E1 /* complex_validation.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = complex_validation.geo; sourceTree = "<group>"; };
+		0A591E5A27F9D26900B1D4E1 /* my_geo.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = my_geo.geo; sourceTree = "<group>"; };
+		0A591E5B27F9D26900B1D4E1 /* l_shape.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = l_shape.geo; sourceTree = "<group>"; };
+		0A591E5C27F9D26900B1D4E1 /* rectangle.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = rectangle.geo; sourceTree = "<group>"; };
+		0A591E5D27F9D26900B1D4E1 /* impossible.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = impossible.geo; sourceTree = "<group>"; };
+		0A591E5E27F9D26900B1D4E1 /* doubleHole.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = doubleHole.geo; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,6 +74,19 @@
 			isa = PBXGroup;
 			children = (
 				0A591E4827F9CE1700B1D4E1 /* main.cpp */,
+				0A591E5027F9D06200B1D4E1 /* functions.cpp */,
+				0A591E5127F9D06200B1D4E1 /* functions.hpp */,
+				0A591E4F27F9D06200B1D4E1 /* code_louis.hpp */,
+				0A591E5427F9D06200B1D4E1 /* code_louis.cpp */,
+				0A591E5227F9D06200B1D4E1 /* code_louis_function.cpp */,
+				0A591E5327F9D06200B1D4E1 /* code_louis_function.hpp */,
+				0A591E5927F9D26900B1D4E1 /* complex_validation.geo */,
+				0A591E5E27F9D26900B1D4E1 /* doubleHole.geo */,
+				0A591E5827F9D26900B1D4E1 /* hole.geo */,
+				0A591E5D27F9D26900B1D4E1 /* impossible.geo */,
+				0A591E5B27F9D26900B1D4E1 /* l_shape.geo */,
+				0A591E5A27F9D26900B1D4E1 /* my_geo.geo */,
+				0A591E5C27F9D26900B1D4E1 /* rectangle.geo */,
 			);
 			path = BEM;
 			sourceTree = "<group>";
@@ -119,7 +148,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A591E5627F9D06200B1D4E1 /* code_louis_function.cpp in Sources */,
+				0A591E5727F9D06200B1D4E1 /* code_louis.cpp in Sources */,
 				0A591E4927F9CE1700B1D4E1 /* main.cpp in Sources */,
+				0A591E5527F9D06200B1D4E1 /* functions.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -239,6 +271,29 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = (
+					"/usr/local/include/gmsh-4.9.5-MacOSX-sdk/include",
+					/usr/local/eigen/3.4.0_1/include/eigen3/,
+					/usr/local/opt/libomp/include,
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"/usr/local/lib/gmsh-4.9.5-MacOSX-sdk/lib",
+					/usr/local/eigen/3.4.0_1/include/eigen3/,
+					/usr/local/opt/libomp/lib,
+				);
+				OTHER_CFLAGS = (
+					"-Xpreprocessor",
+					"-fopenmp",
+				);
+				OTHER_LDFLAGS = (
+					"-Xclang",
+					"-fopenmp",
+					"-O2",
+					"-g",
+					"-lgmsh",
+					"-DNDEBUG",
+					"-lomp",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -247,6 +302,29 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = (
+					"/usr/local/include/gmsh-4.9.5-MacOSX-sdk/include",
+					/usr/local/eigen/3.4.0_1/include/eigen3/,
+					/usr/local/opt/libomp/include,
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"/usr/local/lib/gmsh-4.9.5-MacOSX-sdk/lib",
+					/usr/local/eigen/3.4.0_1/include/eigen3/,
+					/usr/local/opt/libomp/lib,
+				);
+				OTHER_CFLAGS = (
+					"-Xpreprocessor",
+					"-fopenmp",
+				);
+				OTHER_LDFLAGS = (
+					"-Xclang",
+					"-fopenmp",
+					"-O2",
+					"-g",
+					"-lgmsh",
+					"-DNDEBUG",
+					"-lomp",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
