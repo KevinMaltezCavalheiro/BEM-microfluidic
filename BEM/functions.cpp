@@ -29,8 +29,7 @@
 //todo: convergence
 //todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
 //todo: commenter le code
-
-//just for test commit
+//todo: representation formula pour le champ electrique
 
 using namespace gmsh;
 using namespace std;
@@ -66,8 +65,9 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     bool openGUI = 1;        // Graphical interface of GMSH.
     bool show_element_node_data = 0;
     bool show_time = 1; //display the elapsed time for the internal potential calculus in the terminal
-    int visualisation = 2;  //0: no visualisation, 1: element node data, 2: element data
-
+    int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
+    auto start = chrono::steady_clock::now();
+    auto end = chrono::steady_clock::now();
     // Initialises a vector of elements (that will contain all the elements of interrest)
     vector<elementStruct> elementVector;
     string integrationType = "Gauss4"; // Could vary depending on the distance between the elements.
@@ -117,7 +117,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     //  Double loop over each element in order to compute the element h and g that will be given to the matrices A and B.
     double h;
     double g;
-#pragma omp parallel for schedule(static) shared(elementVector,A,B,c,integrationType,dirichletCount) private(h,g)
+#pragma omp parallel for schedule(guided) shared(elementVector,A,B,c,integrationType,dirichletCount) private(h,g)
     for(int i = 0; i < elementVector.size(); i++)
     {
         for(int j = 0; j < elementVector.size(); j++)
@@ -152,6 +152,8 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
             }
         }
     }
+
+    //If we want to display the time it takes for eigen to solve the linear system
     //auto start = chrono::steady_clock::now();
     MatrixXd b = B*c;
     MatrixXd x = A.fullPivLu().solve(b);
@@ -184,13 +186,18 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     //visualisation by elementnodedata
     if(visualisation == 1)
     {
+        //The first index indicates the elementType, the second the elementTag and the third the nodesTags associated with this element. For example, it says whether it is a square or a triangle, the element tag and finally the tag of the 3 or 4 nodes associated with it.
         vector<vector<vector<double>>> data;
+        //This map associates the value of the potential to all nodes strictly included in the domain and not on the boundary.
         map<int, double> nodeMapDomain;
 
-        auto start = chrono::steady_clock::now();
+        //To displays the time of the this code section
+        start = chrono::steady_clock::now();
+        //the purpose of this function is to fill the nodemapdomain map and thus to calculate the value of the potential at each node in the domain
         compute_internal_phi(allCoord,NodeTags2d_domain,elementVector,nodeMapDomain,integrationType);
-        auto end = chrono::steady_clock::now();
+        end = chrono::steady_clock::now();
 
+        //this function allows to correctly associate the value of the potential to each node of an element in order to display the ElementNodeData view
         element_node_data(data,elementTags2d,elementTypes2d,nodeTags2d,elementVector, nodeMapDomain,show_element_node_data);
 
         int viewNodeTag = view::add("ElementNodeData");
@@ -205,28 +212,6 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
         option::setNumber("View[0].AdaptVisualizationGrid", 1);
         option::setNumber("View[0].MaxRecursionLevel", 3);
         option::setNumber("View[0].TargetError", -0.0001);
-
-        if(show_time)
-        {
-            cout << endl;
-            cout << "Elapsed time in nanoseconds: "
-            << chrono::duration_cast<chrono::nanoseconds>(end - start).count()
-            << " ns" << endl;
-
-            cout << "Elapsed time in microseconds: "
-            << chrono::duration_cast<chrono::microseconds>(end - start).count()
-            << " µs" << endl;
-
-            cout << "Elapsed time in milliseconds: "
-            << chrono::duration_cast<chrono::milliseconds>(end - start).count()
-            << " ms" << endl;
-
-            cout << "Elapsed time in seconds: "
-            << chrono::duration_cast<chrono::seconds>(end - start).count()
-            << " sec";
-            cout << endl;
-            cout << endl;
-        }
     }
     //visualisation by element barycenter
     if(visualisation == 2)
@@ -239,39 +224,46 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
         vector<vector<size_t>> nodeTags;
         model::mesh::getElements(elementTypes, elementTags, nodeTags, 2);
 
+        //To get the total number of 2d elements that make up the domain, we simply add the number of squares to the number of triangles,...
         int nb2dElements = 0;
         for(int i = 0; i < elementTypes.size(); i++)
             nb2dElements += elementTags[i].size();
 
+        //Tag and associated potential of all 2d elements. In this view the potential is calculated at the barycentre and is constant per element.
         vector<vector<double>> phi(nb2dElements);
         vector<size_t> tags(nb2dElements);
 
-        auto start = chrono::steady_clock::now();
+        //To displays the time of the this code section
+        start = chrono::steady_clock::now();
+        //calculates the potential at the barycentre of each element of the domain
         computeData(elementVector, elementTypes, elementTags, tags, phi, integrationType);
-        auto end = chrono::steady_clock::now();
+        end = chrono::steady_clock::now();
+
+        //For ease of use, a function handles the code for the display.
         displayData("phi", names[0], "results.msh", tags, phi);
+    }
 
-        if(show_time)
-        {
-            cout << endl;
-            cout << "Elapsed time in nanoseconds: "
-            << chrono::duration_cast<chrono::nanoseconds>(end - start).count()
-            << " ns" << endl;
+    //displays the time of the desired code section
+    if(show_time)
+    {
+        cout << endl;
+        cout << "Elapsed time in nanoseconds: "
+        << chrono::duration_cast<chrono::nanoseconds>(end - start).count()
+        << " ns" << endl;
 
-            cout << "Elapsed time in microseconds: "
-            << chrono::duration_cast<chrono::microseconds>(end - start).count()
-            << " µs" << endl;
+        cout << "Elapsed time in microseconds: "
+        << chrono::duration_cast<chrono::microseconds>(end - start).count()
+        << " µs" << endl;
 
-            cout << "Elapsed time in milliseconds: "
-            << chrono::duration_cast<chrono::milliseconds>(end - start).count()
-            << " ms" << endl;
+        cout << "Elapsed time in milliseconds: "
+        << chrono::duration_cast<chrono::milliseconds>(end - start).count()
+        << " ms" << endl;
 
-            cout << "Elapsed time in seconds: "
-            << chrono::duration_cast<chrono::seconds>(end - start).count()
-            << " sec";
-            cout << endl;
-            cout << endl;
-        }
+        cout << "Elapsed time in seconds: "
+        << chrono::duration_cast<chrono::seconds>(end - start).count()
+        << " sec";
+        cout << endl;
+        cout << endl;
     }
 
     if(openGUI)
@@ -279,6 +271,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
         fltk::run();
     }
 
+    //Calculates the electrostatic pressure per element in order to provide these results to the FEM code that will handle the rest of the algorithm
     double epsilon = 8.8541878128e-12;
     for(int i = 0; i < elementVector.size(); i++)
     {
@@ -291,23 +284,23 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
 
 void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data)
 {
+    //The first part of the algorithm consists in recovering the tag of the 2d elements of the domain which have at least one node in common with the boundary
+    //The first step is to retrieve the type of all elements in the domain
     vector<int> elementTypes2d_boundary;
-    vector<vector<size_t> > elementTags2d_boundary;
-
     model::mesh::getElementTypes(elementTypes2d_boundary,2);
+    //We initialise the first dimension of the vector that will contain all 2d elements in common with the boundary with the number of element types present in the domain.
+    vector<vector<size_t>> elementTags2d_boundary(elementTypes2d_boundary.size());
 
-    elementTags2d_boundary.resize(elementTypes2d_boundary.size());
-
+    //this loop goes through all the nodes of the boundary (node 1 of each element). We then use getElementsByCoordinates to obtain all the elements in common with the node considered. We only take the 2d elements.
     for(int i = 0; i < elementVector.size(); i++)
     {
-        //pour optimiser element node data
         double posx = elementVector[i].x1;
         double posy = elementVector[i].y1;
         double posz = 0;
-        int dim = 2;
         vector<size_t> elementTags;
-        model::mesh::getElementsByCoordinates(posx,posy,posz,elementTags,dim);
+        model::mesh::getElementsByCoordinates(posx,posy,posz,elementTags,2);
 
+        //we loop on the 2d elements which are in common with the considered node of the boundary. Depending on their type, they are added to the vector comprising all the 2d elements common with the boundary.
         for(int j = 0; j < elementTags.size(); j++)
         {
             int elementType;
@@ -326,16 +319,20 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         }
     }
 
+    //This loop allows duplicate tags to be removed. If an element has several nodes with the border, it has been counted several times before.
     for(int i = 0; i < elementTypes2d_boundary.size(); i++)
     {
         elementTags2d_boundary[i].erase( unique( elementTags2d_boundary[i].begin(), elementTags2d_boundary[i].end() ), elementTags2d_boundary[i].end() );
     }
 
+    //This map may be replaced in the future. It allows to retain the position of the elements of the elementTag2d loop and linked their position to the loop of the elementTag2d_boundary (the tags of the elements in common with the boundary). This map is the link between the array of tags of the 2d elements of the boundary and that of the tags of all the 2d elements.
     map<int, int> tagposition;
-    data.resize(elementTags2d.size());
 
+    //The first dimension of data corresponds to the number of element types.
+    data.resize(elementTags2d.size());
     for(int i = 0; i < elementTags2d.size(); i++)
     {
+        //The second dimension of data corresponds to the number of element tags for on element type.
         data[i].resize(elementTags2d[i].size());
         string elementName;
         int dim;
@@ -344,14 +341,19 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         vector<double> localNodeCoord;
         int numPrimaryNodes;
         model::mesh::getElementProperties(elementTypes2d[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+
+        //getElementProperties was used to get the number of nodes for a specific element
         int nb_nodes_element2d = numNodes;
         for(int j = 0; j < elementTags2d[i].size(); j++)
         {
+            //The third dimension of data corresponds to the number of nodes(third: k loop) for an element tags(second: j loop) for an element type(first: i loop).
             data[i][j].resize(nb_nodes_element2d,HUGE_VAL);
             tagposition[elementTags2d[i][j]] = j;
         }
     }
 
+    //The second part of the algorithm will consist of assigning the correct potential value to the nodes of the elements in common with the boundary.
+    //The first loop is on the elementType in 2d in common with the boundary.
     for(int i = 0; i < elementTags2d_boundary.size(); i++)
     {
         string elementName;
@@ -361,7 +363,10 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         vector<double> localNodeCoord;
         int numPrimaryNodes;
         model::mesh::getElementProperties(elementTypes2d_boundary[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+        //getElementProperties was used to get the number of nodes for a specific element
         int nb_nodes_element2d = numNodes;
+
+        //The second loop is on the elementTag in 2d in common with the boundary.
         for(int j = 0; j < elementTags2d_boundary[i].size(); j++)
         {
             vector<int> elements_commun_tag(0,0);
@@ -372,13 +377,17 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             int dim;
             int tag;
             model::mesh::getElement(elementTags2d_boundary[i][j],elementType,nodeTags_element2d,dim,tag);
+            //The third loop is on the nodes of a specific elementTag in 2d in common with the boundary.
             for(int k = 0; k < nb_nodes_element2d; k++)
             {
                 int loop_element_2d_nodes_tag = nodeTags_element2d[k];
+                //For each node of the 2d elements, we loop over all the 1d elements of the boundary and look for both the node in common and the elements in common. Indeed, on the boundary, a specific node belongs to two 1d elements.
                 for(int l = 0; l < elementVector.size(); l++)
                 {
+                    //condition vérifié si le noeud de l’élément 2d est égal au noeud d’un élément 1d de la frontière.
                     if(elementVector[l].nodeTags[0] == loop_element_2d_nodes_tag||elementVector[l].nodeTags[1] == loop_element_2d_nodes_tag)
                     {
+                        //this loop allows the node to be added only once if it is present several times. As the 1d elements of the boundary are traversed, 1 node encounters 2 elements and can therefore be counted multiple times.
                         int compteur_node = 0;
                         for(int m = 0; m < nodes_commun_tag.size(); m++)
                         {
@@ -391,6 +400,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                         {
                             nodes_commun_tag.push_back(loop_element_2d_nodes_tag);
                         }
+                        //The same procedure is applied for the elements. You only want to count them once if they are in common
                         int compteur_element = 0;
                         for(int m = 0; m < elements_commun_tag.size(); m++)
                         {
@@ -401,12 +411,14 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                         }
                         if(compteur_element == 0)
                         {
+                            //Both the tag of the element and its position in the loop on the elements of the boundary are retained.
                             elements_commun_tag.push_back(elementVector[l].tag);
                             elements_commun_indice.push_back(l);
                         }
                     }
                 }
             }
+            //For each 2d element in common with the boundary, displays the tag of the nodes and the tag of the common 1d elements of the boundary.
             if(show_element_node_data)
             {
                 cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
@@ -423,10 +435,12 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                 cout << endl;
                 cout << endl;
             }
+            //Several geometric configurations are to be considered. Here, the 2d element has 1 node in common with the boundary and must therefore touch 2 of its elements.
             if(nodes_commun_tag.size() == 1)
             {
                 if(elements_commun_tag.size() == 2)
                 {
+                    //We loop over the nodes of the 2d element, find the one that is common to the boundary and assign it the average value of the potential of the 2 elements it touches. Indeed the potential is discontinuous from one element of the boundary to the other.
                     for(int k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
@@ -440,11 +454,13 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                         }
                     }
                 }
+                //displays an error in the case of geometry where 1 node is in contact with more than 2 elements.
                 else
                 {
                     disp_element_node_data(nodes_commun_tag, elements_commun_tag);
                 }
             }
+            //The principle is the same as before. For the case where there are 2 nodes in common, the 2d element can touch either 3 or 4 1d elements of the boundary. In the first case, it has one of its sides in common with the boundary, the other case can be found in the corners of the domain (two of its corners touch the boundary in 1 node and meet 2 elements like case 1).
             if(nodes_commun_tag.size() == 2)
             {
                 if(elements_commun_tag.size() == 3)
@@ -454,20 +470,24 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         for(int l = 0; l < elements_commun_tag.size(); l++)
                         {
-                            int compteur = 0;
+                            //Among the 3 elements of the boundary in common, we look for the one which has 2 nodes in common with the 2d element. We look for the side and therefore the 1d element that they have in common.
+                            int compteur_nodes = 0;
                             for(int m = 0; m < nodes_commun_tag.size(); m++)
                             {
                                 if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
                                 {
-                                    compteur++;
+                                    compteur_nodes++;
                                 }
                             }
-                            if(compteur == 2)
+                            if(compteur_nodes == 2)
                             {
+                                //Once we have found the element in common, the node of the 2d element on which we are looping must be the right one
                                 if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
                                 {
+                                    //The constant value of the boundary element in common is assigned to the 2 nodes of the 2d element that touches the boundary.
                                     data[i][tagposition[elementTags2d_boundary[i][j]]][k] = elementVector[elements_commun_indice[l]].bcValue[0];
                                 }
+                                //In the case of second order elements, the value of the common 1d boundary element is assigned to the middle node.
                                 if(order == 2)
                                 {
                                     if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].midNodeTags)
@@ -486,6 +506,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         for(int l = 0; l < elements_commun_tag.size(); l++)
                         {
+                            //This geometry behaves almost like the first case (1 node, 2 elements) except that it is true for 2 different nodes of the 2d element. We loop over the elements of the boundary. If one of its nodes is common with the boundary, it is assigned the value of the potential of this first element. When the second one comes, it is averaged with the potential already present on the node.
                             if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
                             {
                                 if(data[i][tagposition[elementTags2d_boundary[i][j]]][k] == HUGE_VAL)
@@ -505,6 +526,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                     disp_element_node_data(nodes_commun_tag, elements_commun_tag);
                 }
             }
+            //The last case is that of 3 common nodes which therefore affect 4 elements. This case is mainly found in the corners. The average potential is attributed to the node that touches 2 elements (in the corner of a square for example). The other 2 nodes must simply match both the side in common and the node in common. The principle of assigning the potential value of the node is the superposition of the previous methods.
             if(nodes_commun_tag.size() == 3)
             {
                 if(elements_commun_tag.size() == 4)
@@ -514,15 +536,15 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         for(int l = 0; l < elements_commun_tag.size(); l++)
                         {
-                            int compteur = 0;
+                            int compteur_nodes = 0;
                             for(int m = 0; m < nodes_commun_tag.size(); m++)
                             {
                                 if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
                                 {
-                                    compteur++;
+                                    compteur_nodes++;
                                 }
                             }
-                            if(compteur == 2)
+                            if(compteur_nodes == 2)
                             {
                                 if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
                                 {
@@ -535,6 +557,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                                         data[i][tagposition[elementTags2d_boundary[i][j]]][k] = (data[i][tagposition[elementTags2d_boundary[i][j]]][k] + elementVector[elements_commun_indice[l]].bcValue[0])/2.0;
                                     }
                                 }
+                                //In the case of second order elements, the value of the common 1d boundary element is assigned to the middle node.
                                 if(order == 2)
                                 {
                                     if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].midNodeTags)
@@ -551,11 +574,14 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                     disp_element_node_data(nodes_commun_tag, elements_commun_tag);
                 }
             }
+            //We clear the vectors that we push at each loop
             elements_commun_tag.clear();
             elements_commun_indice.clear();
             nodes_commun_tag.clear();
         }
     }
+
+    //The last step is to loop over all the 2d elements in the domain. If the HUGE_VAL value is still present, this means that the element node does not belong to the boundary (since the value of the potential has not been modified) and is therefore part of the domain. We then use the map which associates the value of the potential with the tag of the node inside the domain.
     for(int i = 0; i < elementTags2d.size(); i++)
     {
         string elementName;
@@ -648,6 +674,7 @@ void getBC(map<std::size_t, int> allNodeIndex, const vector<double> &allCoord, v
         string name;
         model::getPhysicalName(physicalGroupsDim, physicalGroupsTag, name);
 
+        //Boundaries that separate 2 types of elements within the domain are assumed to have the name = "between". The nodes and their coordinates are added to the vectors containing all the tags and coordinates of the nodes in the domain.
         if(name == "between")
         {
             vector<size_t> nodeTags;
@@ -755,7 +782,6 @@ void getBC(map<std::size_t, int> allNodeIndex, const vector<double> &allCoord, v
                 cout << "\n";
         }
     }
-
 }
 
 

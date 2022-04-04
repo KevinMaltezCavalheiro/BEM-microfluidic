@@ -51,7 +51,7 @@ Transfinite Curve {6} = nx_in + 1 Using Progression 1;
 Transfinite Curve {7} = ny_in + 1 Using Progression 1;
 Transfinite Curve {8} = nx_in + 1 Using Progression 1;
 
-Recombine Surface {1};
+//Recombine Surface {1};
 
 Mesh.ElementOrder = 2;
 

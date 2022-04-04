@@ -42,7 +42,7 @@ Transfinite Curve {6} = n_trans_inlet + 1 Using Progression 1;
 Transfinite Curve {7} = n_long_inlet + 1 Using Progression 1;
 Transfinite Curve {8} = n_trans_outlet + 1 Using Progression 1;
 
-Recombine Surface {1};
+//Recombine Surface {1};
 
 Mesh.ElementOrder = 2;
 

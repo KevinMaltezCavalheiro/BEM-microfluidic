@@ -19,7 +19,7 @@ Transfinite Curve {3, 1} = n+1 Using Progression 1;
 Transfinite Curve {4, 2} = n+1 Using Progression 1;
 Transfinite Surface {1};
 
-Recombine Surface {1}; // quads instead of triangles
+//Recombine Surface {1}; // quads instead of triangles
 
 //Mesh.ElementOrder = 2;
 
