@@ -64,7 +64,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     bool openGUI = 1;        // Graphical interface of GMSH.
     bool show_element_node_data = 0;
     bool show_time = 1; //display the elapsed time for the internal potential calculus in the terminal
-    int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
+    int visualisation = 2;  //0: no visualisation, 1: element node data, 2: element data
 
     // Initialises a vector of elements (that will contain all the elements of interrest)
     vector<elementStruct> elementVector;
@@ -884,12 +884,11 @@ void computeData(const vector<elementStruct> &elementVector, const vector<int> &
     double phi = 0;
     int elType = 0;
     vector<double> barycenters;
-#pragma omp parallel for schedule(dynamic) private(x,y,phi,h,g,elType,barycenters) shared(elementTags,elementVector,tags,data,elementCount)
+#pragma omp parallel for schedule(dynamic) private(x,y,phi,h,g,barycenters,elType) shared(elementTags,elementVector,tags,data,elementCount)
     for(int i = 0; i < elementTypes.size(); i++)
     {
         elType = elementTypes[i];
         model::mesh::getBarycenters(elType, -1, false, false, barycenters);
-
         for(int j = 0; j < elementTags[i].size(); j++)
         {
             x = barycenters[3*j];
@@ -903,10 +902,13 @@ void computeData(const vector<elementStruct> &elementVector, const vector<int> &
                 phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
             }
             // Potential at the node is phi.
-            tags[elementCount] = elementTags[i][j];
-            data[elementCount] = vector<double> (1);
-            data[elementCount][0] = phi;
-            elementCount++;
+#pragma omp critical
+            {
+                tags[elementCount] = elementTags[i][j];
+                data[elementCount] = vector<double> (1);
+                data[elementCount][0] = phi;
+                elementCount++;
+            }
         }
     }
 }
