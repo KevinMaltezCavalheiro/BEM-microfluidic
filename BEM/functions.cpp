@@ -10,6 +10,7 @@
 #include "functions.hpp"
 #include <omp.h>
 
+/*-----------------todo déjà fait mais il faudra peut être en refaire certains par après donc je les garde------------------*/
 //todo: séparer en différentes fonctions
 //todo: comparer au livre BEM
 //todo: voir pour gérer des trous dans les surfaces
@@ -21,11 +22,12 @@
 //todo: potentiel2d fonction
 //todo: gérer permuttation matrice plus efficacement (en vrai mnt, osef)
 //todo: hybrid mesh + éléments 1d 3 noeuds
-
-//todo: convergence
 //todo: mettre en parallèle
-//todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
 //todo: elementtype pour optimiser elementnodedata
+
+/*-----------------todo qu'il reste vraiment à faire------------------*/
+//todo: convergence
+//todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
 //todo: commenter le code
 
 using namespace gmsh;
@@ -61,8 +63,8 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     bool dispValues = 0;     // Elements and their values of u and u_n.
     bool openGUI = 1;        // Graphical interface of GMSH.
     bool show_element_node_data = 0;
-    bool show_time = 1;
-    int visualisation = 2;  //0: no visualisation, 1: element node data, 2: element data
+    bool show_time = 1; //display the elapsed time for the internal potential calculus in the terminal
+    int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
 
     // Initialises a vector of elements (that will contain all the elements of interrest)
     vector<elementStruct> elementVector;
@@ -177,6 +179,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
      *  Visualisation
      */
 
+    //visualisation by elementnodedata
     if(visualisation == 1)
     {
         vector<vector<vector<double>>> data;
@@ -223,6 +226,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
             cout << endl;
         }
     }
+    //visualisation by element barycenter
     if(visualisation == 2)
     {
         vector<string> names;

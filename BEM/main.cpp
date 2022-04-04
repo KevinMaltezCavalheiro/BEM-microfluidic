@@ -27,10 +27,6 @@ int main(int argc, char **argv)
     open(argv[1]);
     model::mesh::generate(2);
 
-//    #pragma omp parallel
-//    #pragma omp critical
-//    cout << "Greetings from thread "<< omp_get_thread_num() << endl;
-
     vector<int> elementTypes;
     vector<std::vector<size_t>> elementTags;
     vector<std::vector<size_t>> nodeTags;
@@ -47,10 +43,10 @@ int main(int argc, char **argv)
 
     solverBEMFun(argc, argv, finalElementTags, electrostaticPressure);
 
-//    for(int i = 0; i < finalElementTags.size(); i++)
-//    {
-//        cout << "Element tag '" << finalElementTags[i] << "'\t-> Electrostatic pressure = " << electrostaticPressure[i] << endl;
-//    }
+    for(int i = 0; i < finalElementTags.size(); i++)
+    {
+        cout << "Element tag '" << finalElementTags[i] << "'\t-> Electrostatic pressure = " << electrostaticPressure[i] << endl;
+    }
 
     finalize();
 
