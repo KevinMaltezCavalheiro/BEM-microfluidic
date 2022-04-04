@@ -179,6 +179,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
      *  Visualisation
      */
 
+    //visualisation by elementnodedata
     if(visualisation == 1)
     {
         vector<vector<vector<double>>> data;
@@ -225,6 +226,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
             cout << endl;
         }
     }
+    //visualisation by element barycenter
     if(visualisation == 2)
     {
         vector<string> names;
