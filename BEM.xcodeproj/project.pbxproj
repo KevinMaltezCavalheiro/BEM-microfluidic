@@ -11,6 +11,7 @@
 		0A591E5527F9D06200B1D4E1 /* functions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5027F9D06200B1D4E1 /* functions.cpp */; };
 		0A591E5627F9D06200B1D4E1 /* code_louis_function.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5227F9D06200B1D4E1 /* code_louis_function.cpp */; };
 		0A591E5727F9D06200B1D4E1 /* code_louis.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5427F9D06200B1D4E1 /* code_louis.cpp */; };
+		0A7EE32127FF20DF00DEE3F2 /* solverBEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A7EE32027FF20DF00DEE3F2 /* solverBEM.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -41,6 +42,7 @@
 		0A591E5C27F9D26900B1D4E1 /* rectangle.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = rectangle.geo; sourceTree = "<group>"; };
 		0A591E5D27F9D26900B1D4E1 /* impossible.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = impossible.geo; sourceTree = "<group>"; };
 		0A591E5E27F9D26900B1D4E1 /* doubleHole.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = doubleHole.geo; sourceTree = "<group>"; };
+		0A7EE32027FF20DF00DEE3F2 /* solverBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = solverBEM.cpp; path = ../../Downloads/solverBEM.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +82,7 @@
 				0A591E5427F9D06200B1D4E1 /* code_louis.cpp */,
 				0A591E5227F9D06200B1D4E1 /* code_louis_function.cpp */,
 				0A591E5327F9D06200B1D4E1 /* code_louis_function.hpp */,
+				0A7EE32027FF20DF00DEE3F2 /* solverBEM.cpp */,
 				0A591E5927F9D26900B1D4E1 /* complex_validation.geo */,
 				0A591E5E27F9D26900B1D4E1 /* doubleHole.geo */,
 				0A591E5827F9D26900B1D4E1 /* hole.geo */,
@@ -150,6 +153,7 @@
 			files = (
 				0A591E5627F9D06200B1D4E1 /* code_louis_function.cpp in Sources */,
 				0A591E5727F9D06200B1D4E1 /* code_louis.cpp in Sources */,
+				0A7EE32127FF20DF00DEE3F2 /* solverBEM.cpp in Sources */,
 				0A591E4927F9CE1700B1D4E1 /* main.cpp in Sources */,
 				0A591E5527F9D06200B1D4E1 /* functions.cpp in Sources */,
 			);

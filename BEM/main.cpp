@@ -1,14 +1,7 @@
+#include "functions.hpp"
+
 #include <gmsh.h>
 #include <iostream>
-#include <map>
-#include <sstream>
-#include <Eigen/Dense> 
-#include <cmath>
-#include <iomanip>
-# include <stdio.h>
-#include <chrono>
-#include "functions.hpp"
-#include <omp.h>
 
 using namespace std;
 using namespace gmsh;
@@ -18,37 +11,35 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        cout << "Usage: " << argv[0] << " <geo_file>\n";
+        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
         return 0;
     }
 
-    initialize();
+    gmsh::initialize();
 
-    open(argv[1]);
-    model::mesh::generate(2);
+    gmsh::open(argv[1]);
+    gmsh::model::mesh::generate(2);
 
-    vector<int> elementTypes;
-    vector<std::vector<size_t>> elementTags;
-    vector<std::vector<size_t>> nodeTags;
-    model::mesh::getElements(elementTypes, elementTags, nodeTags, 1);
+    // will map the 1d element tag onto the corresponding electroPressure resulting from BEM code
+    std::map<int, double> electrostaticPressure;
 
-    int nb1dElements = 0;
-    for(int i = 0; i < elementTypes.size(); i++)
+    int nbViews = 0;
+
+    //solverBEM(argc, argv, finalElementTags, electrostaticPressure, nbViews);
+    solverBEM(argc, argv, electrostaticPressure, nbViews);
+
+    std::map<int, double>::iterator it;
+
+    for (it = electrostaticPressure.begin(); it != electrostaticPressure.end(); it++)
     {
-        nb1dElements += elementTags[i].size();
+        std::cout << it->first    // string (key)
+                << ':'
+                << it->second   // string's value
+                << std::endl;
     }
 
-    vector<size_t> finalElementTags(nb1dElements);
-    vector<double> electrostaticPressure(nb1dElements);
+    gmsh::fltk::run();
 
-    solverBEMFun(argc, argv, finalElementTags, electrostaticPressure);
-
-    for(int i = 0; i < finalElementTags.size(); i++)
-    {
-        cout << "Element tag '" << finalElementTags[i] << "'\t-> Electrostatic pressure = " << electrostaticPressure[i] << endl;
-    }
-
-    finalize();
-
+    gmsh::finalize();
     return 0;
 }

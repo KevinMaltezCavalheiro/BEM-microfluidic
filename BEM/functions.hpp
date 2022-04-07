@@ -27,7 +27,7 @@ struct elementStruct{
 };
 
 
-int solverBEMFun(int argc, char **argv, std::vector<size_t> &finalElementTags, std::vector<double> &electrostaticPressure);
+int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, int & nbViews)
 void dispNodeCoordFun(const vector<size_t> &allNodeTags, const vector<double> &allCoord);
 void dispMatricesFun(const MatrixXd &A, const MatrixXd &B, const MatrixXd &c, const MatrixXd &b, const MatrixXd &x);
 void dispValuesFun(const vector<elementStruct> &elementVector);
@@ -40,6 +40,7 @@ void displayData(const string viewName, const string modelName, const string fil
 void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_domain, vector<elementStruct> &elementVector, map<int,double> &nodeMapDomain, const string integrationType);
 void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data);
 void disp_element_node_data(vector<int> &nodes_commun_tag, vector<int> &elements_commun_tag);
+void display_time(chrono::time_point<chrono::system_clock> &start, chrono::time_point<chrono::system_clock> &end, string &function_name, bool &show_time);
 
 
 

@@ -9,6 +9,7 @@
 #include <chrono>
 #include "functions.hpp"
 #include <omp.h>
+#include <list>
 
 /*-----------------todo déjà fait mais il faudra peut être en refaire certains par après donc je les garde------------------*/
 //todo: séparer en différentes fonctions
@@ -24,12 +25,16 @@
 //todo: hybrid mesh + éléments 1d 3 noeuds
 //todo: mettre en parallèle
 //todo: elementtype pour optimiser elementnodedata
+//todo: commenter le code
 
 /*-----------------todo qu'il reste vraiment à faire------------------*/
 //todo: convergence
 //todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
-//todo: commenter le code
 //todo: representation formula pour le champ electrique
+//todo: faire une fonction pour chrono afin de mesurer le temps de toutes les différentes parties du code
+//todo: créer d'autres .geo avec des géométries plus complexes
+
+//gérer des matériaux composites
 
 using namespace gmsh;
 using namespace std;
@@ -39,8 +44,8 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
 void dispNodeCoordFun(const vector<size_t> &allNodeTags, const vector<double> &allCoord);
 void dispMatricesFun(const MatrixXd &A, const MatrixXd &B, const MatrixXd &c, const MatrixXd &b, const MatrixXd &x);
 void dispValuesFun(const vector<elementStruct> &elementVector);
-void getBC(map<std::size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain);
-void computeGeometricParam(elementStruct &element, map<std::size_t, int> allNodeIndex, const vector<double> &allCoord);
+void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain);
+void computeGeometricParam(elementStruct &element, map<size_t, int> allNodeIndex, const vector<double> &allCoord);
 double computeH(const double &x, const double &y, const elementStruct &element);
 double computeG(const double &x, const double &y, const elementStruct &element, const string &integrationType);
 void computeData(const vector<elementStruct> &elementVector, const vector<int> &elementTypes, const vector<vector<size_t>> &elementTags, vector<size_t> &tags, vector<vector<double>> &data, const string integrationType);
@@ -48,8 +53,9 @@ void displayData(const string viewName, const string modelName, const string fil
 void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_domain, vector<elementStruct> &elementVector, map<int,double> &nodeMapDomain, const string integrationType);
 void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data);
 void disp_element_node_data(vector<int> &nodes_commun_tag, vector<int> &elements_commun_tag);
+void display_time(chrono::time_point<chrono::system_clock> &start, chrono::time_point<chrono::system_clock> &end, string &function_name, bool &show_time);
 
-int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector<double> &electrostaticPressure)
+int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, int & nbViews)
 {
     if (argc < 2)
     {
@@ -66,8 +72,13 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     bool show_element_node_data = 0;
     bool show_time = 1; //display the elapsed time for the internal potential calculus in the terminal
     int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
-    auto start = chrono::steady_clock::now();
-    auto end = chrono::steady_clock::now();
+
+    //to display the time of the different functions
+    chrono::time_point<chrono::system_clock> start, end;
+    chrono::time_point<chrono::system_clock> start_total, end_total;
+    string function_name;
+    start_total = chrono::system_clock::now();
+
     // Initialises a vector of elements (that will contain all the elements of interrest)
     vector<elementStruct> elementVector;
     string integrationType = "Gauss4"; // Could vary depending on the distance between the elements.
@@ -98,7 +109,12 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     vector<double> NodeParametricCoord2d_domain;
     model::mesh::getNodes(NodeTags2d_domain, NodeCoord2d_domain, NodeParametricCoord2d_domain,2);
 
+    start = chrono::system_clock::now();
+    //calculates the potential at the barycentre of each element of the domain
     getBC(allNodeIndex,allCoord, elementVector, dirichletCount, dispHierarchy, NodeTags2d_domain, NodeCoord2d_domain);
+    end = chrono::system_clock::now();
+    function_name = "getBC";
+    display_time(start, end, function_name, show_time);
 
     vector<string> names;
     model::list(names);
@@ -115,6 +131,7 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
     MatrixXd c = MatrixXd::Zero(elementVector.size(), 1);
 
     //  Double loop over each element in order to compute the element h and g that will be given to the matrices A and B.
+    start = chrono::system_clock::now();
     double h;
     double g;
 #pragma omp parallel for schedule(guided) shared(elementVector,A,B,c,integrationType,dirichletCount) private(h,g)
@@ -152,12 +169,18 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
             }
         }
     }
+    end = chrono::system_clock::now();
+    function_name = "compute H and G";
+    display_time(start, end, function_name, show_time);
+
 
     //If we want to display the time it takes for eigen to solve the linear system
-    //auto start = chrono::steady_clock::now();
+    start = chrono::system_clock::now();
     MatrixXd b = B*c;
     MatrixXd x = A.fullPivLu().solve(b);
-    //auto end = chrono::steady_clock::now();
+    end = chrono::system_clock::now();
+    function_name = "solve linear system";
+    display_time(start, end, function_name, show_time);
 
     // Matrices verification
     if(dispMatrices)
@@ -192,13 +215,20 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
         map<int, double> nodeMapDomain;
 
         //To displays the time of the this code section
-        start = chrono::steady_clock::now();
         //the purpose of this function is to fill the nodemapdomain map and thus to calculate the value of the potential at each node in the domain
+        start = chrono::system_clock::now();
+        //calculates the potential at the barycentre of each element of the domain
         compute_internal_phi(allCoord,NodeTags2d_domain,elementVector,nodeMapDomain,integrationType);
-        end = chrono::steady_clock::now();
+        end = chrono::system_clock::now();
+        function_name = "compute_internal_phi";
+        display_time(start, end, function_name, show_time);
 
         //this function allows to correctly associate the value of the potential to each node of an element in order to display the ElementNodeData view
+        start = chrono::system_clock::now();
         element_node_data(data,elementTags2d,elementTypes2d,nodeTags2d,elementVector, nodeMapDomain,show_element_node_data);
+        end = chrono::system_clock::now();
+        string function_name = "ElementNodeData";
+        display_time(start, end, function_name, show_time);
 
         int viewNodeTag = view::add("ElementNodeData");
 
@@ -234,38 +264,20 @@ int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector
         vector<size_t> tags(nb2dElements);
 
         //To displays the time of the this code section
-        start = chrono::steady_clock::now();
+        start = chrono::system_clock::now();
         //calculates the potential at the barycentre of each element of the domain
         computeData(elementVector, elementTypes, elementTags, tags, phi, integrationType);
-        end = chrono::steady_clock::now();
+        end = chrono::system_clock::now();
+        function_name = "computeData";
+        display_time(start, end, function_name, show_time);
 
         //For ease of use, a function handles the code for the display.
         displayData("phi", names[0], "results.msh", tags, phi);
     }
 
-    //displays the time of the desired code section
-    if(show_time)
-    {
-        cout << endl;
-        cout << "Elapsed time in nanoseconds: "
-        << chrono::duration_cast<chrono::nanoseconds>(end - start).count()
-        << " ns" << endl;
-
-        cout << "Elapsed time in microseconds: "
-        << chrono::duration_cast<chrono::microseconds>(end - start).count()
-        << " µs" << endl;
-
-        cout << "Elapsed time in milliseconds: "
-        << chrono::duration_cast<chrono::milliseconds>(end - start).count()
-        << " ms" << endl;
-
-        cout << "Elapsed time in seconds: "
-        << chrono::duration_cast<chrono::seconds>(end - start).count()
-        << " sec";
-        cout << endl;
-        cout << endl;
-    }
-
+    end_total = chrono::system_clock::now();
+    function_name = "total time of the code";
+    display_time(start_total, end_total, function_name, show_time);
     if(openGUI)
     {
         fltk::run();
@@ -581,6 +593,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         }
     }
 
+
     //The last step is to loop over all the 2d elements in the domain. If the HUGE_VAL value is still present, this means that the element node does not belong to the boundary (since the value of the potential has not been modified) and is therefore part of the domain. We then use the map which associates the value of the potential with the tag of the node inside the domain.
     for(int i = 0; i < elementTags2d.size(); i++)
     {
@@ -640,7 +653,7 @@ void dispValuesFun(const vector<elementStruct> &elementVector)
     }
 }
 
-void getBC(map<std::size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain)
+void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain)
 {
     // Gets the dim and the tags of the physical groups
     vectorpair physicalGroupsDimTags;
@@ -686,7 +699,9 @@ void getBC(map<std::size_t, int> allNodeIndex, const vector<double> &allCoord, v
         }
 
         if(bcMap.find(name) == bcMap.end())
+        {
             continue;
+        }
 
         // Retrieves the type and the value of the boundary condition of this physical group.
         // /!\ Should check that this physical groups was well defined in the list of "Boundary Condition" !
@@ -785,7 +800,7 @@ void getBC(map<std::size_t, int> allNodeIndex, const vector<double> &allCoord, v
 }
 
 
-void computeGeometricParam(elementStruct &element, map<std::size_t, int> allNodeIndex, const vector<double> &allCoord)
+void computeGeometricParam(elementStruct &element, map<size_t, int> allNodeIndex, const vector<double> &allCoord)
 {
     int i1Tag = element.nodeTags[0];
     int i2Tag = element.nodeTags[1];
@@ -933,7 +948,7 @@ void computeData(const vector<elementStruct> &elementVector, const vector<int> &
 #pragma omp critical
             {
                 tags[elementCount] = elementTags[i][j];
-                data[elementCount] = vector<double> (1);
+                data[elementCount].resize(1);
                 data[elementCount][0] = phi;
                 elementCount++;
             }
@@ -959,3 +974,29 @@ void disp_element_node_data(vector<int> &nodes_commun_tag, vector<int> &elements
     cout << endl;
 }
 
+void display_time(chrono::time_point<chrono::system_clock> &start, chrono::time_point<chrono::system_clock> &end, string &function_name, bool &show_time)
+{
+    //displays the time of the desired code section
+    if(show_time)
+    {
+        cout << endl;
+        cout << function_name << endl;
+        cout << "Elapsed time in nanoseconds: "
+        << chrono::duration_cast<chrono::nanoseconds>(end - start).count()
+        << " ns" << endl;
+
+        cout << "Elapsed time in microseconds: "
+        << chrono::duration_cast<chrono::microseconds>(end - start).count()
+        << " µs" << endl;
+
+        cout << "Elapsed time in milliseconds: "
+        << chrono::duration_cast<chrono::milliseconds>(end - start).count()
+        << " ms" << endl;
+
+        cout << "Elapsed time in seconds: "
+        << chrono::duration_cast<chrono::seconds>(end - start).count()
+        << " sec";
+        cout << endl;
+        cout << endl;
+    }
+}

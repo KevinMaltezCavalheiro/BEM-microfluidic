@@ -1,8 +1,8 @@
 // Outside
 Lx_out = 2.0;
 Ly_out = 1.5;
-nx_out = 80;
-ny_out = 60;
+nx_out = 200;
+ny_out = 150;
 phi_out = 100.;
 
 // Hole 1
@@ -10,8 +10,8 @@ Lx1 = 0.25;
 Ly1 = 0.25;
 cx1 = -0.5;
 cy1 = 0.35;
-nx1 = 16;
-ny1 = 16;
+nx1 = 30;
+ny1 = 30;
 phi1 = 215.;
 
 // Hole 2
@@ -80,7 +80,7 @@ Transfinite Curve {10} = nx2 + 1 Using Progression 1;
 Transfinite Curve {11} = ny2 + 1 Using Progression 1;
 Transfinite Curve {12} = nx2 + 1 Using Progression 1;
 
-Recombine Surface {1};
+//Recombine Surface {1};
 
 Mesh.ElementOrder = 2;
 
