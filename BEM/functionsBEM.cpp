@@ -7,8 +7,9 @@
 #include <iomanip>
 #include <stdio.h>
 #include <chrono>
-#include "functions.hpp"
+#include "functionsBEM.hpp"
 #include <omp.h>
+#include <algorithm>
 #include <list>
 
 /*-----------------todo déjà fait mais il faudra peut être en refaire certains par après donc je les garde------------------*/
@@ -18,7 +19,7 @@
 //todo: combiner avec la FEM
 //todo: faire plein de tests différent (dans les .geo)
 //todo: afficher et calculer la force electrostatique et champs electriques
-//todo: on a besoin de la pression electrostatique à la frontière mais on peut essayer de l'afficher partout dans le domaine => representation formula pour le domain ou par elementnodedata
+//todo: on a besoin de la pression electrostatique à la frontière mais on peut essayer de l'afficher partout dans le domaine => representation formula pour le domain ou par elementnodedata et gradient
 //todo: fusionner avec PY
 //todo: potentiel2d fonction
 //todo: gérer permuttation matrice plus efficacement (en vrai mnt, osef)
@@ -33,278 +34,20 @@
 //todo: representation formula pour le champ electrique
 //todo: faire une fonction pour chrono afin de mesurer le temps de toutes les différentes parties du code
 //todo: créer d'autres .geo avec des géométries plus complexes
-
 //gérer des matériaux composites
 
 using namespace gmsh;
 using namespace std;
 using namespace Eigen;
 
-int solverBEMFun(int argc, char **argv, vector<size_t> &finalElementTags, vector<double> &electrostaticPressure);
-void dispNodeCoordFun(const vector<size_t> &allNodeTags, const vector<double> &allCoord);
-void dispMatricesFun(const MatrixXd &A, const MatrixXd &B, const MatrixXd &c, const MatrixXd &b, const MatrixXd &x);
-void dispValuesFun(const vector<elementStruct> &elementVector);
-void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain);
-void computeGeometricParam(elementStruct &element, map<size_t, int> allNodeIndex, const vector<double> &allCoord);
-double computeH(const double &x, const double &y, const elementStruct &element);
-double computeG(const double &x, const double &y, const elementStruct &element, const string &integrationType);
-void computeData(const vector<elementStruct> &elementVector, const vector<int> &elementTypes, const vector<vector<size_t>> &elementTags, vector<size_t> &tags, vector<vector<double>> &data, const string integrationType);
-void displayData(const string viewName, const string modelName, const string fileName, const vector<size_t> &tags, const vector<vector<double>> &data);
-void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_domain, vector<elementStruct> &elementVector, map<int,double> &nodeMapDomain, const string integrationType);
-void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data);
-void disp_element_node_data(vector<int> &nodes_commun_tag, vector<int> &elements_commun_tag);
-void display_time(chrono::time_point<chrono::system_clock> &start, chrono::time_point<chrono::system_clock> &end, string &function_name, bool &show_time);
-
-int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, int & nbViews)
-{
-    if (argc < 2)
-    {
-        cout << "Usage: " << argv[0] << " <geo_file>\n";
-        return 0;
-    }
-
-    // Parameters for displaying variables (for debugging).
-    bool dispNodeCoord = 0;  // Coordinates of the nodes.
-    bool dispHierarchy = 0;  // Hierarchy (physical groups -> entities -> elements -> nodes).
-    bool dispMatrices = 0;   // Matrices A, B, c, b, x. /!\ May lead to visualisation problems for large matrices.
-    bool dispValues = 0;     // Elements and their values of u and u_n.
-    bool openGUI = 1;        // Graphical interface of GMSH.
-    bool show_element_node_data = 0;
-    bool show_time = 1; //display the elapsed time for the internal potential calculus in the terminal
-    int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
-
-    //to display the time of the different functions
-    chrono::time_point<chrono::system_clock> start, end;
-    chrono::time_point<chrono::system_clock> start_total, end_total;
-    string function_name;
-    start_total = chrono::system_clock::now();
-
-    // Initialises a vector of elements (that will contain all the elements of interrest)
-    vector<elementStruct> elementVector;
-    string integrationType = "Gauss4"; // Could vary depending on the distance between the elements.
-
-    // Gets the tags, the coordinates and the parametric coordinates of the nodes.
-    map<size_t, int> allNodeIndex; // nodeTag -> position in allNodeTags and allCoord
-    vector<size_t> allNodeTags;
-    vector<double> allCoord;
-    vector<double> allParametricCoord;
-    model::mesh::getNodes(allNodeTags, allCoord, allParametricCoord);
-
-    for(int i = 0; i < allNodeTags.size(); i++)
-    {
-        allNodeIndex[allNodeTags[i]] = i;
-    }
-
-    // Print the coordinates of all nodes if dispNodeCoord != 0
-    if(dispNodeCoord)
-    {
-        dispNodeCoordFun(allNodeTags, allCoord);
-    }
-
-    // Initially, these are 0 and are incremented each time a dirichlet/neumann-element is encountered.
-    int dirichletCount = 0;
-
-    vector<size_t> NodeTags2d_domain;
-    vector<double> NodeCoord2d_domain;
-    vector<double> NodeParametricCoord2d_domain;
-    model::mesh::getNodes(NodeTags2d_domain, NodeCoord2d_domain, NodeParametricCoord2d_domain,2);
-
-    start = chrono::system_clock::now();
-    //calculates the potential at the barycentre of each element of the domain
-    getBC(allNodeIndex,allCoord, elementVector, dirichletCount, dispHierarchy, NodeTags2d_domain, NodeCoord2d_domain);
-    end = chrono::system_clock::now();
-    function_name = "getBC";
-    display_time(start, end, function_name, show_time);
-
-    vector<string> names;
-    model::list(names);
-    cout << "the file contains " << names.size() << " model names\n";
-
-    vector<int> elementTypes2d;
-    vector<vector<size_t> > elementTags2d;
-    vector<vector<size_t> > nodeTags2d;
-    model::mesh::getElements(elementTypes2d,elementTags2d,nodeTags2d,2);
-
-    // Declaration of matrices A, B and vector c (the matrix type is perhaps not the most efficient).
-    MatrixXd A = MatrixXd::Zero(elementVector.size(), elementVector.size());
-    MatrixXd B = MatrixXd::Zero(elementVector.size(), elementVector.size());
-    MatrixXd c = MatrixXd::Zero(elementVector.size(), 1);
-
-    //  Double loop over each element in order to compute the element h and g that will be given to the matrices A and B.
-    start = chrono::system_clock::now();
-    double h;
-    double g;
-#pragma omp parallel for schedule(guided) shared(elementVector,A,B,c,integrationType,dirichletCount) private(h,g)
-    for(int i = 0; i < elementVector.size(); i++)
-    {
-        for(int j = 0; j < elementVector.size(); j++)
-        {
-            // Will be computed and stored in A and B.
-            h = 0;
-            g = 0;
-
-            if(i == j)  // Formula for diagonal elements.
-            {
-                h = -0.5;
-                g = (elementVector[i].length/(2*M_PI)) * (log(elementVector[i].length/2)-1);
-            }
-            else    // General case
-            {
-                h = computeH(elementVector[i].midX, elementVector[i].midY, elementVector[j]);
-                g = computeG(elementVector[i].midX, elementVector[i].midY, elementVector[j], integrationType);
-            }
-
-            // Storage of h and g at the right place (in matrices A and B).
-            if(j < dirichletCount)
-            {
-                A(i,j) = g;
-                B(i,j) = h;
-                c(j) = elementVector[j].bcValue[0];
-            }
-            else
-            {
-                A(i,j) = -h;
-                B(i,j) = -g;
-                c(j) = elementVector[j].bcValue[1];
-            }
-        }
-    }
-    end = chrono::system_clock::now();
-    function_name = "compute H and G";
-    display_time(start, end, function_name, show_time);
-
-
-    //If we want to display the time it takes for eigen to solve the linear system
-    start = chrono::system_clock::now();
-    MatrixXd b = B*c;
-    MatrixXd x = A.fullPivLu().solve(b);
-    end = chrono::system_clock::now();
-    function_name = "solve linear system";
-    display_time(start, end, function_name, show_time);
-
-    // Matrices verification
-    if(dispMatrices)
-    {
-        dispMatricesFun(A, B, c, b, x);
-    }
-
-    // Assign each value of x to the right element.
-    for(int i = 0; i < elementVector.size(); i++)
-    {
-        if(i < dirichletCount)
-            elementVector[i].bcValue[1] = x(i);
-        else
-            elementVector[i].bcValue[0] = x(i);
-    }
-
-    if(dispValues)
-    {
-        dispValuesFun(elementVector);
-    }
-
-    /*
-     *  Visualisation
-     */
-
-    //visualisation by elementnodedata
-    if(visualisation == 1)
-    {
-        //The first index indicates the elementType, the second the elementTag and the third the nodesTags associated with this element. For example, it says whether it is a square or a triangle, the element tag and finally the tag of the 3 or 4 nodes associated with it.
-        vector<vector<vector<double>>> data;
-        //This map associates the value of the potential to all nodes strictly included in the domain and not on the boundary.
-        map<int, double> nodeMapDomain;
-
-        //To displays the time of the this code section
-        //the purpose of this function is to fill the nodemapdomain map and thus to calculate the value of the potential at each node in the domain
-        start = chrono::system_clock::now();
-        //calculates the potential at the barycentre of each element of the domain
-        compute_internal_phi(allCoord,NodeTags2d_domain,elementVector,nodeMapDomain,integrationType);
-        end = chrono::system_clock::now();
-        function_name = "compute_internal_phi";
-        display_time(start, end, function_name, show_time);
-
-        //this function allows to correctly associate the value of the potential to each node of an element in order to display the ElementNodeData view
-        start = chrono::system_clock::now();
-        element_node_data(data,elementTags2d,elementTypes2d,nodeTags2d,elementVector, nodeMapDomain,show_element_node_data);
-        end = chrono::system_clock::now();
-        string function_name = "ElementNodeData";
-        display_time(start, end, function_name, show_time);
-
-        int viewNodeTag = view::add("ElementNodeData");
-
-        for(int i = 0; i < data.size(); i++)
-        {
-            view::addModelData(viewNodeTag,0,names[0],"ElementNodeData",elementTags2d[i],data[i],0.0,1);
-        }
-        view::write(viewNodeTag, "results.msh");
-
-        option::setNumber("View[0].IntervalsType", 3);
-        option::setNumber("View[0].AdaptVisualizationGrid", 1);
-        option::setNumber("View[0].MaxRecursionLevel", 3);
-        option::setNumber("View[0].TargetError", -0.0001);
-    }
-    //visualisation by element barycenter
-    if(visualisation == 2)
-    {
-        vector<string> names;
-        model::list(names);
-
-        vector<int> elementTypes;
-        vector<vector<size_t>> elementTags;
-        vector<vector<size_t>> nodeTags;
-        model::mesh::getElements(elementTypes, elementTags, nodeTags, 2);
-
-        //To get the total number of 2d elements that make up the domain, we simply add the number of squares to the number of triangles,...
-        int nb2dElements = 0;
-        for(int i = 0; i < elementTypes.size(); i++)
-            nb2dElements += elementTags[i].size();
-
-        //Tag and associated potential of all 2d elements. In this view the potential is calculated at the barycentre and is constant per element.
-        vector<vector<double>> phi(nb2dElements);
-        vector<size_t> tags(nb2dElements);
-
-        //To displays the time of the this code section
-        start = chrono::system_clock::now();
-        //calculates the potential at the barycentre of each element of the domain
-        computeData(elementVector, elementTypes, elementTags, tags, phi, integrationType);
-        end = chrono::system_clock::now();
-        function_name = "computeData";
-        display_time(start, end, function_name, show_time);
-
-        //For ease of use, a function handles the code for the display.
-        displayData("phi", names[0], "results.msh", tags, phi);
-    }
-
-    end_total = chrono::system_clock::now();
-    function_name = "total time of the code";
-    display_time(start_total, end_total, function_name, show_time);
-    if(openGUI)
-    {
-        fltk::run();
-    }
-
-    //Calculates the electrostatic pressure per element in order to provide these results to the FEM code that will handle the rest of the algorithm
-    double epsilon = 8.8541878128e-12;
-    for(int i = 0; i < elementVector.size(); i++)
-    {
-        finalElementTags[i] = elementVector[i].tag;
-        electrostaticPressure[i] = epsilon * pow(elementVector[i].bcValue[1], 2.0);
-    }
-
-    return 0;
-}
-
-void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d, vector<int> &elementTypes2d, vector<vector<size_t>> &nodeTags2d, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data)
+void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d_domain_BEM, vector<int> &elementTypes2d_domain_BEM, vector<vector<size_t>> &nodeTags2d_domain_BEM, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data, int &entities_tags_for_physical_group_domain_BEM)
 {
     //The first part of the algorithm consists in recovering the tag of the 2d elements of the domain which have at least one node in common with the boundary
-    //The first step is to retrieve the type of all elements in the domain
-    vector<int> elementTypes2d_boundary;
-    model::mesh::getElementTypes(elementTypes2d_boundary,2);
     //We initialise the first dimension of the vector that will contain all 2d elements in common with the boundary with the number of element types present in the domain.
-    vector<vector<size_t>> elementTags2d_boundary(elementTypes2d_boundary.size());
+    vector<vector<size_t>> elementTags2d_boundary(elementTypes2d_domain_BEM.size());
 
     //this loop goes through all the nodes of the boundary (node 1 of each element). We then use getElementsByCoordinates to obtain all the elements in common with the node considered. We only take the 2d elements.
-    for(int i = 0; i < elementVector.size(); i++)
+    for(size_t i = 0; i < elementVector.size(); i++)
     {
         double posx = elementVector[i].x1;
         double posy = elementVector[i].y1;
@@ -313,27 +56,33 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         model::mesh::getElementsByCoordinates(posx,posy,posz,elementTags,2);
 
         //we loop on the 2d elements which are in common with the considered node of the boundary. Depending on their type, they are added to the vector comprising all the 2d elements common with the boundary.
-        for(int j = 0; j < elementTags.size(); j++)
+        for(size_t j = 0; j < elementTags.size(); j++)
         {
             int elementType;
             vector<size_t> nodeTags;
             int dim;
             int tag;
+            vector<int> physicalTags;
             model::mesh::getElement(elementTags[j],elementType,nodeTags,dim,tag);
+            model::getPhysicalGroupsForEntity(dim,tag,physicalTags);
 
-            for(int k = 0; k < elementTypes2d_boundary.size(); k++)
+            for(size_t k = 0; k < elementTypes2d_domain_BEM.size(); k++)
             {
-                if(elementType == elementTypes2d_boundary[k])
+                for(size_t l = 0; l < physicalTags.size(); l++)
                 {
-                    elementTags2d_boundary[k].push_back(elementTags[j]);
+                    if(elementType == elementTypes2d_domain_BEM[k] && physicalTags[l] == entities_tags_for_physical_group_domain_BEM)
+                    {
+                        elementTags2d_boundary[k].push_back(elementTags[j]);
+                    }
                 }
             }
         }
     }
 
     //This loop allows duplicate tags to be removed. If an element has several nodes with the border, it has been counted several times before.
-    for(int i = 0; i < elementTypes2d_boundary.size(); i++)
+    for(size_t i = 0; i < elementTypes2d_domain_BEM.size(); i++)
     {
+        sort( elementTags2d_boundary[i].begin(), elementTags2d_boundary[i].end() );
         elementTags2d_boundary[i].erase( unique( elementTags2d_boundary[i].begin(), elementTags2d_boundary[i].end() ), elementTags2d_boundary[i].end() );
     }
 
@@ -341,32 +90,32 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
     map<int, int> tagposition;
 
     //The first dimension of data corresponds to the number of element types.
-    data.resize(elementTags2d.size());
-    for(int i = 0; i < elementTags2d.size(); i++)
+    data.resize(elementTags2d_domain_BEM.size());
+    for(size_t i = 0; i < elementTags2d_domain_BEM.size(); i++)
     {
         //The second dimension of data corresponds to the number of element tags for on element type.
-        data[i].resize(elementTags2d[i].size());
+        data[i].resize(elementTags2d_domain_BEM[i].size());
         string elementName;
         int dim;
         int order;
         int numNodes;
         vector<double> localNodeCoord;
         int numPrimaryNodes;
-        model::mesh::getElementProperties(elementTypes2d[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+        model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
 
         //getElementProperties was used to get the number of nodes for a specific element
         int nb_nodes_element2d = numNodes;
-        for(int j = 0; j < elementTags2d[i].size(); j++)
+        for(size_t j = 0; j < elementTags2d_domain_BEM[i].size(); j++)
         {
             //The third dimension of data corresponds to the number of nodes(third: k loop) for an element tags(second: j loop) for an element type(first: i loop).
             data[i][j].resize(nb_nodes_element2d,HUGE_VAL);
-            tagposition[elementTags2d[i][j]] = j;
+            tagposition[elementTags2d_domain_BEM[i][j]] = j;
         }
     }
 
     //The second part of the algorithm will consist of assigning the correct potential value to the nodes of the elements in common with the boundary.
     //The first loop is on the elementType in 2d in common with the boundary.
-    for(int i = 0; i < elementTags2d_boundary.size(); i++)
+    for(size_t i = 0; i < elementTags2d_boundary.size(); i++)
     {
         string elementName;
         int dim;
@@ -374,12 +123,12 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         int numNodes;
         vector<double> localNodeCoord;
         int numPrimaryNodes;
-        model::mesh::getElementProperties(elementTypes2d_boundary[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+        model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
         //getElementProperties was used to get the number of nodes for a specific element
         int nb_nodes_element2d = numNodes;
 
         //The second loop is on the elementTag in 2d in common with the boundary.
-        for(int j = 0; j < elementTags2d_boundary[i].size(); j++)
+        for(size_t j = 0; j < elementTags2d_boundary[i].size(); j++)
         {
             vector<int> elements_commun_tag(0,0);
             vector<int> elements_commun_indice(0,0);
@@ -390,18 +139,18 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             int tag;
             model::mesh::getElement(elementTags2d_boundary[i][j],elementType,nodeTags_element2d,dim,tag);
             //The third loop is on the nodes of a specific elementTag in 2d in common with the boundary.
-            for(int k = 0; k < nb_nodes_element2d; k++)
+            for(size_t k = 0; k < nb_nodes_element2d; k++)
             {
                 int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                 //For each node of the 2d elements, we loop over all the 1d elements of the boundary and look for both the node in common and the elements in common. Indeed, on the boundary, a specific node belongs to two 1d elements.
-                for(int l = 0; l < elementVector.size(); l++)
+                for(size_t l = 0; l < elementVector.size(); l++)
                 {
                     //condition vérifié si le noeud de l’élément 2d est égal au noeud d’un élément 1d de la frontière.
                     if(elementVector[l].nodeTags[0] == loop_element_2d_nodes_tag||elementVector[l].nodeTags[1] == loop_element_2d_nodes_tag)
                     {
                         //this loop allows the node to be added only once if it is present several times. As the 1d elements of the boundary are traversed, 1 node encounters 2 elements and can therefore be counted multiple times.
                         int compteur_node = 0;
-                        for(int m = 0; m < nodes_commun_tag.size(); m++)
+                        for(size_t m = 0; m < nodes_commun_tag.size(); m++)
                         {
                             if(nodes_commun_tag[m] == loop_element_2d_nodes_tag)
                             {
@@ -414,7 +163,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                         }
                         //The same procedure is applied for the elements. You only want to count them once if they are in common
                         int compteur_element = 0;
-                        for(int m = 0; m < elements_commun_tag.size(); m++)
+                        for(size_t m = 0; m < elements_commun_tag.size(); m++)
                         {
                             if(elements_commun_tag[m] == elementVector[l].tag)
                             {
@@ -434,13 +183,13 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             if(show_element_node_data)
             {
                 cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
-                for(int m = 0; m < nodes_commun_tag.size(); m++)
+                for(size_t m = 0; m < nodes_commun_tag.size(); m++)
                 {
                     cout << nodes_commun_tag[m] << " ";
                 }
                 cout << endl;
                 cout << "elements commun: " << elements_commun_tag.size() << ": ";
-                for(int m = 0; m < elements_commun_tag.size(); m++)
+                for(size_t m = 0; m < elements_commun_tag.size(); m++)
                 {
                     cout << elements_commun_tag[m] << " ";
                 }
@@ -453,7 +202,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                 if(elements_commun_tag.size() == 2)
                 {
                     //We loop over the nodes of the 2d element, find the one that is common to the boundary and assign it the average value of the potential of the 2 elements it touches. Indeed the potential is discontinuous from one element of the boundary to the other.
-                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    for(size_t k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         if(loop_element_2d_nodes_tag == nodes_commun_tag[0])
@@ -477,14 +226,14 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             {
                 if(elements_commun_tag.size() == 3)
                 {
-                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    for(size_t k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
-                        for(int l = 0; l < elements_commun_tag.size(); l++)
+                        for(size_t l = 0; l < elements_commun_tag.size(); l++)
                         {
                             //Among the 3 elements of the boundary in common, we look for the one which has 2 nodes in common with the 2d element. We look for the side and therefore the 1d element that they have in common.
                             int compteur_nodes = 0;
-                            for(int m = 0; m < nodes_commun_tag.size(); m++)
+                            for(size_t m = 0; m < nodes_commun_tag.size(); m++)
                             {
                                 if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
                                 {
@@ -513,10 +262,10 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                 }
                 else if(elements_commun_tag.size() == 4)
                 {
-                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    for(size_t k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
-                        for(int l = 0; l < elements_commun_tag.size(); l++)
+                        for(size_t l = 0; l < elements_commun_tag.size(); l++)
                         {
                             //This geometry behaves almost like the first case (1 node, 2 elements) except that it is true for 2 different nodes of the 2d element. We loop over the elements of the boundary. If one of its nodes is common with the boundary, it is assigned the value of the potential of this first element. When the second one comes, it is averaged with the potential already present on the node.
                             if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
@@ -543,13 +292,13 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             {
                 if(elements_commun_tag.size() == 4)
                 {
-                    for(int k = 0; k < nb_nodes_element2d; k++)
+                    for(size_t k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
-                        for(int l = 0; l < elements_commun_tag.size(); l++)
+                        for(size_t l = 0; l < elements_commun_tag.size(); l++)
                         {
                             int compteur_nodes = 0;
-                            for(int m = 0; m < nodes_commun_tag.size(); m++)
+                            for(size_t m = 0; m < nodes_commun_tag.size(); m++)
                             {
                                 if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
                                 {
@@ -595,7 +344,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
 
 
     //The last step is to loop over all the 2d elements in the domain. If the HUGE_VAL value is still present, this means that the element node does not belong to the boundary (since the value of the potential has not been modified) and is therefore part of the domain. We then use the map which associates the value of the potential with the tag of the node inside the domain.
-    for(int i = 0; i < elementTags2d.size(); i++)
+    for(size_t i = 0; i < elementTags2d_domain_BEM.size(); i++)
     {
         string elementName;
         int dim;
@@ -603,16 +352,16 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         int numNodes;
         vector<double> localNodeCoord;
         int numPrimaryNodes;
-        model::mesh::getElementProperties(elementTypes2d[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+        model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
         int nb_nodes_element2d = numNodes;
-        for(int j = 0; j < elementTags2d[i].size(); j++)
+        for(size_t j = 0; j < elementTags2d_domain_BEM[i].size(); j++)
         {
             int elementType;
             vector<size_t> nodeTags_element2d;
             int dim;
             int tag;
-            model::mesh::getElement(elementTags2d[i][j],elementType,nodeTags_element2d,dim,tag);
-            for(int k = 0; k < nb_nodes_element2d; k++)
+            model::mesh::getElement(elementTags2d_domain_BEM[i][j],elementType,nodeTags_element2d,dim,tag);
+            for(size_t k = 0; k < nb_nodes_element2d; k++)
             {
                 int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                 if(data[i][j][k] == HUGE_VAL)
@@ -626,7 +375,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
 
 void dispNodeCoordFun(const vector<size_t> &allNodeTags, const vector<double> &allCoord)
 {
-    for(int i = 0; i < allNodeTags.size(); i++)
+    for(size_t i = 0; i < allNodeTags.size(); i++)
     {
         cout << "Node '" << allNodeTags[i] << "': (" << allCoord[3*i] << "; " << allCoord[3*i + 1] << "; " << allCoord[3*i + 2] << ")\n";
     }
@@ -647,17 +396,17 @@ void dispMatricesFun(const MatrixXd &A, const MatrixXd &B, const MatrixXd &c, co
 }
 void dispValuesFun(const vector<elementStruct> &elementVector)
 {
-    for(int i = 0; i < elementVector.size(); i++)
+    for(size_t i = 0; i < elementVector.size(); i++)
     {
         cout << "Element '" << elementVector[i].tag << "': from node " << elementVector[i].nodeTags[0] << " to node " << elementVector[i].nodeTags[1] << " (" << elementVector[i].bcType << "):\tDirichlet: " << elementVector[i].bcValue[0] << "\tNeumann: " << elementVector[i].bcValue[1] << "\n";
     }
 }
 
-void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain)
+void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain,            vector<int> &elementTypes2d_domain_BEM, vector<vector<size_t>> &elementTags2d_domain_BEM, vector<vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM)
 {
     // Gets the dim and the tags of the physical groups
     vectorpair physicalGroupsDimTags;
-    model::getPhysicalGroups(physicalGroupsDimTags, 1);
+    model::getPhysicalGroups(physicalGroupsDimTags);
 
     // Gets the boundary conditions from onelab and create a map: "name of the physical group" -> ("dirichlet"/"neumann", value)
     map<string, pair<string, double>> bcMap;
@@ -675,8 +424,11 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
         while(getline(ss, word, '/'))
             words.push_back(word);
 
-        if(words.size() == 3)
+        // focus only on dirichlet or neumann boundary conditions -> associated to BEM
+        if(words.size() == 3 && (words[2].compare("neumann") == 0 || words[2].compare("dirichlet") == 0))
+        {
             bcMap[words[1]] = {words[2], values[0]};
+        }
     }
 
     // Initially, these are 0 and are incremented each time a dirichlet/neumann-element is encountered.
@@ -687,8 +439,32 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
         string name;
         model::getPhysicalName(physicalGroupsDim, physicalGroupsTag, name);
 
+        if(name == "BEM_domain")
+        {
+            vector<size_t> nodeTags;
+            vector<double> coord;
+            model::mesh::getNodesForPhysicalGroup(physicalGroupsDim,physicalGroupsTag,nodeTags,coord);
+
+            NodeTags2d_domain.insert(NodeTags2d_domain.end(), nodeTags.begin(), nodeTags.end());
+            NodeCoord2d_domain.insert(NodeCoord2d_domain.end(), coord.begin(), coord.end());
+
+            // c'est un peu difficile d'expliquer pourquoi je souvegarde le tag du domaine BEM. C'est pour un algo qui doit récupérer tous les éléments 2d de la frontière mais doit faire la distinction entre les éléments du domaine FEM et BEM
+            entities_tags_for_physical_group_domain_BEM = physicalGroupsTag;
+            vector<int> entities_tags_2d_domain_BEM;
+            model::getEntitiesForPhysicalGroup(physicalGroupsDim, physicalGroupsTag, entities_tags_2d_domain_BEM);
+
+            for(size_t j=0; j< entities_tags_2d_domain_BEM.size(); j++)
+            {
+                vector<int> elementTypes;
+                vector<vector<size_t> > elementTags;
+                vector<vector<size_t> > nodeTags;
+                model::mesh::getElements(elementTypes2d_domain_BEM, elementTags2d_domain_BEM, elnodeTags2d_domain_BEM, physicalGroupsDim, entities_tags_2d_domain_BEM[j]);
+                elementTypes2d_domain_BEM.insert(elementTypes2d_domain_BEM.end(), elementTypes.begin(), elementTypes.end());
+                elementTags2d_domain_BEM.insert(elementTags2d_domain_BEM.end(), elementTags.begin(), elementTags.end());
+            }
+        }
         //Boundaries that separate 2 types of elements within the domain are assumed to have the name = "between". The nodes and their coordinates are added to the vectors containing all the tags and coordinates of the nodes in the domain.
-        if(name == "between")
+        else if(name == "between")
         {
             vector<size_t> nodeTags;
             vector<double> coord;
@@ -734,7 +510,7 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
             if(dispHierarchy)
                 cout << "which has " << elementTags1.size() + elementTags8.size() << " elements:\n";
 
-            for(int el = 0; el < elementTags1.size(); el++)
+            for(size_t el = 0; el < elementTags1.size(); el++)
             {
                 int elTag = elementTags1[el];
 
@@ -763,7 +539,7 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
                     cout << "\t\t\t-> Node '" << element.nodeTags[1] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[1]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[1]] + 1] << ")\n";
                 }
             }
-            for(int el = 0; el < elementTags8.size(); el++)
+            for(size_t el = 0; el < elementTags8.size(); el++)
             {
                 int elTag = elementTags8[el];
 
@@ -796,6 +572,7 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
             if(dispHierarchy)
                 cout << "\n";
         }
+
     }
 }
 
@@ -860,7 +637,7 @@ double computeG(const double &x, const double &y, const elementStruct &element, 
 
     // Computation of the sum (of integrand evaluated at integration point * weight)
     double gSum = 0;
-    for(int k = 0; k < weights.size(); k++)
+    for(size_t k = 0; k < weights.size(); k++)
     {
         // Parametric coordinate
         double xi = localCoord[3*k];
@@ -897,14 +674,14 @@ void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_do
     double g = 0;
 
 #pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(NodeTags2d_domain,allCoord,integrationType,elementVector,nodeMapDomain)
-    for(int i = 0; i < NodeTags2d_domain.size(); i++)
+    for(size_t i = 0; i < NodeTags2d_domain.size(); i++)
     {
         // Coordinates of the node
         x = allCoord[3*(NodeTags2d_domain[i]-1)];
         y = allCoord[3*(NodeTags2d_domain[i]-1) + 1];
 
         phi = 0;
-        for(int j = 0; j < elementVector.size(); j++)
+        for(size_t j = 0; j < elementVector.size(); j++)
         {
             h = computeH(x, y, elementVector[j]);
             g = computeG(x, y, elementVector[j], integrationType);
@@ -919,54 +696,132 @@ void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_do
 
 void computeData(const vector<elementStruct> &elementVector, const vector<int> &elementTypes, const vector<vector<size_t>> &elementTags, vector<size_t> &tags, vector<vector<double>> &data, const string integrationType)
 {
-    int elementCount = 0;
-    double x = 0;
-    double y = 0;
-    double h = 0;
-    double g = 0;
-    double phi = 0;
-    int elType = 0;
-    vector<double> barycenters;
-#pragma omp parallel for schedule(dynamic) private(x,y,phi,h,g,barycenters,elType) shared(elementTags,elementVector,tags,data,elementCount)
-    for(int i = 0; i < elementTypes.size(); i++)
-    {
-        elType = elementTypes[i];
-        model::mesh::getBarycenters(elType, -1, false, false, barycenters);
-        for(int j = 0; j < elementTags[i].size(); j++)
-        {
-            x = barycenters[3*j];
-            y = barycenters[3*j+1];
+        double x = 0;
+        double y = 0;
+        double h = 0;
+        double g = 0;
+        double phi = 0;
+        int elType = 0;
+        vector<double> barycenters;
+        size_t elementCount = 0;
 
-            phi = 0;
-            for(int k = 0; k < elementVector.size(); k++)
+        for(size_t i = 0; i < elementTypes.size(); i++)
+        {
+            elType = elementTypes[i];
+            model::mesh::getBarycenters(elType, -1, false, false, barycenters);
+#pragma omp parallel for schedule(guided) private(x,y,phi,h,g) shared(elementTags,elementVector,tags,data,elementCount,barycenters)
+            for(size_t j = 0; j < elementTags[i].size(); j++)
             {
-                h = computeH(x, y, elementVector[k]);
-                g = computeG(x, y, elementVector[k], integrationType);
-                phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
+                x = barycenters[3*j];
+                y = barycenters[3*j+1];
+
+                phi = 0;
+                for(size_t k = 0; k < elementVector.size(); k++)
+                {
+                    h = computeH(x, y, elementVector[k]);
+                    g = computeG(x, y, elementVector[k], integrationType);
+                    phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
+                }
+                // Potential at the node is phi.
+    #pragma omp critical
+                {
+                    tags[elementCount + j] = elementTags[i][j];
+                    data[elementCount + j].resize(1,phi);
+                }
             }
-            // Potential at the node is phi.
-#pragma omp critical
-            {
-                tags[elementCount] = elementTags[i][j];
-                data[elementCount].resize(1);
-                data[elementCount][0] = phi;
-                elementCount++;
-            }
+            elementCount = elementCount + elementTags[i].size();
         }
-    }
+
+    /*int elementCount = 0;
+     for(size_t i = 0; i < elementTypes.size(); i++)
+     {
+     int elType = elementTypes[i];
+     vector<double> barycenters;
+     model::mesh::getBarycenters(elType, -1, false, false, barycenters);
+
+     //#pragma omp parallel for
+     for(size_t j = 0; j < elementTags[i].size(); j++)
+     {
+     double x = barycenters[3*j];
+     double y = barycenters[3*j + 1];
+
+     double phi = 0;
+     for(size_t k = 0; k < elementVector.size(); k++)
+     {
+     double h = computeH(x, y, elementVector[k]);
+     double g = computeG(x, y, elementVector[k], "Gauss4");
+     phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
+     }
+     // Potential at the node is phi.
+     tags[elementCount] = elementTags[i][j];
+     data[elementCount] = vector<double> (1);
+     data[elementCount][0] = phi;
+     elementCount++; // cette ligne empêche de paralléliser
+     }
+     }
+     cout << elementCount;*/
+
+    /*--------ajout Louis-------*/
+//    int max_threads = omp_get_max_threads();
+//    omp_set_num_threads(max_threads);
+//    //each thread will have its own data vectors (lists to simplify the push_back operation), then the vectors will be merged
+//    vector<int> elementCountThreads(max_threads); // elementCountPerThread
+//    vector<list<size_t>> tagsThreads(max_threads);
+//    vector<list<vector<double>>> dataThreads(max_threads);
+//    for(int i = 0; i < max_threads; i++)
+//    {
+//        elementCountThreads[i] = 0;
+//    }
+//    for(size_t i = 0; i < elementTypes.size(); i++)
+//    {
+//        int elType = elementTypes[i];
+//        vector<double> barycenters;
+//        model::mesh::getBarycenters(elType, -1, false, false, barycenters);
+//
+//#pragma omp parallel for
+//        for(size_t j = 0; j < elementTags[i].size(); j++)
+//        {
+//            double x = barycenters[3*j];
+//            double y = barycenters[3*j + 1];
+//
+//            double phi = 0;
+//            for(size_t k = 0; k < elementVector.size(); k++)
+//            {
+//                double h = computeH(x, y, elementVector[k]);
+//                double g = computeG(x, y, elementVector[k], "Gauss4");
+//                phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
+//            }
+//            // Potential at the node is phi.
+//            int my_thread = omp_get_thread_num();
+//            tagsThreads[my_thread].push_back(elementTags[i][j]);
+//            vector<double> v(1);
+//            v[0] = phi;
+//            dataThreads[my_thread].push_back(v);
+//            elementCountThreads[my_thread] = elementCountThreads[my_thread] + 1;
+//        }
+//    }
+//    // merging the results
+//    for(int i = 0; i < max_threads; i++)
+//    {
+//        vector<size_t> myTags(tagsThreads[i].begin(), tagsThreads[i].end());
+//        vector<vector<double>> myData(dataThreads[i].begin(), dataThreads[i].end());
+//
+//        tags.insert(tags.end(), myTags.begin(), myTags.end());
+//        data.insert(data.end(), myData.begin(), myData.end());
+//    }
 }
 
 void disp_element_node_data(vector<int> &nodes_commun_tag, vector<int> &elements_commun_tag)
 {
     cout << "problème dans la géométrie, noeuds communs = " << nodes_commun_tag.size() << endl;
     cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
-    for(int m = 0; m < nodes_commun_tag.size(); m++)
+    for(size_t m = 0; m < nodes_commun_tag.size(); m++)
     {
         cout << nodes_commun_tag[m] << " ";
     }
     cout << endl;
     cout << "elements commun: " << elements_commun_tag.size() << ": ";
-    for(int m = 0; m < elements_commun_tag.size(); m++)
+    for(size_t m = 0; m < elements_commun_tag.size(); m++)
     {
         cout << elements_commun_tag[m] << " ";
     }
