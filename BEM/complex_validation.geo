@@ -2,14 +2,14 @@
 
 Lx = 4;
 Ly = 2;
-nx = 50;
-ny = 50;
+nx = 20;
+ny = 20;
 
 Point(1) = {0, 0, 0, 0.1};
 Point(2) = {Lx, 0, 0, 0.2};
 Point(3) = {Lx, Ly, 0, 0.2};
 Point(4) = {0, Ly, 0, 0.1};
-Point(5) = {Lx/2, 0, 0, 0.15}; 
+Point(5) = {Lx/2, 0, 0, 0.15};
 Point(6) = {Lx/2, Ly, 0, 0.15};
 
 Line(1) = {1, 5};
@@ -34,7 +34,7 @@ Transfinite Curve {3, 8} = ny+1 Using Progression 1;
 //Transfinite Surface {1};
 //Transfinite Surface {2};
 
-Mesh.ElementOrder = 2;
+Mesh.ElementOrder = 1;
 
 Recombine Surface {1}; // quads instead of triangles
 
@@ -42,6 +42,7 @@ Physical Curve("left_edge", 5) = {6};
 Physical Curve("right_edge", 6) = {3};
 Physical Curve("bottom_edge", 7) = {1, 2};
 Physical Curve("top_edge", 8) = {4, 5};
+Physical Surface("BEM_domain", 6) = {1, 2};
 Physical Curve("between", 9) = {7, 8};
 
 SetNumber("Boundary Conditions/left_edge/dirichlet", 200.);

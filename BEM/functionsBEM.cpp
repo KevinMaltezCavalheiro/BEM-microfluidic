@@ -36,15 +36,13 @@
 //todo: créer d'autres .geo avec des géométries plus complexes
 //gérer des matériaux composites
 
-using namespace gmsh;
-using namespace std;
-using namespace Eigen;
+//petit test de commit par xcode
 
-void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_t>> &elementTags2d_domain_BEM, vector<int> &elementTypes2d_domain_BEM, vector<vector<size_t>> &nodeTags2d_domain_BEM, vector<elementStruct> &elementVector, map<int, double> &nodeMapDomain, bool &show_element_node_data, int &entities_tags_for_physical_group_domain_BEM)
+void element_node_data(std::vector<std::vector<std::vector<double>>> &data, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &nodeTags2d_domain_BEM, std::vector<elementStruct> &elementVector, std::map<int, double> &nodeMapDomain, bool &show_element_node_data, int &entities_tags_for_physical_group_domain_BEM, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
 {
     //The first part of the algorithm consists in recovering the tag of the 2d elements of the domain which have at least one node in common with the boundary
     //We initialise the first dimension of the vector that will contain all 2d elements in common with the boundary with the number of element types present in the domain.
-    vector<vector<size_t>> elementTags2d_boundary(elementTypes2d_domain_BEM.size());
+    std::vector<std::vector<size_t>> elementTags2d_boundary(elementTypes2d_domain_BEM.size());
 
     //this loop goes through all the nodes of the boundary (node 1 of each element). We then use getElementsByCoordinates to obtain all the elements in common with the node considered. We only take the 2d elements.
     for(size_t i = 0; i < elementVector.size(); i++)
@@ -52,19 +50,19 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
         double posx = elementVector[i].x1;
         double posy = elementVector[i].y1;
         double posz = 0;
-        vector<size_t> elementTags;
-        model::mesh::getElementsByCoordinates(posx,posy,posz,elementTags,2);
+        std::vector<size_t> elementTags;
+        gmsh::model::mesh::getElementsByCoordinates(posx,posy,posz,elementTags,2);
 
         //we loop on the 2d elements which are in common with the considered node of the boundary. Depending on their type, they are added to the vector comprising all the 2d elements common with the boundary.
         for(size_t j = 0; j < elementTags.size(); j++)
         {
             int elementType;
-            vector<size_t> nodeTags;
+            std::vector<size_t> nodeTags;
             int dim;
             int tag;
-            vector<int> physicalTags;
-            model::mesh::getElement(elementTags[j],elementType,nodeTags,dim,tag);
-            model::getPhysicalGroupsForEntity(dim,tag,physicalTags);
+            std::vector<int> physicalTags;
+            gmsh::model::mesh::getElement(elementTags[j],elementType,nodeTags,dim,tag);
+            gmsh::model::getPhysicalGroupsForEntity(dim,tag,physicalTags);
 
             for(size_t k = 0; k < elementTypes2d_domain_BEM.size(); k++)
             {
@@ -87,7 +85,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
     }
 
     //This map may be replaced in the future. It allows to retain the position of the elements of the elementTag2d loop and linked their position to the loop of the elementTag2d_boundary (the tags of the elements in common with the boundary). This map is the link between the array of tags of the 2d elements of the boundary and that of the tags of all the 2d elements.
-    map<int, int> tagposition;
+    std::map<int, int> tagposition;
 
     //The first dimension of data corresponds to the number of element types.
     data.resize(elementTags2d_domain_BEM.size());
@@ -95,13 +93,13 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
     {
         //The second dimension of data corresponds to the number of element tags for on element type.
         data[i].resize(elementTags2d_domain_BEM[i].size());
-        string elementName;
+        std::string elementName;
         int dim;
         int order;
         int numNodes;
-        vector<double> localNodeCoord;
+        std::vector<double> localNodeCoord;
         int numPrimaryNodes;
-        model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+        gmsh::model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
 
         //getElementProperties was used to get the number of nodes for a specific element
         int nb_nodes_element2d = numNodes;
@@ -117,36 +115,36 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
     //The first loop is on the elementType in 2d in common with the boundary.
     for(size_t i = 0; i < elementTags2d_boundary.size(); i++)
     {
-        string elementName;
+        std::string elementName;
         int dim;
         int order;
         int numNodes;
-        vector<double> localNodeCoord;
+        std::vector<double> localNodeCoord;
         int numPrimaryNodes;
-        model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+        gmsh::model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
         //getElementProperties was used to get the number of nodes for a specific element
         int nb_nodes_element2d = numNodes;
 
         //The second loop is on the elementTag in 2d in common with the boundary.
         for(size_t j = 0; j < elementTags2d_boundary[i].size(); j++)
         {
-            vector<int> elements_commun_tag(0,0);
-            vector<int> elements_commun_indice(0,0);
-            vector<int> nodes_commun_tag(0,0);
+            std::vector<int> elements_commun_tag(0,0);
+            std::vector<int> elements_commun_indice(0,0);
+            std::vector<int> nodes_commun_tag(0,0);
             int elementType;
-            vector<size_t> nodeTags_element2d;
+            std::vector<size_t> nodeTags_element2d;
             int dim;
             int tag;
-            model::mesh::getElement(elementTags2d_boundary[i][j],elementType,nodeTags_element2d,dim,tag);
+            gmsh::model::mesh::getElement(elementTags2d_boundary[i][j],elementType,nodeTags_element2d,dim,tag);
             //The third loop is on the nodes of a specific elementTag in 2d in common with the boundary.
-            for(size_t k = 0; k < nb_nodes_element2d; k++)
+            for(int k = 0; k < nb_nodes_element2d; k++)
             {
                 int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                 //For each node of the 2d elements, we loop over all the 1d elements of the boundary and look for both the node in common and the elements in common. Indeed, on the boundary, a specific node belongs to two 1d elements.
                 for(size_t l = 0; l < elementVector.size(); l++)
                 {
                     //condition vérifié si le noeud de l’élément 2d est égal au noeud d’un élément 1d de la frontière.
-                    if(elementVector[l].nodeTags[0] == loop_element_2d_nodes_tag||elementVector[l].nodeTags[1] == loop_element_2d_nodes_tag)
+                    if(elementVector[l].nodeTags[0] == (size_t) loop_element_2d_nodes_tag || elementVector[l].nodeTags[1] == (size_t) loop_element_2d_nodes_tag)
                     {
                         //this loop allows the node to be added only once if it is present several times. As the 1d elements of the boundary are traversed, 1 node encounters 2 elements and can therefore be counted multiple times.
                         int compteur_node = 0;
@@ -182,19 +180,19 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             //For each 2d element in common with the boundary, displays the tag of the nodes and the tag of the common 1d elements of the boundary.
             if(show_element_node_data)
             {
-                cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
+                std::cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
                 for(size_t m = 0; m < nodes_commun_tag.size(); m++)
                 {
-                    cout << nodes_commun_tag[m] << " ";
+                    std::cout << nodes_commun_tag[m] << " ";
                 }
-                cout << endl;
-                cout << "elements commun: " << elements_commun_tag.size() << ": ";
+                std::cout << std::endl;
+                std::cout << "elements commun: " << elements_commun_tag.size() << ": ";
                 for(size_t m = 0; m < elements_commun_tag.size(); m++)
                 {
-                    cout << elements_commun_tag[m] << " ";
+                    std::cout << elements_commun_tag[m] << " ";
                 }
-                cout << endl;
-                cout << endl;
+                std::cout << std::endl;
+                std::cout << std::endl;
             }
             //Several geometric configurations are to be considered. Here, the 2d element has 1 node in common with the boundary and must therefore touch 2 of its elements.
             if(nodes_commun_tag.size() == 1)
@@ -202,7 +200,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                 if(elements_commun_tag.size() == 2)
                 {
                     //We loop over the nodes of the 2d element, find the one that is common to the boundary and assign it the average value of the potential of the 2 elements it touches. Indeed the potential is discontinuous from one element of the boundary to the other.
-                    for(size_t k = 0; k < nb_nodes_element2d; k++)
+                    for(int k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         if(loop_element_2d_nodes_tag == nodes_commun_tag[0])
@@ -212,6 +210,14 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                             phi = phi + elementVector[elements_commun_indice[1]].bcValue[0];
                             phi = phi/2.0;
                             data[i][tagposition[elementTags2d_boundary[i][j]]][k] = phi;
+                            if(nodeOnBoundary[loop_element_2d_nodes_tag].first == 0)
+                            {
+                                std::cerr << "error node: " << loop_element_2d_nodes_tag << " is considered on the boundary and in the BEM domain" << " output from common nodes: " << nodes_commun_tag.size() << " and common elements: " << elements_commun_tag.size() << std::endl;
+                            }
+                            else
+                            {
+                                nodeOnBoundary[loop_element_2d_nodes_tag].second = 1;
+                            }
                         }
                     }
                 }
@@ -226,7 +232,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             {
                 if(elements_commun_tag.size() == 3)
                 {
-                    for(size_t k = 0; k < nb_nodes_element2d; k++)
+                    for(int k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         for(size_t l = 0; l < elements_commun_tag.size(); l++)
@@ -235,7 +241,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                             int compteur_nodes = 0;
                             for(size_t m = 0; m < nodes_commun_tag.size(); m++)
                             {
-                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
+                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == (size_t) nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == (size_t) nodes_commun_tag[m])
                                 {
                                     compteur_nodes++;
                                 }
@@ -243,17 +249,33 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                             if(compteur_nodes == 2)
                             {
                                 //Once we have found the element in common, the node of the 2d element on which we are looping must be the right one
-                                if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
+                                if((size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]|| (size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
                                 {
                                     //The constant value of the boundary element in common is assigned to the 2 nodes of the 2d element that touches the boundary.
                                     data[i][tagposition[elementTags2d_boundary[i][j]]][k] = elementVector[elements_commun_indice[l]].bcValue[0];
+                                    if(nodeOnBoundary[loop_element_2d_nodes_tag].first == 0)
+                                    {
+                                        std::cerr << "error node: " << loop_element_2d_nodes_tag << " is considered on the boundary and in the BEM domain" << " output from common nodes: " << nodes_commun_tag.size() << " and common elements: " << elements_commun_tag.size() << std::endl;
+                                    }
+                                    else
+                                    {
+                                        nodeOnBoundary[loop_element_2d_nodes_tag].second = 1;
+                                    }
                                 }
                                 //In the case of second order elements, the value of the common 1d boundary element is assigned to the middle node.
                                 if(order == 2)
                                 {
-                                    if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].midNodeTags)
+                                    if((size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].midNodeTags)
                                     {
                                         data[i][tagposition[elementTags2d_boundary[i][j]]][k] = elementVector[elements_commun_indice[l]].bcValue[0];
+                                        if(nodeOnBoundary[loop_element_2d_nodes_tag].first == 0)
+                                        {
+                                            std::cerr << "error node: " << loop_element_2d_nodes_tag << " is considered on the boundary and in the BEM domain" << " output from common nodes: " << nodes_commun_tag.size() << " and common elements: " << elements_commun_tag.size() << std::endl;
+                                        }
+                                        else
+                                        {
+                                            nodeOnBoundary[loop_element_2d_nodes_tag].second = 1;
+                                        }
                                     }
                                 }
                             }
@@ -262,13 +284,13 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                 }
                 else if(elements_commun_tag.size() == 4)
                 {
-                    for(size_t k = 0; k < nb_nodes_element2d; k++)
+                    for(int k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         for(size_t l = 0; l < elements_commun_tag.size(); l++)
                         {
                             //This geometry behaves almost like the first case (1 node, 2 elements) except that it is true for 2 different nodes of the 2d element. We loop over the elements of the boundary. If one of its nodes is common with the boundary, it is assigned the value of the potential of this first element. When the second one comes, it is averaged with the potential already present on the node.
-                            if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
+                            if((size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]|| (size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
                             {
                                 if(data[i][tagposition[elementTags2d_boundary[i][j]]][k] == HUGE_VAL)
                                 {
@@ -277,6 +299,14 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                                 else
                                 {
                                     data[i][tagposition[elementTags2d_boundary[i][j]]][k] = (data[i][tagposition[elementTags2d_boundary[i][j]]][k] + elementVector[elements_commun_indice[l]].bcValue[0])/2.0;
+                                }
+                                if(nodeOnBoundary[loop_element_2d_nodes_tag].first == 0)
+                                {
+                                    std::cerr << "error node: " << loop_element_2d_nodes_tag << " is considered on the boundary and in the BEM domain" << " output from common nodes: " << nodes_commun_tag.size() << " and common elements: " << elements_commun_tag.size() << std::endl;
+                                }
+                                else
+                                {
+                                    nodeOnBoundary[loop_element_2d_nodes_tag].second = 1;
                                 }
                             }
                         }
@@ -292,7 +322,7 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
             {
                 if(elements_commun_tag.size() == 4)
                 {
-                    for(size_t k = 0; k < nb_nodes_element2d; k++)
+                    for(int k = 0; k < nb_nodes_element2d; k++)
                     {
                         int loop_element_2d_nodes_tag = nodeTags_element2d[k];
                         for(size_t l = 0; l < elements_commun_tag.size(); l++)
@@ -300,14 +330,14 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                             int compteur_nodes = 0;
                             for(size_t m = 0; m < nodes_commun_tag.size(); m++)
                             {
-                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == nodes_commun_tag[m])
+                                if(elementVector[elements_commun_indice[l]].nodeTags[0] == (size_t) nodes_commun_tag[m]||elementVector[elements_commun_indice[l]].nodeTags[1] == (size_t) nodes_commun_tag[m])
                                 {
                                     compteur_nodes++;
                                 }
                             }
                             if(compteur_nodes == 2)
                             {
-                                if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]||loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
+                                if((size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[0]|| (size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].nodeTags[1])
                                 {
                                     if(data[i][tagposition[elementTags2d_boundary[i][j]]][k] == HUGE_VAL)
                                     {
@@ -317,13 +347,29 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
                                     {
                                         data[i][tagposition[elementTags2d_boundary[i][j]]][k] = (data[i][tagposition[elementTags2d_boundary[i][j]]][k] + elementVector[elements_commun_indice[l]].bcValue[0])/2.0;
                                     }
+                                    if(nodeOnBoundary[loop_element_2d_nodes_tag].first == 0)
+                                    {
+                                        std::cerr << "error node: " << loop_element_2d_nodes_tag << " is considered on the boundary and in the BEM domain" << " output from common nodes: " << nodes_commun_tag.size() << " and common elements: " << elements_commun_tag.size() << std::endl;
+                                    }
+                                    else
+                                    {
+                                        nodeOnBoundary[loop_element_2d_nodes_tag].second = 1;
+                                    }
                                 }
                                 //In the case of second order elements, the value of the common 1d boundary element is assigned to the middle node.
                                 if(order == 2)
                                 {
-                                    if(loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].midNodeTags)
+                                    if((size_t) loop_element_2d_nodes_tag == elementVector[elements_commun_indice[l]].midNodeTags)
                                     {
                                         data[i][tagposition[elementTags2d_boundary[i][j]]][k] = elementVector[elements_commun_indice[l]].bcValue[0];
+                                        if(nodeOnBoundary[loop_element_2d_nodes_tag].first == 0)
+                                        {
+                                            std::cerr << "error node: " << loop_element_2d_nodes_tag << " is considered on the boundary and in the BEM domain" << " output from common nodes: " << nodes_commun_tag.size() << " and common elements: " << elements_commun_tag.size() << std::endl;
+                                        }
+                                        else
+                                        {
+                                            nodeOnBoundary[loop_element_2d_nodes_tag].second = 1;
+                                        }
                                     }
                                 }
                             }
@@ -346,81 +392,96 @@ void element_node_data(vector<vector<vector<double>>> &data, vector<vector<size_
     //The last step is to loop over all the 2d elements in the domain. If the HUGE_VAL value is still present, this means that the element node does not belong to the boundary (since the value of the potential has not been modified) and is therefore part of the domain. We then use the map which associates the value of the potential with the tag of the node inside the domain.
     for(size_t i = 0; i < elementTags2d_domain_BEM.size(); i++)
     {
-        string elementName;
+        std::string elementName;
         int dim;
         int order;
         int numNodes;
-        vector<double> localNodeCoord;
+        std::vector<double> localNodeCoord;
         int numPrimaryNodes;
-        model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
+        gmsh::model::mesh::getElementProperties(elementTypes2d_domain_BEM[i], elementName, dim, order, numNodes, localNodeCoord, numPrimaryNodes);
         int nb_nodes_element2d = numNodes;
         for(size_t j = 0; j < elementTags2d_domain_BEM[i].size(); j++)
         {
             int elementType;
-            vector<size_t> nodeTags_element2d;
+            std::vector<size_t> nodeTags_element2d;
             int dim;
             int tag;
-            model::mesh::getElement(elementTags2d_domain_BEM[i][j],elementType,nodeTags_element2d,dim,tag);
-            for(size_t k = 0; k < nb_nodes_element2d; k++)
+            gmsh::model::mesh::getElement(elementTags2d_domain_BEM[i][j],elementType,nodeTags_element2d,dim,tag);
+            for(int k = 0; k < nb_nodes_element2d; k++)
             {
                 int loop_element_2d_nodes_tag = nodeTags_element2d[k];
+                //je laisse la condition hugeval pour l'instant car elle est plus "gentille". Le code se plantera moins facilement mais il y aura quand même un message dans la console si on a des noeuds qui ont un potentiel anormal
                 if(data[i][j][k] == HUGE_VAL)
                 {
-                    data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                    if(nodeMapDomain.count(loop_element_2d_nodes_tag))
+                    {
+                        data[i][j][k] = nodeMapDomain[loop_element_2d_nodes_tag];
+                    }
+                    else
+                    {
+                        std::cout << "error: node not found in nodeMapDomain code BEM" << std::endl;
+                    }
+                    if(nodeOnBoundary[loop_element_2d_nodes_tag].first == 1 || nodeOnBoundary[loop_element_2d_nodes_tag].second == 1)
+                    {
+                        std::cerr << "error node: " << loop_element_2d_nodes_tag << " is considered on the boundary and in the BEM domain" << " output from the use of nodemapdomain" << std::endl;
+                    }
                 }
             }
         }
     }
 }
 
-void dispNodeCoordFun(const vector<size_t> &allNodeTags, const vector<double> &allCoord)
+void dispNodeCoordFun(const std::vector<size_t> &allNodeTags, const std::vector<double> &allCoord)
 {
     for(size_t i = 0; i < allNodeTags.size(); i++)
     {
-        cout << "Node '" << allNodeTags[i] << "': (" << allCoord[3*i] << "; " << allCoord[3*i + 1] << "; " << allCoord[3*i + 2] << ")\n";
+        std::cout << "Node '" << allNodeTags[i] << "': (" << allCoord[3*i] << "; " << allCoord[3*i + 1] << "; " << allCoord[3*i + 2] << ")\n";
     }
-    cout << endl;
+    std::cout << std::endl;
 }
-void dispMatricesFun(const MatrixXd &A, const MatrixXd &B, const MatrixXd &c, const MatrixXd &b, const MatrixXd &x)
+
+void dispMatricesFun(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, const Eigen::MatrixXd &c, const Eigen::MatrixXd &b, const Eigen::MatrixXd &x)
 {
-    cout << "A matrix:\n";
-    cout << A << endl;
-    cout << "\nB matrix:\n";
-    cout << B << endl;
-    cout << "\nc vector:\n";
-    cout << c << endl;
-    cout << "\nb vector:\n";
-    cout << b << endl;
-    cout << "\nx vector:\n";
-    cout << x << endl;
+    std::cout << "A matrix:\n";
+    std::cout << A << std::endl;
+    std::cout << "\nB matrix:\n";
+    std::cout << B << std::endl;
+    std::cout << "\nc vector:\n";
+    std::cout << c << std::endl;
+    std::cout << "\nb vector:\n";
+    std::cout << b << std::endl;
+    std::cout << "\nx vector:\n";
+    std::cout << x << std::endl;
 }
-void dispValuesFun(const vector<elementStruct> &elementVector)
+
+void dispValuesFun(const std::vector<elementStruct> &elementVector)
 {
     for(size_t i = 0; i < elementVector.size(); i++)
     {
-        cout << "Element '" << elementVector[i].tag << "': from node " << elementVector[i].nodeTags[0] << " to node " << elementVector[i].nodeTags[1] << " (" << elementVector[i].bcType << "):\tDirichlet: " << elementVector[i].bcValue[0] << "\tNeumann: " << elementVector[i].bcValue[1] << "\n";
+        std::cout << "Element '" << elementVector[i].tag << "': from node " << elementVector[i].nodeTags[0] << " to node " << elementVector[i].nodeTags[1] << " (" << elementVector[i].bcType << "):\tDirichlet: " << elementVector[i].bcValue[0] << "\tNeumann: " << elementVector[i].bcValue[1] << "\n";
     }
 }
 
-void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, vector<size_t> &NodeTags2d_domain, vector<double> &NodeCoord2d_domain,            vector<int> &elementTypes2d_domain_BEM, vector<vector<size_t>> &elementTags2d_domain_BEM, vector<vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM)
+void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, std::vector<size_t> &NodeTags2d_domain, std::vector<double> &NodeCoord2d_domain, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<std::vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM, std::vector<int> &entities_tags_2d_domain_BEM, std::map<int, std::pair<double, double>> &boundaryDisplacementMap, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
 {
+    // pour moi nodeTags2d_domain inutile, ainsi que nodeCoords2d_domain
     // Gets the dim and the tags of the physical groups
-    vectorpair physicalGroupsDimTags;
-    model::getPhysicalGroups(physicalGroupsDimTags);
+    gmsh::vectorpair physicalGroupsDimTags;
+    gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
     // Gets the boundary conditions from onelab and create a map: "name of the physical group" -> ("dirichlet"/"neumann", value)
-    map<string, pair<string, double>> bcMap;
+    std::map<std::string, std::pair<std::string, double>> bcMap;
 
-    vector<string> bcKeys;
-    onelab::getNames(bcKeys, "Boundary Conditions.+");
+    std::vector<std::string> bcKeys;
+    gmsh::onelab::getNames(bcKeys, "Boundary Conditions.+");
     for(auto &key : bcKeys)
     {
-        vector<double> values;
-        onelab::getNumber(key, values);
+        std::vector<double> values;
+        gmsh::onelab::getNumber(key, values);
 
-        stringstream ss(key);
-        vector<string> words;
-        string word;
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
         while(getline(ss, word, '/'))
             words.push_back(word);
 
@@ -432,48 +493,33 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
     }
 
     // Initially, these are 0 and are incremented each time a dirichlet/neumann-element is encountered.
-    for (int i = 0; i < physicalGroupsDimTags.size(); i++)
+    for (size_t i = 0; i < physicalGroupsDimTags.size(); i++)
     {
         int physicalGroupsDim = physicalGroupsDimTags[i].first;
         int physicalGroupsTag = physicalGroupsDimTags[i].second;
-        string name;
-        model::getPhysicalName(physicalGroupsDim, physicalGroupsTag, name);
+        std::string name;
+        gmsh::model::getPhysicalName(physicalGroupsDim, physicalGroupsTag, name);
 
         if(name == "BEM_domain")
         {
-            vector<size_t> nodeTags;
-            vector<double> coord;
-            model::mesh::getNodesForPhysicalGroup(physicalGroupsDim,physicalGroupsTag,nodeTags,coord);
-
-            NodeTags2d_domain.insert(NodeTags2d_domain.end(), nodeTags.begin(), nodeTags.end());
-            NodeCoord2d_domain.insert(NodeCoord2d_domain.end(), coord.begin(), coord.end());
-
+            gmsh::model::mesh::getNodesForPhysicalGroup(physicalGroupsDim,physicalGroupsTag,NodeTags2d_domain,NodeCoord2d_domain);
+            
             // c'est un peu difficile d'expliquer pourquoi je souvegarde le tag du domaine BEM. C'est pour un algo qui doit récupérer tous les éléments 2d de la frontière mais doit faire la distinction entre les éléments du domaine FEM et BEM
             entities_tags_for_physical_group_domain_BEM = physicalGroupsTag;
-            vector<int> entities_tags_2d_domain_BEM;
-            model::getEntitiesForPhysicalGroup(physicalGroupsDim, physicalGroupsTag, entities_tags_2d_domain_BEM);
+            gmsh::model::getEntitiesForPhysicalGroup(physicalGroupsDim, physicalGroupsTag, entities_tags_2d_domain_BEM);
 
             for(size_t j=0; j< entities_tags_2d_domain_BEM.size(); j++)
             {
-                vector<int> elementTypes;
-                vector<vector<size_t> > elementTags;
-                vector<vector<size_t> > nodeTags;
-                model::mesh::getElements(elementTypes2d_domain_BEM, elementTags2d_domain_BEM, elnodeTags2d_domain_BEM, physicalGroupsDim, entities_tags_2d_domain_BEM[j]);
+                std::vector<int> elementTypes;
+                std::vector<std::vector<size_t> > elementTags;
+                std::vector<std::vector<size_t> > nodeTags;
+                gmsh::model::mesh::getElements(elementTypes, elementTags, nodeTags, physicalGroupsDim, entities_tags_2d_domain_BEM[j]);
                 elementTypes2d_domain_BEM.insert(elementTypes2d_domain_BEM.end(), elementTypes.begin(), elementTypes.end());
                 elementTags2d_domain_BEM.insert(elementTags2d_domain_BEM.end(), elementTags.begin(), elementTags.end());
             }
         }
-        //Boundaries that separate 2 types of elements within the domain are assumed to have the name = "between". The nodes and their coordinates are added to the vectors containing all the tags and coordinates of the nodes in the domain.
-        else if(name == "between")
-        {
-            vector<size_t> nodeTags;
-            vector<double> coord;
-            model::mesh::getNodesForPhysicalGroup(physicalGroupsDim,physicalGroupsTag,nodeTags,coord);
 
-            NodeTags2d_domain.insert(NodeTags2d_domain.end(), nodeTags.begin(), nodeTags.end());
-            NodeCoord2d_domain.insert(NodeCoord2d_domain.end(), coord.begin(), coord.end());
-        }
-
+        //s'il ne trouve pas name dans la map, find retourne map.end() => condition pour continue
         if(bcMap.find(name) == bcMap.end())
         {
             continue;
@@ -481,34 +527,34 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
 
         // Retrieves the type and the value of the boundary condition of this physical group.
         // /!\ Should check that this physical groups was well defined in the list of "Boundary Condition" !
-        string bcType = bcMap[name].first;
+        std::string bcType = bcMap[name].first;
         double bcValue = bcMap[name].second;
 
         // Prints the physical groups name, dim, tag, bcType and bcValue (if dispHierarchy != 0).
         if(dispHierarchy)
-            cout << "Physical group '" << name << "' (" << physicalGroupsDim << "D) with tag '" << physicalGroupsTag << "' has a '" << bcType << "' type and the value " << bcValue << "\n";
+            std::cout << "Physical group '" << name << "' (" << physicalGroupsDim << "D) with tag '" << physicalGroupsTag << "' has a '" << bcType << "' type and the value " << bcValue << "\n";
 
-        vector<int> entitiesTags;
-        model::getEntitiesForPhysicalGroup(physicalGroupsDim, physicalGroupsTag, entitiesTags);
+        std::vector<int> entitiesTags;
+        gmsh::model::getEntitiesForPhysicalGroup(physicalGroupsDim, physicalGroupsTag, entitiesTags);
 
-        for (int k = 0; k < entitiesTags.size(); k++)
+        for (size_t k = 0; k < entitiesTags.size(); k++)
         {
             // Print the tag of the entities of each physical group (if dispHierarchy != 0).
             if(dispHierarchy)
-                cout << "\t contains entity '" << entitiesTags[k] << "' ";
+                std::cout << "\t contains entity '" << entitiesTags[k] << "' ";
 
 
-            vector<size_t> elementTags1;
-            vector<size_t> nodeTags1;
-            vector<size_t> elementTags8;
-            vector<size_t> nodeTags8;
+            std::vector<size_t> elementTags1;
+            std::vector<size_t> nodeTags1;
+            std::vector<size_t> elementTags8;
+            std::vector<size_t> nodeTags8;
 
-            model::mesh::getElementsByType(1, elementTags1, nodeTags1, entitiesTags[k]);
-            model::mesh::getElementsByType(8, elementTags8, nodeTags8, entitiesTags[k]);
+            gmsh::model::mesh::getElementsByType(1, elementTags1, nodeTags1, entitiesTags[k]);
+            gmsh::model::mesh::getElementsByType(8, elementTags8, nodeTags8, entitiesTags[k]);
 
             // Print the number of element of the given entity (if dispHierarchy != 0).
             if(dispHierarchy)
-                cout << "which has " << elementTags1.size() + elementTags8.size() << " elements:\n";
+                std::cout << "which has " << elementTags1.size() + elementTags8.size() << " elements:\n";
 
             for(size_t el = 0; el < elementTags1.size(); el++)
             {
@@ -518,8 +564,15 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
                 element.tag = elTag;
                 element.nodeTags[0] = nodeTags1[2*el];
                 element.nodeTags[1] = nodeTags1[2*el + 1];
+                element.midNodeTags = 0;
+                
+                std::pair<double, double> nodalDisp1 = {0.0, 0.0}, nodalDisp2 = {0.0, 0.0};
+                if(boundaryDisplacementMap.count(element.nodeTags[0]))
+                    nodalDisp1 = boundaryDisplacementMap[element.nodeTags[0]];
+                if(boundaryDisplacementMap.count(element.nodeTags[1]))
+                    nodalDisp2 = boundaryDisplacementMap[element.nodeTags[1]];
+                computeGeometricParam(element, allNodeIndex, allCoord, nodalDisp1, nodalDisp2);
 
-                computeGeometricParam(element, allNodeIndex, allCoord);
                 if(bcType == "dirichlet")
                 {
                     element.bcValue[0] = bcValue;
@@ -534,9 +587,9 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
                 // Print the tag of a given element and the tags of the nodes that composes it as well as their coordinates (if dispHierarchy != 0).
                 if(dispHierarchy)
                 {
-                    cout << "\t\t-Element '" << elTag << "' (" << element.bcType << "):\n";
-                    cout << "\t\t\t-> Node '" << element.nodeTags[0] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[0]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[0]] + 1] << ")\n";
-                    cout << "\t\t\t-> Node '" << element.nodeTags[1] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[1]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[1]] + 1] << ")\n";
+                    std::cout << "\t\t-Element '" << elTag << "' (" << element.bcType << "):\n";
+                    std::cout << "\t\t\t-> Node '" << element.nodeTags[0] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[0]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[0]] + 1] << ")\n";
+                    std::cout << "\t\t\t-> Node '" << element.nodeTags[1] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[1]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[1]] + 1] << ")\n";
                 }
             }
             for(size_t el = 0; el < elementTags8.size(); el++)
@@ -548,7 +601,14 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
                 element.nodeTags[0] = nodeTags8[3*el];
                 element.nodeTags[1] = nodeTags8[3*el + 1];
                 element.midNodeTags = nodeTags8[3*el + 2];
-                computeGeometricParam(element, allNodeIndex, allCoord);
+
+                std::pair<double, double> nodalDisp1 = {0.0, 0.0}, nodalDisp2 = {0.0, 0.0};
+                if(boundaryDisplacementMap.count(element.nodeTags[0]))
+                    nodalDisp1 = boundaryDisplacementMap[element.nodeTags[0]];
+                if(boundaryDisplacementMap.count(element.nodeTags[1]))
+                    nodalDisp2 = boundaryDisplacementMap[element.nodeTags[1]];
+                computeGeometricParam(element, allNodeIndex, allCoord, nodalDisp1, nodalDisp2);
+
                 if(bcType == "dirichlet")
                 {
                     element.bcValue[0] = bcValue;
@@ -564,20 +624,32 @@ void getBC(map<size_t, int> allNodeIndex, const vector<double> &allCoord, vector
                 // Print the tag of a given element and the tags of the nodes that composes it as well as their coordinates (if dispHierarchy != 0).
                 if(dispHierarchy)
                 {
-                    cout << "\t\t-Element '" << elTag << "' (" << element.bcType << "):\n";
-                    cout << "\t\t\t-> Node '" << element.nodeTags[0] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[0]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[0]] + 1] << ")\n";
-                    cout << "\t\t\t-> Node '" << element.nodeTags[1] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[1]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[1]] + 1] << ")\n";
+                    std::cout << "\t\t-Element '" << elTag << "' (" << element.bcType << "):\n";
+                    std::cout << "\t\t\t-> Node '" << element.nodeTags[0] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[0]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[0]] + 1] << ")\n";
+                    std::cout << "\t\t\t-> Node '" << element.nodeTags[1] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[1]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[1]] + 1] << ")\n";
                 }
             }
             if(dispHierarchy)
-                cout << "\n";
+                std::cout << "\n";
         }
-
+    }
+    for(std::size_t i = 0; i < NodeTags2d_domain.size(); i++)
+    {
+        nodeOnBoundary[NodeTags2d_domain[i]].first = 0;
+        nodeOnBoundary[NodeTags2d_domain[i]].second = 0;
+    }
+    for(std::size_t i = 0; i < elementVector.size(); i++)
+    {
+        nodeOnBoundary[elementVector[i].nodeTags[0]].first = 1;
+        nodeOnBoundary[elementVector[i].nodeTags[1]].first = 1;
+        if(elementVector[i].midNodeTags != 0)
+        {
+            nodeOnBoundary[elementVector[i].midNodeTags].first = 1;
+        }
     }
 }
 
-
-void computeGeometricParam(elementStruct &element, map<size_t, int> allNodeIndex, const vector<double> &allCoord)
+void computeGeometricParam(elementStruct &element, std::map<std::size_t, int> allNodeIndex, const std::vector<double> &allCoord, std::pair<double, double> nodalDisp1, std::pair<double, double> nodalDisp2)
 {
     int i1Tag = element.nodeTags[0];
     int i2Tag = element.nodeTags[1];
@@ -586,10 +658,10 @@ void computeGeometricParam(elementStruct &element, map<size_t, int> allNodeIndex
     int i2Index = allNodeIndex[i2Tag];
 
     // Get the coordinates of the nodes from their tag.
-    element.x1 = allCoord[3*i1Index];
-    element.y1 = allCoord[3*i1Index + 1];
-    element.x2 = allCoord[3*i2Index];
-    element.y2 = allCoord[3*i2Index + 1];
+    element.x1 = allCoord[3*i1Index] + nodalDisp1.first;
+    element.y1 = allCoord[3*i1Index + 1] + nodalDisp1.second;
+    element.x2 = allCoord[3*i2Index] + nodalDisp2.first;
+    element.y2 = allCoord[3*i2Index + 1] + nodalDisp2.second;
 
     element.midX = (element.x1 + element.x2) / 2;
     element.midY = (element.y1 + element.y2) / 2;
@@ -628,12 +700,12 @@ double computeH(const double &x, const double &y, const elementStruct &element)
 }
 
 
-double computeG(const double &x, const double &y, const elementStruct &element, const string &integrationType)
+double computeG(const double &x, const double &y, const elementStruct &element, const std::string &integrationType)
 {
     // Computation of the integration points (parametric) and weights.
-    vector<double> localCoord;
-    vector<double> weights;
-    model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+    std::vector<double> localCoord;
+    std::vector<double> weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
 
     // Computation of the sum (of integrand evaluated at integration point * weight)
     double gSum = 0;
@@ -653,19 +725,19 @@ double computeG(const double &x, const double &y, const elementStruct &element, 
     return gSum * element.length / (4*M_PI);
 }
 
-void displayData(const string viewName, const string modelName, const string fileName, const vector<size_t> &tags, const vector<vector<double>> &data)
+void displayData(const std::string viewName, const std::string modelName, const std::string fileName, const std::vector<size_t> &tags, const std::vector<std::vector<double>> &data)
 {
-    int viewTag = view::add(viewName);
-    view::addModelData(viewTag, 0, modelName, "ElementData", tags, data);
-    view::write(viewTag, fileName);
+    int viewTag = gmsh::view::add(viewName);
+    gmsh::view::addModelData(viewTag, 0, modelName, "ElementData", tags, data);
+    gmsh::view::write(viewTag, fileName);
 
-    option::setNumber("View[0].IntervalsType", 3);
+    gmsh::option::setNumber("View[0].IntervalsType", 3);
     // option::setNumber("View[0].AdaptVisualizationGrid", 1); // Problem with this command !
-    option::setNumber("View[0].MaxRecursionLevel", 3);
-    option::setNumber("View[0].TargetError", -0.0001);
+    gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+    gmsh::option::setNumber("View[0].TargetError", -0.0001);
 }
 
-void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_domain, vector<elementStruct> &elementVector, map<int,double> &nodeMapDomain, const string integrationType)
+void compute_internal_phi(std::vector<double> &allCoord, std::vector<size_t> &NodeTags2d_domain, std::map<size_t, int> &allNodeIndex, std::vector<elementStruct> &elementVector, std::map<int,double> &nodeMapDomain, const std::string integrationType, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
 {
     double x = 0;
     double y = 0;
@@ -673,44 +745,53 @@ void compute_internal_phi(vector<double> &allCoord,vector<size_t> &NodeTags2d_do
     double h = 0;
     double g = 0;
 
-#pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(NodeTags2d_domain,allCoord,integrationType,elementVector,nodeMapDomain)
+#pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(NodeTags2d_domain,allCoord,elementVector,nodeMapDomain,nodeOnBoundary)
     for(size_t i = 0; i < NodeTags2d_domain.size(); i++)
     {
-        // Coordinates of the node
-        x = allCoord[3*(NodeTags2d_domain[i]-1)];
-        y = allCoord[3*(NodeTags2d_domain[i]-1) + 1];
+        //if(nodeOnBoundary[NodeTags2d_domain[i]].first == 0)
+        //{
+            // Coordinates of the node
+            x = allCoord[3*allNodeIndex[NodeTags2d_domain[i]]];
+            y = allCoord[3*allNodeIndex[NodeTags2d_domain[i]] + 1];
 
-        phi = 0;
-        for(size_t j = 0; j < elementVector.size(); j++)
-        {
-            h = computeH(x, y, elementVector[j]);
-            g = computeG(x, y, elementVector[j], integrationType);
+            phi = 0;
+            for(size_t j = 0; j < elementVector.size(); j++)
+            {
+                h = computeH(x, y, elementVector[j]);
+                g = computeG(x, y, elementVector[j], integrationType);
 
-            phi = phi + h*elementVector[j].bcValue[0] - g*elementVector[j].bcValue[1];
-        }
-        // Potential at the node is phi.
+                phi = phi + h*elementVector[j].bcValue[0] - g*elementVector[j].bcValue[1];
+            }
+            // Potential at the node is phi.
 #pragma omp critical
-        nodeMapDomain[NodeTags2d_domain[i]] = phi;
+            nodeMapDomain[NodeTags2d_domain[i]] = phi;
+        //}
     }
 }
 
-void computeData(const vector<elementStruct> &elementVector, const vector<int> &elementTypes, const vector<vector<size_t>> &elementTags, vector<size_t> &tags, vector<vector<double>> &data, const string integrationType)
+void computeData(const std::vector<elementStruct> &elementVector, std::vector<size_t> &tags, std::vector<std::vector<double>> &data, const std::string integrationType, std::vector<int> &entities_tags_2d_domain_BEM)
 {
-        double x = 0;
-        double y = 0;
-        double h = 0;
-        double g = 0;
-        double phi = 0;
-        int elType = 0;
-        vector<double> barycenters;
-        size_t elementCount = 0;
+    double x = 0;
+    double y = 0;
+    double h = 0;
+    double g = 0;
+    double phi = 0;
+    std::vector<double> barycenters;
+    size_t elementCount = 0;
 
-        for(size_t i = 0; i < elementTypes.size(); i++)
+    for(size_t i = 0; i < entities_tags_2d_domain_BEM.size(); i++)
+    {
+        std::vector<int> elementTypes_for_entity;
+        std::vector<std::vector<size_t> > elementTags_for_entity;
+        std::vector<std::vector<size_t> > nodeTags_for_entity;
+        gmsh::model::mesh::getElements(elementTypes_for_entity, elementTags_for_entity, nodeTags_for_entity, 2, entities_tags_2d_domain_BEM[i]);
+
+        for(size_t l = 0; l < elementTypes_for_entity.size(); l++)
         {
-            elType = elementTypes[i];
-            model::mesh::getBarycenters(elType, -1, false, false, barycenters);
-#pragma omp parallel for schedule(guided) private(x,y,phi,h,g) shared(elementTags,elementVector,tags,data,elementCount,barycenters)
-            for(size_t j = 0; j < elementTags[i].size(); j++)
+            gmsh::model::mesh::getBarycenters(elementTypes_for_entity[l], entities_tags_2d_domain_BEM[i], false, false, barycenters);
+
+#pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(elementTags_for_entity,elementVector,tags,data,elementCount,barycenters)
+            for(size_t j = 0; j < elementTags_for_entity[l].size(); j++)
             {
                 x = barycenters[3*j];
                 y = barycenters[3*j+1];
@@ -723,135 +804,57 @@ void computeData(const vector<elementStruct> &elementVector, const vector<int> &
                     phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
                 }
                 // Potential at the node is phi.
-    #pragma omp critical
-                {
-                    tags[elementCount + j] = elementTags[i][j];
-                    data[elementCount + j].resize(1,phi);
-                }
+#pragma omp atomic write
+                tags[elementCount + j] = elementTags_for_entity[l][j];
+#pragma omp atomic write
+                data[elementCount + j][0] = phi;
             }
-            elementCount = elementCount + elementTags[i].size();
+            elementCount = elementCount + elementTags_for_entity[l].size();
         }
-
-    /*int elementCount = 0;
-     for(size_t i = 0; i < elementTypes.size(); i++)
-     {
-     int elType = elementTypes[i];
-     vector<double> barycenters;
-     model::mesh::getBarycenters(elType, -1, false, false, barycenters);
-
-     //#pragma omp parallel for
-     for(size_t j = 0; j < elementTags[i].size(); j++)
-     {
-     double x = barycenters[3*j];
-     double y = barycenters[3*j + 1];
-
-     double phi = 0;
-     for(size_t k = 0; k < elementVector.size(); k++)
-     {
-     double h = computeH(x, y, elementVector[k]);
-     double g = computeG(x, y, elementVector[k], "Gauss4");
-     phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
-     }
-     // Potential at the node is phi.
-     tags[elementCount] = elementTags[i][j];
-     data[elementCount] = vector<double> (1);
-     data[elementCount][0] = phi;
-     elementCount++; // cette ligne empêche de paralléliser
-     }
-     }
-     cout << elementCount;*/
-
-    /*--------ajout Louis-------*/
-//    int max_threads = omp_get_max_threads();
-//    omp_set_num_threads(max_threads);
-//    //each thread will have its own data vectors (lists to simplify the push_back operation), then the vectors will be merged
-//    vector<int> elementCountThreads(max_threads); // elementCountPerThread
-//    vector<list<size_t>> tagsThreads(max_threads);
-//    vector<list<vector<double>>> dataThreads(max_threads);
-//    for(int i = 0; i < max_threads; i++)
-//    {
-//        elementCountThreads[i] = 0;
-//    }
-//    for(size_t i = 0; i < elementTypes.size(); i++)
-//    {
-//        int elType = elementTypes[i];
-//        vector<double> barycenters;
-//        model::mesh::getBarycenters(elType, -1, false, false, barycenters);
-//
-//#pragma omp parallel for
-//        for(size_t j = 0; j < elementTags[i].size(); j++)
-//        {
-//            double x = barycenters[3*j];
-//            double y = barycenters[3*j + 1];
-//
-//            double phi = 0;
-//            for(size_t k = 0; k < elementVector.size(); k++)
-//            {
-//                double h = computeH(x, y, elementVector[k]);
-//                double g = computeG(x, y, elementVector[k], "Gauss4");
-//                phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
-//            }
-//            // Potential at the node is phi.
-//            int my_thread = omp_get_thread_num();
-//            tagsThreads[my_thread].push_back(elementTags[i][j]);
-//            vector<double> v(1);
-//            v[0] = phi;
-//            dataThreads[my_thread].push_back(v);
-//            elementCountThreads[my_thread] = elementCountThreads[my_thread] + 1;
-//        }
-//    }
-//    // merging the results
-//    for(int i = 0; i < max_threads; i++)
-//    {
-//        vector<size_t> myTags(tagsThreads[i].begin(), tagsThreads[i].end());
-//        vector<vector<double>> myData(dataThreads[i].begin(), dataThreads[i].end());
-//
-//        tags.insert(tags.end(), myTags.begin(), myTags.end());
-//        data.insert(data.end(), myData.begin(), myData.end());
-//    }
+    }
 }
 
-void disp_element_node_data(vector<int> &nodes_commun_tag, vector<int> &elements_commun_tag)
+void disp_element_node_data(std::vector<int> &nodes_commun_tag, std::vector<int> &elements_commun_tag)
 {
-    cout << "problème dans la géométrie, noeuds communs = " << nodes_commun_tag.size() << endl;
-    cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
+    std::cout << "problème dans la géométrie, noeuds communs = " << nodes_commun_tag.size() << std::endl;
+    std::cout << "noeuds commun: "<< nodes_commun_tag.size() << ": ";
     for(size_t m = 0; m < nodes_commun_tag.size(); m++)
     {
-        cout << nodes_commun_tag[m] << " ";
+        std::cout << nodes_commun_tag[m] << " ";
     }
-    cout << endl;
-    cout << "elements commun: " << elements_commun_tag.size() << ": ";
+    std::cout << std::endl;
+    std::cout << "elements commun: " << elements_commun_tag.size() << ": ";
     for(size_t m = 0; m < elements_commun_tag.size(); m++)
     {
-        cout << elements_commun_tag[m] << " ";
+        std::cout << elements_commun_tag[m] << " ";
     }
-    cout << endl;
-    cout << endl;
+    std::cout << std::endl;
+    std::cout << std::endl;
 }
 
-void display_time(chrono::time_point<chrono::system_clock> &start, chrono::time_point<chrono::system_clock> &end, string &function_name, bool &show_time)
+void display_time(std::chrono::time_point<std::chrono::system_clock> &start, std::chrono::time_point<std::chrono::system_clock> &end, std::string &function_name, bool &show_time)
 {
     //displays the time of the desired code section
     if(show_time)
     {
-        cout << endl;
-        cout << function_name << endl;
-        cout << "Elapsed time in nanoseconds: "
-        << chrono::duration_cast<chrono::nanoseconds>(end - start).count()
-        << " ns" << endl;
+        std::cout << std::endl;
+        std::cout << function_name << std::endl;
+        std::cout << "Elapsed time in nanoseconds: "
+        << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()
+        << " ns" << std::endl;
 
-        cout << "Elapsed time in microseconds: "
-        << chrono::duration_cast<chrono::microseconds>(end - start).count()
-        << " µs" << endl;
+        std::cout << "Elapsed time in microseconds: "
+        << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+        << " µs" << std::endl;
 
-        cout << "Elapsed time in milliseconds: "
-        << chrono::duration_cast<chrono::milliseconds>(end - start).count()
-        << " ms" << endl;
+        std::cout << "Elapsed time in milliseconds: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+        << " ms" << std::endl;
 
-        cout << "Elapsed time in seconds: "
-        << chrono::duration_cast<chrono::seconds>(end - start).count()
+        std::cout << "Elapsed time in seconds: "
+        << std::chrono::duration_cast<std::chrono::seconds>(end - start).count()
         << " sec";
-        cout << endl;
-        cout << endl;
+        std::cout << std::endl;
+        std::cout << std::endl;
     }
 }

@@ -1,27 +1,27 @@
 // Outside
 Lx_out = 2.0;
 Ly_out = 1.5;
-nx_out = 200;
-ny_out = 150;
+nx_out = 40;
+ny_out = 30;
 phi_out = 100.;
 
 // Hole 1
-Lx1 = 0.25;
-Ly1 = 0.25;
-cx1 = -0.5;
-cy1 = 0.35;
-nx1 = 30;
-ny1 = 30;
-phi1 = 215.;
+Lx1 = 1.0;
+Ly1 = 0.1;
+cx1 = 0.0;
+cy1 = 0.2;
+nx1 = 20;
+ny1 = 8;
+phi1 = 250.;
 
 // Hole 2
-Lx2 = 0.25;
-Ly2 = 0.25;
-cx2 = 0.5;
-cy2 = -0.35;
-nx2 = 16;
-ny2 = 16;
-phi2 = 250.;
+Lx2 = 1.0;
+Ly2 = 0.1;
+cx2 = 0.0;
+cy2 = -0.2;
+nx2 = 20;
+ny2 = 8;
+phi2 = 210.;
 
 // Outside
 Point(1) = {-Lx_out/2, -Ly_out/2, 0, 1.0};
@@ -82,11 +82,13 @@ Transfinite Curve {12} = nx2 + 1 Using Progression 1;
 
 //Recombine Surface {1};
 
-Mesh.ElementOrder = 2;
-
 Physical Curve("outside", 5) = {1, 2, 3, 4};
 Physical Curve("hole1", 6) = {5, 6, 7, 8};
 Physical Curve("hole2", 7) = {9, 10, 11, 12};
+
+Physical Curve("BEM_boundary", 8) = {1,2,3,4,5,6,7,8,9,10,11,12}; // à rajouter pour pas que ça bug avec nouveau code
+
+Physical Surface("BEM_domain", 9) = {1}; // à rajouter pour pas que ça bug avec nouveau code
 
 SetNumber("Boundary Conditions/outside/dirichlet", phi_out);
 SetNumber("Boundary Conditions/hole1/dirichlet", phi1);

@@ -4,35 +4,46 @@
 #include <iostream>
 #include <omp.h>
 
-using namespace gmsh;
-using namespace std;
-using namespace Eigen;
-
-int mainFEM(int argc, char **argv)
+int main(int argc, char **argv)
 {
+
+    bool nonLinearSolver = true; // use non-linear solver or not
+
     if (argc < 2)
     {
-        cout << "Usage: " << argv[0] << " <geo_file>\n";
+        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
         return 0;
     }
 
-    // If compiled with OpenMP support, initialize
+    // If compiled with OpenMP support, gmsh::initialize 
     // also sets the number of threads to "General.NumThreads".
     int nthreads = omp_get_max_threads();
-    initialize();
+    gmsh::initialize();
     omp_set_num_threads(nthreads);
 
-    open(argv[1]);
-    model::mesh::generate(2);
+    gmsh::open(argv[1]);
+    gmsh::model::mesh::generate(2);
 
-    initParallel();
+    Eigen::initParallel();
 
-    map<int, double> electrostaticPressure;
+    std::map<int, double> electrostaticPressure;
 
-    solverFEM(argc, argv, electrostaticPressure,0);
+    if(nonLinearSolver)
+    {
+        std::map<int,std::pair<double,double>> boundaryDisplacementMap;
 
-    fltk::run();
+        int viewTagU = gmsh::view::add("u"); // à modifier plus tard
+        int viewTagF = gmsh::view::add("f");
+
+        solverFEMnonLinear(argc, argv, electrostaticPressure, boundaryDisplacementMap, 0, true, 1, viewTagU, viewTagF); //iteration randomly set to 1
+    }
+    else
+    {
+        solverFEM(argc, argv, electrostaticPressure, 0);
+    }
+
+    gmsh::fltk::run();
     
-    finalize();
+    gmsh::finalize();
     return 0;
 }

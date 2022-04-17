@@ -44,8 +44,6 @@ Transfinite Curve {8} = n_trans_outlet + 1 Using Progression 1;
 
 //Recombine Surface {1};
 
-Mesh.ElementOrder = 2;
-
 Physical Curve("sides", 5) = {1, 2, 4, 5, 7, 8};
 Physical Curve("inlet", 6) = {3};
 Physical Curve("outlet", 7) = {6};
@@ -53,3 +51,7 @@ Physical Curve("outlet", 7) = {6};
 SetNumber("Boundary Conditions/sides/neumann", 0.);
 SetNumber("Boundary Conditions/inlet/dirichlet", phi_inlet);
 SetNumber("Boundary Conditions/outlet/dirichlet", phi_outlet);
+
+Physical Curve("BEM_boundary", 8) = {1,2,3,4,5,6,7,8}; // à rajouter pour pas que ça bug avec nouveau code
+
+Physical Surface("BEM_domain", 9) = {1}; // à rajouter pour pas que ça bug avec nouveau code

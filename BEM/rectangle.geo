@@ -4,8 +4,8 @@ Ly = 1.0;
 phi_left = 200.;
 phi_right = 100.;
 
-nx = 20;
-ny = 5;
+nx = 3;
+ny = 3;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {Lx, 0, 0, 1.0};
@@ -27,6 +27,10 @@ Physical Curve("left_edge", 5) = {4};
 Physical Curve("bottom_edge", 6) = {1};
 Physical Curve("right_edge", 7) = {2};
 Physical Curve("top_edge", 8) = {3};
+
+Physical Curve("BEM_boundary", 9) = {1,2,3,4};
+
+Physical Surface("BEM_domain", 10) = {1};
 
 // additional parameters given to the solver
 SetNumber("Boundary Conditions/left_edge/dirichlet", phi_left);

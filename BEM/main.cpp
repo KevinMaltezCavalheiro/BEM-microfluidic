@@ -9,46 +9,69 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        cout << "Usage: " << argv[0] << " <geo_file>\n";
+        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
         return 0;
     }
 
-    // If compiled with OpenMP support, initialize
+    bool nonLinearSolver = 1; // use non-linear solver or not
+
+    // If compiled with OpenMP support, gmsh::initialize 
     // also sets the number of threads to "General.NumThreads".
     int nthreads = omp_get_max_threads();
-    initialize();
+    gmsh::initialize();
     omp_set_num_threads(nthreads);
 
-    open(argv[1]);
-    model::mesh::generate(2);
+    gmsh::open(argv[1]);
+    gmsh::model::mesh::generate(2);
 
     Eigen::initParallel();
 
-    map<int, double> electrostaticPressure;
-
-    int nbViews = 0;
-    double start = omp_get_wtime();
-
-    solverBEM(argc, argv, electrostaticPressure, nbViews);
-    double bem_end = omp_get_wtime();
-    cout << "time for BEM: " << bem_end - start << "\n";
-    /*map<int, double>::iterator it;
-
-    for (it = electrostaticPressure.begin(); it != electrostaticPressure.end(); it++)
+    if(nonLinearSolver)
     {
-        cout << it->first    // string (key)
-                << ':'
-                << it->second   // string's value 
-                << endl;
-    }*/
 
-    solverFEM(argc, argv, electrostaticPressure, nbViews);
+        bool postProcessing = 0; // pass it as an argument to the solver, only compute post processing at last iteration
 
-    double fem_end = omp_get_wtime();
-    cout << "time for FEM: " << fem_end - bem_end << "\n";
+        std::map<int, double> electrostaticPressure;
 
-    fltk::run();
+        std::map<int,std::pair<double,double>> boundaryDisplacementMap;
+
+        int nbViews = 0;
+        //double start = omp_get_wtime();
+
+        int iteration;
+
+        int viewTagU = gmsh::view::add("u"); // à modifier plus tard
+        int viewTagF = gmsh::view::add("f");
+
+        for(iteration = 1; iteration < 25; iteration ++) // implement break condition
+        {
+            solverBEM(argc, argv, electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration);
+            solverFEMnonLinear(argc, argv, electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF);
+        }
+
+        postProcessing = true;
+        solverBEM(argc, argv, electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration);
+        solverFEMnonLinear(argc, argv, electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF);
+    }
+    else
+    {
+
+        std::map<int, double> electrostaticPressure;
+
+        std::map<int,std::pair<double,double>> boundaryDisplacementMap;
+
+        int nbViews = 0;
+
+        solverBEM(argc, argv, electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1);
+        solverFEM(argc, argv, electrostaticPressure, nbViews);
+
+    }
+
+    //double fem_end = omp_get_wtime();
+    //std::cout << "time for FEM: " << fem_end - bem_end << "\n";
+
+    gmsh::fltk::run();
     
-    finalize();
+    gmsh::finalize();
     return 0;
 }

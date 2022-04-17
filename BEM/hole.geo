@@ -53,10 +53,12 @@ Transfinite Curve {8} = nx_in + 1 Using Progression 1;
 
 //Recombine Surface {1};
 
-Mesh.ElementOrder = 2;
-
 Physical Curve("inside", 5) = {5, 6, 7, 8};
 Physical Curve("outside", 6) = {1, 2, 3, 4};
 
 SetNumber("Boundary Conditions/inside/dirichlet", phi_in);
 SetNumber("Boundary Conditions/outside/dirichlet", phi_out);
+
+Physical Curve("BEM_boundary", 7) = {1,2,3,4,5,6,7,8}; // à rajouter pour pas que ça bug avec nouveau code
+
+Physical Surface("BEM_domain", 8) = {1}; // à rajouter pour pas que ça bug avec nouveau code
