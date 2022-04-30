@@ -22,11 +22,13 @@ struct elementStruct{
     double deltaX, deltaY;
 };
 
-int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration);
+
+void solverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration);
+void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration, const int domainTag);
 void dispNodeCoordFun(const std::vector<size_t> &allNodeTags, const std::vector<double> &allCoord);
 void dispMatricesFun(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, const Eigen::MatrixXd &c, const Eigen::MatrixXd &b, const Eigen::MatrixXd &x);
 void dispValuesFun(const std::vector<elementStruct> &elementVector);
-void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, std::vector<size_t> &NodeTags2d_domain, std::vector<double> &NodeCoord2d_domain, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<std::vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM, std::vector<int> &entities_tags_2d_domain_BEM, std::map<int, std::pair<double, double>> &boundaryDisplacementMap, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary);
+void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, std::vector<size_t> &NodeTags2d_domain, std::vector<double> &NodeCoord2d_domain, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<std::vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM, std::vector<int> &entities_tags_2d_domain_BEM, std::map<int, std::pair<double, double>> &boundaryDisplacementMap, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary, const int domainTag);
 void computeGeometricParam(elementStruct &element, std::map<std::size_t, int> allNodeIndex, const std::vector<double> &allCoord, std::pair<double, double> nodalDisp1, std::pair<double, double> nodalDisp2);
 double computeH(const double &x, const double &y, const elementStruct &element);
 double computeG(const double &x, const double &y, const elementStruct &element, const std::string &integrationType);

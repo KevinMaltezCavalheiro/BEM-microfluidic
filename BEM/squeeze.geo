@@ -41,15 +41,15 @@ Curve Loop(2) = {9, 10, 11, 3, 2, 1};
 Plane Surface(2) = {2}; 
 
 Transfinite Curve {10} = 10*nx+1 Using Progression 1;
-Transfinite Curve {1, 2, 3} = 10*nx+1 Using Progression 1;
-Transfinite Curve {7, 6, 5} = 10*nx+1 Using Progression 1;
-Transfinite Curve {8, 4} = 5*ny+1 Using Progression 1;
-Transfinite Curve {7, 1, 5, 3} = 5*ny+1 Using Progression 1;
-Transfinite Curve {9, 11}  = 10*ny+1 Using Progression 1;
+Transfinite Curve {1, 2, 3} = 3*nx+1 Using Progression 1;
+Transfinite Curve {7, 6, 5} = 3*nx+1 Using Progression 1;
+Transfinite Curve {8, 4} = 2*ny+1 Using Progression 1;
+Transfinite Curve {7, 1, 5, 3} = 1*ny+1 Using Progression 1;
+Transfinite Curve {9, 11}  = 4*ny+1 Using Progression 1;
 
 //Transfinite Surface {1};
 
-//Recombine Surface {1};
+Recombine Surface {1};
 
 Mesh.ElementOrder = 1;
 
@@ -63,7 +63,7 @@ Physical Curve ("up_diaph", 11) = {6};
 Physical Curve ("low_diaph", 12) = {2};
 
 Physical Surface("FEM_domain", 13) = {1};
-Physical Surface("BEM_domain", 14) = {2};
+Physical Surface("BEM_domain_1", 14) = {2};
 
 
 SetNumber("Boundary Conditions/left_edge_foot/ux", 0.); 
@@ -93,8 +93,6 @@ Physical Curve("mass", 16) = {10};
 Physical Curve("rest_of_outside", 17) = {9,11,1,3};
 
 phi_top = 20;
-SetNumber("Boundary Conditions/mass/dirichlet", 0);
-SetNumber("Boundary Conditions/Electrode/dirichlet", phi_top);
-SetNumber("Boundary Conditions/rest_of_outside/neumann", 0);
-
-Physical Curve("BEM_boundary", 19) = {1,2,3,11,10,9};
+SetNumber("Boundary Conditions/mass/BEM_domain_1/dirichlet", 0);
+SetNumber("Boundary Conditions/Electrode/BEM_domain_1/dirichlet", phi_top);
+SetNumber("Boundary Conditions/rest_of_outside/BEM_domain_1/neumann", 0);

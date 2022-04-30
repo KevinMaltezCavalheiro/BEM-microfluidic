@@ -42,10 +42,10 @@ Physical Curve("left_edge", 5) = {6};
 Physical Curve("right_edge", 6) = {3};
 Physical Curve("bottom_edge", 7) = {1, 2};
 Physical Curve("top_edge", 8) = {4, 5};
-Physical Surface("BEM_domain", 6) = {1, 2};
+Physical Surface("BEM_domain_1", 6) = {1, 2};
 Physical Curve("between", 9) = {7, 8};
 
-SetNumber("Boundary Conditions/left_edge/dirichlet", 200.);
-SetNumber("Boundary Conditions/right_edge/dirichlet", 100.);
-SetNumber("Boundary Conditions/bottom_edge/neumann", 0.);
-SetNumber("Boundary Conditions/top_edge/neumann", 0.);
+SetNumber("Boundary Conditions/left_edge/BEM_domain_1/dirichlet", 200.);
+SetNumber("Boundary Conditions/right_edge/BEM_domain_1/dirichlet", 100.);
+SetNumber("Boundary Conditions/bottom_edge/BEM_domain_1/neumann", 0.);
+SetNumber("Boundary Conditions/top_edge/BEM_domain_1/neumann", 0.);

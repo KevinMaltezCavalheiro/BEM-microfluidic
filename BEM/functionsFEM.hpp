@@ -63,10 +63,10 @@ void updateNodalDispVector(std::vector<double> & full_d_vector, std::vector<doub
 void retrieveFinalNodalForces(std::vector<double> & final_nodal_forces, std::map<int, elementData> & FEM_kinematicsMap, std::map<int, int> & nodeIndexMap, std::vector<std::size_t> & FEM_elementTags);
 void retrieveBoundaryDisplacements(std::map<int,std::pair<double,double>> & boundaryDisplacementMap, const std::vector<double> & full_d_vector, std::map<int, int> & nodeIndexMap, std::map<std::string, std::pair<int, int>> & groups);
 
-int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, const int nbViews, bool postProcessing, const int iteration, const int viewTagU, const int viewTagF);
+void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, const int nbViews, bool postProcessing, const int iteration, const int viewTagU, const int viewTagF);
 
 /*-------------- FUNCTIONS SPECIFIC TO LINEAR FEM ------------------*/
-int solverFEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, const int nbViews);
+void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews);
 
 void assembleKtriplet(const int i, const int el, const std::vector<std::vector<std::size_t>> & nodeTags, const int numNodes, std::map<int, int> & nodeIndexMap, std::list<Eigen::Triplet <double>> & k_tripletList, Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> & K_matrix, std::vector<double> & f_vector);
 void assembleKlistVolumicF(const Eigen::Matrix<double, 3, 3> H_matrix, const double rho, const double bx, const double by, const std::string & integration_rule, int & dim, std::vector<int> & tags, std::map<int, int>  & nodeIndexMap, std::vector<std::list<Eigen::Triplet <double>>> & my_k_list, std::vector<std::list<std::pair<int,double>>> & thread_f_vector);

@@ -86,10 +86,8 @@ Physical Curve("outside", 5) = {1, 2, 3, 4};
 Physical Curve("hole1", 6) = {5, 6, 7, 8};
 Physical Curve("hole2", 7) = {9, 10, 11, 12};
 
-Physical Curve("BEM_boundary", 8) = {1,2,3,4,5,6,7,8,9,10,11,12}; // à rajouter pour pas que ça bug avec nouveau code
+Physical Surface("BEM_domain_1", 9) = {1}; // à rajouter pour pas que ça bug avec nouveau code
 
-Physical Surface("BEM_domain", 9) = {1}; // à rajouter pour pas que ça bug avec nouveau code
-
-SetNumber("Boundary Conditions/outside/dirichlet", phi_out);
-SetNumber("Boundary Conditions/hole1/dirichlet", phi1);
-SetNumber("Boundary Conditions/hole2/dirichlet", phi2);
+SetNumber("Boundary Conditions/outside/BEM_domain_1/dirichlet", phi_out);
+SetNumber("Boundary Conditions/hole1/BEM_domain_1/dirichlet", phi1);
+SetNumber("Boundary Conditions/hole2/BEM_domain_1/dirichlet", phi2);

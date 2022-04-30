@@ -11,14 +11,53 @@
 #include <omp.h>
 #include <list>
 
-int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int &nbViews, bool postProcessing, const int iteration)
+void solverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration)
 {
-    if (argc < 2)
+
+    gmsh::vectorpair physicalGroupsDimTags;
+    gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
+
+    int nbDomains = 0;
+
+    for(std::size_t i = 0; i < physicalGroupsDimTags.size(); i++)
     {
-        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
-        return 0;
+        int physicalGroupsDim = physicalGroupsDimTags[i].first;
+        int physicalGroupsTag = physicalGroupsDimTags[i].second;
+        std::string name;
+        gmsh::model::getPhysicalName(physicalGroupsDim, physicalGroupsTag, name);
+
+        std::stringstream ss(name);
+        std::string word;
+        std::vector<std::string> words;
+        while(getline(ss, word, '_'))
+            words.push_back(word);
+        
+        if(words.size() == 3 && words[0].compare("BEM") == 0)
+        {
+            if(words[1].compare("domain") == 0)
+            {
+                if(stoi(words[2]) > nbDomains)
+                {
+                    nbDomains = stoi(words[2]);
+                }
+            }
+        }
     }
 
+    if (nbDomains == 0)
+    {
+        std::cerr << "Wrong names for the BEM domains. Usage: <BEM_domain_'i'>\n";
+        exit(0);
+    }
+
+    for(int i = 1; i <= nbDomains; i++)
+    {
+        singleDomainSolverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, i);
+    }
+}
+
+void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration, const int domainTag)
+{  
     // Parameters for displaying variables (for debugging).
     bool dispNodeCoord = 0;  // Coordinates of the nodes.
     bool dispHierarchy = 0;  // Hierarchy (physical groups -> entities -> elements -> nodes).
@@ -83,7 +122,7 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
 
     start = std::chrono::system_clock::now();
     //calculates the potential at the barycentre of each element of the domain
-    getBC(allNodeIndex, allCoord, elementVector, dirichletCount, dispHierarchy, NodeTags2d_domain, NodeCoord2d_domain,elementTypes2d_domain_BEM,elementTags2d_domain_BEM,nodeTags2d_domain_BEM,entities_tags_for_physical_group_domain_BEM, entities_tags_2d_domain_BEM, boundaryDisplacementMap, nodeOnBoundary);
+    getBC(allNodeIndex, allCoord, elementVector, dirichletCount, dispHierarchy, NodeTags2d_domain, NodeCoord2d_domain,elementTypes2d_domain_BEM,elementTags2d_domain_BEM,nodeTags2d_domain_BEM,entities_tags_for_physical_group_domain_BEM, entities_tags_2d_domain_BEM, boundaryDisplacementMap, nodeOnBoundary,domainTag);
     end = std::chrono::system_clock::now();
     function_name = "getBC";
     display_time(start, end, function_name, show_time);
@@ -219,12 +258,13 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
         {
             gmsh::view::addModelData(viewNodeTag,0,names[0],"ElementNodeData",elementTags2d_domain_BEM[i],data[i],0.0,1);
         }
-        //gmsh::view::write(viewNodeTag, "results.msh");
+        gmsh::view::write(viewNodeTag, "results.msh");
 
-        gmsh::option::setNumber("View[0].IntervalsType", 3);
+        gmsh::option::setNumber("View[" + std::to_string(domainTag-1) + "].IntervalsType", 3);
         //option::setNumber("View[0].AdaptVisualizationGrid", 1);
         gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
         gmsh::option::setNumber("View[0].TargetError", -0.0001);
+        nbViews++; // number of views generated (useful for FEM display of results)
 
         if(electric_field)
         {
@@ -301,6 +341,7 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
         
         //For ease of use, a function handles the code for the display.
         displayData("phi", names[0], "results.msh", tags, phi);
+        nbViews++; // number of views generated (useful for FEM display of results)
     }
 
     //Calculates the electrostatic pressure per element in order to provide these results to the FEM code that will handle the rest of the algorithm
@@ -313,8 +354,4 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
     end_total = std::chrono::system_clock::now();
     function_name = "total time of the code BEM";
     display_time(start_total, end_total, function_name, show_time);
-
-    nbViews++; // number of views generated (useful for FEM display of results)
-
-    return 0;
 }

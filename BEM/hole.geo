@@ -10,7 +10,7 @@ phi_in = 200.;
 phi_out = 100.;
 
 nx_in = 40;
-ny_in = 10;
+ny_in = 4;
 
 nx_out = 80;
 ny_out = 60;
@@ -56,9 +56,9 @@ Transfinite Curve {8} = nx_in + 1 Using Progression 1;
 Physical Curve("inside", 5) = {5, 6, 7, 8};
 Physical Curve("outside", 6) = {1, 2, 3, 4};
 
-SetNumber("Boundary Conditions/inside/dirichlet", phi_in);
-SetNumber("Boundary Conditions/outside/dirichlet", phi_out);
+SetNumber("Boundary Conditions/inside/BEM_domain_1/dirichlet", phi_in);
+SetNumber("Boundary Conditions/outside/BEM_domain_1/dirichlet", phi_out);
 
 Physical Curve("BEM_boundary", 7) = {1,2,3,4,5,6,7,8}; // à rajouter pour pas que ça bug avec nouveau code
 
-Physical Surface("BEM_domain", 8) = {1}; // à rajouter pour pas que ça bug avec nouveau code
+Physical Surface("BEM_domain_1", 8) = {1}; // à rajouter pour pas que ça bug avec nouveau code

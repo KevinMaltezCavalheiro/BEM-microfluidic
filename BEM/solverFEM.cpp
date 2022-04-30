@@ -17,7 +17,7 @@
 #include <algorithm> // to sort and merge the FEM node vectors
 #include <omp.h>
 
-int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, const int nbViews, bool postProcessing, const int iteration, const int viewTagU, const int viewTagF)
+void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, const int nbViews, bool postProcessing, const int iteration, const int viewTagU, const int viewTagF)
 {
     /*--------------INITIALIZATION OF ITERATIVE ALGORITHM----------------*/
     /* FIRST STEP: 
@@ -25,13 +25,6 @@ int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostat
     - set up the kinematics of each element and compute the local stiffness matrix
     - initialize the full d vector with Dirichlet boundary conditions and set pg = 0
     - important remark: in pg we focus only on the free DOFs (we do not focus on the DOFs fixed by dirichlet BCs)*/
-
-    // the program requires 1 argument: a .geo file.
-    if (argc < 2)
-    {
-        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
-        return 0;
-    }
 
     bool openGUI = false;        // Graphical interface of GMSH.
 
@@ -211,12 +204,21 @@ int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostat
         }
     }
 
+    // computing the norm of the applied forces vector
+    double f_app_norm = 0;
+    for(size_t i = 0; i < f_app_vector.size(); i++)
+    {
+        f_app_norm += f_app_vector[i]*f_app_vector[i];
+    }
+    f_app_norm = sqrt(f_app_norm);
+    std::cout << "f app norm: " << f_app_norm << "\n";
+
     std::vector<double> global_f_vector(nb_free_DOFs);
 
     Eigen::Matrix<double, Eigen::Dynamic, 1> residual(nb_free_DOFs, 1);
 
     double residualNorm = 100000000; // hardcoded and arbitrary
-    double residualTolerance = 1e-14; // arbitrary
+    double residualTolerance = 2e-12; // empirical
 
     /*double max_applied_force = 0;
     for(int i = 0; i < nb_free_DOFs; i++)
@@ -228,7 +230,7 @@ int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostat
 
 
     /*---------ITERATIVE PART---------------*/
-    int max_number_of_steps = 100; // purely arbitrary
+    int max_number_of_steps = 10; // purely arbitrary
     for(int step = 0; step < max_number_of_steps; step++)
     {
         /*------------STEP 2 of the algorithm----------------*/
@@ -249,10 +251,10 @@ int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostat
 
         residualNorm = computeResidualNorm(global_f_vector, f_app_vector, residual);
 
-        // std::cout << "residual value: " << residualNorm << "\n";
+        std::cout << "residual value: " << residualNorm/f_app_norm << "\n";
 
         /*------------STEP 3: EVALUATING THE RESIDUAL, have we converged ??----------*/
-        if (residualNorm < residualTolerance)
+        if (residualNorm/f_app_norm < residualTolerance)
             break;
 
         /*------------STEP 4: ASSEMBLING THE GLOBAL TANGENT STIFFNESS MATRIX----------*/
@@ -398,21 +400,12 @@ int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostat
 
     if(openGUI && postProcessing)
         gmsh::fltk::run(); // opens the gmsh window
-    
-    //gmsh::finalize();
-    return 0;
 }
 
 
-int solverFEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, const int nbViews)
+void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
 {
     /*--------------INIT----------------*/
-    // the program requires 1 argument: a .geo file.
-    if (argc < 2)
-    {
-        std::cout << "Usage: " << argv[0] << " <geo_file>\n";
-        return 0;
-    }
 
     bool openGUI = false;        // Graphical interface of GMSH.
 
@@ -766,7 +759,4 @@ int solverFEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
 
     if(openGUI)
         gmsh::fltk::run(); // opens the gmsh window
-    
-    //gmsh::finalize();
-    return 0;
 }

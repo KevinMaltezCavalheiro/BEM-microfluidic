@@ -40,11 +40,6 @@
 
 //astuce: pour reverse le sens de parcours d'une courbe et inverser les tangentes dans le .geo, utiliser reversemesh
 
-//todo: openmp
-//todo: séparer analytique et numérique
-//todo: visu electric field, combiner avec les autres
-//todo: refaire le vecteur data pour elementdata (plus d'elementcount)
-
 void element_node_data(std::vector<std::vector<std::vector<double>>> &data, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &nodeTags2d_domain_BEM, std::vector<elementStruct> &elementVector, std::map<int, double> &nodeMapDomain, bool &show_element_node_data, int &entities_tags_for_physical_group_domain_BEM, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
 {
     //The first part of the algorithm consists in recovering the tag of the 2d elements of the domain which have at least one node in common with the boundary
@@ -469,7 +464,7 @@ void dispValuesFun(const std::vector<elementStruct> &elementVector)
     }
 }
 
-void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, std::vector<size_t> &NodeTags2d_domain, std::vector<double> &NodeCoord2d_domain, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<std::vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM, std::vector<int> &entities_tags_2d_domain_BEM, std::map<int, std::pair<double, double>> &boundaryDisplacementMap, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
+void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, std::vector<size_t> &NodeTags2d_domain, std::vector<double> &NodeCoord2d_domain, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<std::vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM, std::vector<int> &entities_tags_2d_domain_BEM, std::map<int, std::pair<double, double>> &boundaryDisplacementMap, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary, const int domainTag)
 {
     // pour moi nodeTags2d_domain inutile, ainsi que nodeCoords2d_domain
     // Gets the dim and the tags of the physical groups
@@ -481,6 +476,8 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
 
     std::vector<std::string> bcKeys;
     gmsh::onelab::getNames(bcKeys, "Boundary Conditions.+");
+
+    std::string domainName = "BEM_domain_" + std::to_string(domainTag);
     for(auto &key : bcKeys)
     {
         std::vector<double> values;
@@ -492,10 +489,10 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
         while(getline(ss, word, '/'))
             words.push_back(word);
 
-        // focus only on dirichlet or neumann boundary conditions -> associated to BEM
-        if(words.size() == 3 && (words[2].compare("neumann") == 0 || words[2].compare("dirichlet") == 0))
+        // focus only on dirichlet or neumann boundary conditions -> associated to BEM // CHECK BON DOMAIN
+        if(words.size() == 4 && (words[3].compare("neumann") == 0 || words[3].compare("dirichlet") == 0) && words[2].compare(domainName) == 0)
         {
-            bcMap[words[1]] = {words[2], values[0]};
+            bcMap[words[1]] = {words[3], values[0]}; // doit etre particularisée
         }
     }
 
@@ -507,11 +504,10 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
         std::string name;
         gmsh::model::getPhysicalName(physicalGroupsDim, physicalGroupsTag, name);
 
-        if(name == "BEM_domain")
+        if(name == domainName)
         {
             gmsh::model::mesh::getNodesForPhysicalGroup(physicalGroupsDim,physicalGroupsTag,NodeTags2d_domain,NodeCoord2d_domain);
-            
-            // c'est un peu difficile d'expliquer pourquoi je souvegarde le tag du domaine BEM. C'est pour un algo qui doit récupérer tous les éléments 2d de la frontière mais doit faire la distinction entre les éléments du domaine FEM et BEM
+
             entities_tags_for_physical_group_domain_BEM = physicalGroupsTag;
             gmsh::model::getEntitiesForPhysicalGroup(physicalGroupsDim, physicalGroupsTag, entities_tags_2d_domain_BEM);
 
@@ -544,6 +540,7 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
         std::vector<int> entitiesTags;
         gmsh::model::getEntitiesForPhysicalGroup(physicalGroupsDim, physicalGroupsTag, entitiesTags);
 
+        // devrait passer seulement sur les physical groups qui sont à la frontière de BEM_domain_i + Neumann ou Dirichlet
         for (size_t k = 0; k < entitiesTags.size(); k++)
         {
             // Print the tag of the entities of each physical group (if dispHierarchy != 0).
@@ -1083,10 +1080,7 @@ double computeGradHx_analytique(const double &x, const double &y, const elementS
     nx = nx / norm;
     ny = ny / norm;
 
-    double gradHx_analytique = (lj*(nx*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) -
-                                    ny*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
-                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
-                                  (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+    double gradHx_analytique = (lj*(nx*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) - ny*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/(2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*(pow(xi - xjp1,2) + pow(yi - yjp1,2)));
 
     return gradHx_analytique;
 }
@@ -1109,10 +1103,7 @@ double computeGradHy_analytique(const double &x, const double &y, const elementS
     nx = nx / norm;
     ny = ny / norm;
 
-    double gradHy_analytique = -(lj*(ny*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) +
-                                     nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
-                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
-                                 (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+    double gradHy_analytique = -(lj*(ny*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) + nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/(2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*(pow(xi - xjp1,2) + pow(yi - yjp1,2)));
 
     return gradHy_analytique;
 }
@@ -1127,9 +1118,7 @@ double computeGradGx_analytique(const double &x, const double &y, const elementS
     double yjp1 = element.y2;
     double Pi = M_PI;
 
-    double gradGx_analytique = (lj*(-2*(yj - yjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
-              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
-         (xj - xjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+    double gradGx_analytique = (lj*(-2*(yj - yjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) + atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) - (xj - xjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
 
     return gradGx_analytique;
 }
@@ -1144,9 +1133,7 @@ double computeGradGy_analytique(const double &x, const double &y, const elementS
     double yjp1 = element.y2;
     double Pi = M_PI;
 
-    double gradGy_analytique = (lj*(2*(xj - xjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
-              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
-         (yj - yjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+    double gradGy_analytique = (lj*(2*(xj - xjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) + atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) - (yj - yjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
     return gradGy_analytique;
 }
 

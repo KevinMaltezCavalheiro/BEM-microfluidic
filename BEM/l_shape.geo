@@ -48,10 +48,8 @@ Physical Curve("sides", 5) = {1, 2, 4, 5, 7, 8};
 Physical Curve("inlet", 6) = {3};
 Physical Curve("outlet", 7) = {6};
 
-SetNumber("Boundary Conditions/sides/neumann", 0.);
-SetNumber("Boundary Conditions/inlet/dirichlet", phi_inlet);
-SetNumber("Boundary Conditions/outlet/dirichlet", phi_outlet);
+SetNumber("Boundary Conditions/sides/BEM_domain_1/neumann", 0.);
+SetNumber("Boundary Conditions/inlet/BEM_domain_1/dirichlet", phi_inlet);
+SetNumber("Boundary Conditions/outlet/BEM_domain_1/dirichlet", phi_outlet);
 
-Physical Curve("BEM_boundary", 8) = {1,2,3,4,5,6,7,8}; // à rajouter pour pas que ça bug avec nouveau code
-
-Physical Surface("BEM_domain", 9) = {1}; // à rajouter pour pas que ça bug avec nouveau code
+Physical Surface("BEM_domain_1", 9) = {1}; // à rajouter pour pas que ça bug avec nouveau code

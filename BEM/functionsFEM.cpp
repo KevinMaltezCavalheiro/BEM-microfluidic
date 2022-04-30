@@ -1067,6 +1067,7 @@ double computeResidualNorm(std::vector<double> & global_f_vector, std::vector<do
         residual(i,0) = global_f_vector[i] - f_app_vector[i];
         res += residual(i,0)*residual(i,0);
     }
+    res = res / f_app_vector.size();
     res = sqrt(res);
     return res;
 }

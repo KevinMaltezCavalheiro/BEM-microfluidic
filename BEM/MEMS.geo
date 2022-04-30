@@ -55,10 +55,9 @@ Transfinite Curve{10, 3} = 6*nx+1 Using Progression 1;
 Transfinite Curve{2, 4} = 2*ny+1 Using Progression 1;
 Transfinite Curve{9, 11} = nx+1 Using Progression 1;
 
-//Recombine Surface {1};
-//Recombine Surface {2};
+Recombine Surface {1};
 
-//Mesh.ElementOrder = 2;
+Mesh.ElementOrder = 1;
 
 Physical Curve("diaphragme", 5) = {3};
 Physical Surface("FEM_domain", 6) = {1};
@@ -71,7 +70,7 @@ Physical Curve("left_height", 12) = {2};
 Physical Curve("right_height", 13) = {4};
 Physical Point("fixed_node", 19) = {8};
 
-Physical Surface("BEM_domain", 14) = {2};
+Physical Surface("BEM_domain_1", 14) = {2};
 
 SetNumber("Boundary Conditions/left_edge/ux", 0.); 
 SetNumber("Boundary Conditions/left_edge/uy", 0);
@@ -102,8 +101,6 @@ Physical Curve("mass", 16) = {10};//Lower electrode
 Physical Curve("rest_of_outside", 17) = {9, 11, 2, 4};
 Physical Curve("dirichlet", 20) = {3};
 phi_top = 100;
-SetNumber("Boundary Conditions/mass/dirichlet", 0);
-SetNumber("Boundary Conditions/dirichlet/dirichlet", phi_top);
-SetNumber("Boundary Conditions/rest_of_outside/neumann", 0);
-
-Physical Curve("BEM_boundary", 18) = {9, 10, 11, 4, 3, 2};
+SetNumber("Boundary Conditions/mass/BEM_domain_1/dirichlet", 0);
+SetNumber("Boundary Conditions/dirichlet/BEM_domain_1/dirichlet", phi_top);
+SetNumber("Boundary Conditions/rest_of_outside/BEM_domain_1/neumann", 0);

@@ -35,11 +35,11 @@ int main(int argc, char **argv)
         int viewTagU = gmsh::view::add("u"); // à modifier plus tard
         int viewTagF = gmsh::view::add("f");
 
-        solverFEMnonLinear(argc, argv, electrostaticPressure, boundaryDisplacementMap, 0, true, 1, viewTagU, viewTagF); //iteration randomly set to 1
+        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, 0, true, 1, viewTagU, viewTagF); //iteration randomly set to 1
     }
     else
     {
-        solverFEM(argc, argv, electrostaticPressure, 0);
+        solverFEM(electrostaticPressure, 0);
     }
 
     gmsh::fltk::run();

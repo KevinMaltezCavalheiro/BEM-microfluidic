@@ -1,11 +1,11 @@
-Lx = 1.0;
+Lx = 1.5;
 Ly = 1.0;
 
-phi_left = 100.;
-phi_right = 200.;
+phi_left = 200.;
+phi_right = 100.;
 
-nx = 100;
-ny = 100;
+nx = 30;
+ny = 30;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {Lx, 0, 0, 1.0};
@@ -30,10 +30,10 @@ Physical Curve("top_edge", 8) = {3};
 
 Physical Curve("BEM_boundary", 9) = {1,2,3,4};
 
-Physical Surface("BEM_domain", 10) = {1};
+Physical Surface("BEM_domain_1", 10) = {1};
 
 // additional parameters given to the solver
-SetNumber("Boundary Conditions/left_edge/dirichlet", phi_left);
-SetNumber("Boundary Conditions/bottom_edge/neumann", 0.);
-SetNumber("Boundary Conditions/right_edge/dirichlet", phi_right);
-SetNumber("Boundary Conditions/top_edge/neumann", 0.);
+SetNumber("Boundary Conditions/left_edge/BEM_domain_1/dirichlet", phi_left);
+SetNumber("Boundary Conditions/bottom_edge/BEM_domain_1/neumann", 0.);
+SetNumber("Boundary Conditions/right_edge/BEM_domain_1/dirichlet", phi_right);
+SetNumber("Boundary Conditions/top_edge/BEM_domain_1/neumann", 0.);
