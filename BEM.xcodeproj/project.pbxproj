@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0A194E6528181C8C00A3BEF4 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A194E6428181C8C00A3BEF4 /* main.cpp */; };
 		0A591E5527F9D06200B1D4E1 /* functionsBEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5027F9D06200B1D4E1 /* functionsBEM.cpp */; };
 		0A7EE32627FF351C00DEE3F2 /* solverBEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A7EE32527FF351B00DEE3F2 /* solverBEM.cpp */; };
 		0A7EE32D27FF372B00DEE3F2 /* functionsFEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A7EE32A27FF372A00DEE3F2 /* functionsFEM.cpp */; };
 		0A7EE32F27FF379200DEE3F2 /* solverFEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A7EE32E27FF379200DEE3F2 /* solverFEM.cpp */; };
-		0AD29889280C4F760034A806 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0AD29888280C4F760034A806 /* main.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -27,6 +27,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0A194E6428181C8C00A3BEF4 /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		0A591E4527F9CE1700B1D4E1 /* BEM */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = BEM; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A591E5027F9D06200B1D4E1 /* functionsBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functionsBEM.cpp; sourceTree = "<group>"; };
 		0A591E5127F9D06200B1D4E1 /* functionsBEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsBEM.hpp; sourceTree = "<group>"; };
@@ -43,7 +44,6 @@
 		0A7EE33027FF392A00DEE3F2 /* hybrid_geo.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = hybrid_geo.geo; sourceTree = "<group>"; };
 		0A9CA161280840EC00BA7576 /* MEMS.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = MEMS.geo; sourceTree = "<group>"; };
 		0AD2987F280A297F0034A806 /* squeeze.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = squeeze.geo; sourceTree = "<group>"; };
-		0AD29888280C4F760034A806 /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,13 +76,13 @@
 		0A591E4727F9CE1700B1D4E1 /* BEM */ = {
 			isa = PBXGroup;
 			children = (
-				0AD29888280C4F760034A806 /* main.cpp */,
+				0A194E6428181C8C00A3BEF4 /* main.cpp */,
+				0A7EE32527FF351B00DEE3F2 /* solverBEM.cpp */,
 				0A591E5027F9D06200B1D4E1 /* functionsBEM.cpp */,
 				0A591E5127F9D06200B1D4E1 /* functionsBEM.hpp */,
-				0A7EE32527FF351B00DEE3F2 /* solverBEM.cpp */,
+				0A7EE32E27FF379200DEE3F2 /* solverFEM.cpp */,
 				0A7EE32A27FF372A00DEE3F2 /* functionsFEM.cpp */,
 				0A7EE32B27FF372B00DEE3F2 /* functionsFEM.hpp */,
-				0A7EE32E27FF379200DEE3F2 /* solverFEM.cpp */,
 				0A591E5927F9D26900B1D4E1 /* complex_validation.geo */,
 				0A591E5E27F9D26900B1D4E1 /* doubleHole.geo */,
 				0A591E5827F9D26900B1D4E1 /* hole.geo */,
@@ -156,7 +156,7 @@
 				0A7EE32D27FF372B00DEE3F2 /* functionsFEM.cpp in Sources */,
 				0A7EE32F27FF379200DEE3F2 /* solverFEM.cpp in Sources */,
 				0A7EE32627FF351C00DEE3F2 /* solverBEM.cpp in Sources */,
-				0AD29889280C4F760034A806 /* main.cpp in Sources */,
+				0A194E6528181C8C00A3BEF4 /* main.cpp in Sources */,
 				0A591E5527F9D06200B1D4E1 /* functionsBEM.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

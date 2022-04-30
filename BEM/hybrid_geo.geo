@@ -4,8 +4,8 @@ Ly_poutre = 2*scale;
 h_poutre = 2*scale;
 h_tot = 10*scale;
 width = 10*scale;
-nx = 20; // prend beaucoup de temps àpd de 200x40
-ny = 8;
+nx = 40; // prend beaucoup de temps àpd de 200x40
+ny = 10;
 
 Point(1) = {0, h_poutre, 0, 2};
 Point(2) = {Lx_poutre, h_poutre, 0, 2};
@@ -76,7 +76,7 @@ SetNumber("Volumic Forces/FEM_domain/by",0.); //set to -9.81 for gravity
 Physical Curve("BEM_FEM_boundary", 11) = {1,2,3};
 Physical Curve("mass", 12) = {10}; //lower electrode
 Physical Curve("rest_of_outside", 13) = {5,6,7,8,9};
-phi_top = 100; 
+phi_top = 95;
 SetNumber("Boundary Conditions/mass/dirichlet", 0);
 SetNumber("Boundary Conditions/BEM_FEM_boundary/dirichlet", phi_top);
 SetNumber("Boundary Conditions/rest_of_outside/neumann", 0);

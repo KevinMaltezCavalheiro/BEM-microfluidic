@@ -10,7 +10,7 @@ phi_in = 200.;
 phi_out = 100.;
 
 nx_in = 40;
-ny_in = 4;
+ny_in = 10;
 
 nx_out = 80;
 ny_out = 60;

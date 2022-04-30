@@ -23,10 +23,8 @@ int main(int argc, char **argv)
 
     std::map<int,std::pair<double,double>> boundaryDisplacementMap;
 
-    bool postProcessing = true;
-
     //solverBEM(argc, argv, finalElementTags, electrostaticPressure, nbViews);
-    solverBEM(argc, argv, electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, 1);
+    solverBEM(argc, argv, electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1); // iteration number randomly set to 1
 
     std::map<int, double>::iterator it;
 

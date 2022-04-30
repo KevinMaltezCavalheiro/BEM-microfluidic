@@ -1,11 +1,11 @@
-Lx = 1.5;
+Lx = 1.0;
 Ly = 1.0;
 
-phi_left = 200.;
-phi_right = 100.;
+phi_left = 100.;
+phi_right = 200.;
 
-nx = 3;
-ny = 3;
+nx = 100;
+ny = 100;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {Lx, 0, 0, 1.0};

@@ -18,7 +18,7 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
-#define PI 3.141592654
+#define PI M_PI
 
 //Compute the matrix H
 Eigen::Matrix<double, 3, 3> computeHmatrix(const double E, const double nu)

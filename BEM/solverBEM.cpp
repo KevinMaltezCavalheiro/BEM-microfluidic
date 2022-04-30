@@ -11,7 +11,7 @@
 #include <omp.h>
 #include <list>
 
-int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration)
+int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int &nbViews, bool postProcessing, const int iteration)
 {
     if (argc < 2)
     {
@@ -24,12 +24,15 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
     bool dispHierarchy = 0;  // Hierarchy (physical groups -> entities -> elements -> nodes).
     bool dispMatrices = 0;   // Matrices A, B, c, b, x. /!\ May lead to visualisation problems for large matrices.
     bool dispValues = 0;     // Elements and their values of u and u_n.
-    bool openGUI = 0;        // Graphical interface of GMSH.
-    bool show_element_node_data = 0;
-    bool show_time = 0; //display the elapsed time for the internal potential calculus in the terminal
-    bool show_node_class = 0;
-    int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
+    bool show_element_node_data = 0; //show the nodes and elements on the bondary that are in contact with the elements of the domain
+    bool show_time = 1; //display the elapsed time for the internal potential calculus in the terminal
+    bool show_node_class = 0; //shows the class of the node. Either if it belongs to the domain or to the boundary.
 
+    // Code parameters to activate different kind of algorithms
+    bool convergence = 0; // compute the convergence between the analytical solution and the numeric one /!\ use this routine with rectangle.geo
+    bool electric_field = 1; //0: no electric field visualization, 1: compute and display the electric field in the domain
+    int visualisation = 1;  //0: no visualisation, 1: element node data, 2: element data
+    bool solution_type = 1; //0: numeric, 1: analytique
 
     //to display the time of the different functions
     std::chrono::time_point<std::chrono::system_clock> start, end;
@@ -124,7 +127,14 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
             else    // General case
             {
                 h = computeH(elementVector[i].midX, elementVector[i].midY, elementVector[j]);
-                g = computeG(elementVector[i].midX, elementVector[i].midY, elementVector[j], integrationType);
+                if(solution_type == 0)
+                {
+                    g = computeG(elementVector[i].midX, elementVector[i].midY, elementVector[j], integrationType);
+                }
+                else
+                {
+                    g = computeG_analytique(elementVector[i].midX, elementVector[i].midY, elementVector[j]);
+                }
             }
 
             // Storage of h and g at the right place (in matrices A and B).
@@ -180,7 +190,6 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
      */
 
     //visualisation by elementnodedata
-
     if(visualisation == 1 && postProcessing)
     {
         //The first index indicates the elementType, the second the elementTag and the third the nodesTags associated with this element. For example, it says whether it is a square or a triangle, the element tag and finally the tag of the 3 or 4 nodes associated with it.
@@ -192,7 +201,7 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
         //the purpose of this function is to fill the nodemapdomain map and thus to calculate the value of the potential at each node in the domain
         start = std::chrono::system_clock::now();
         //calculates the potential at the barycentre of each element of the domain
-        compute_internal_phi(allCoord,NodeTags2d_domain,allNodeIndex,elementVector,nodeMapDomain,integrationType,nodeOnBoundary);
+        compute_internal_phi(allCoord,NodeTags2d_domain,allNodeIndex,elementVector,nodeMapDomain,integrationType,nodeOnBoundary,solution_type);
         end = std::chrono::system_clock::now();
         function_name = "compute_internal_phi";
         display_time(start, end, function_name, show_time);
@@ -210,12 +219,36 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
         {
             gmsh::view::addModelData(viewNodeTag,0,names[0],"ElementNodeData",elementTags2d_domain_BEM[i],data[i],0.0,1);
         }
-        gmsh::view::write(viewNodeTag, "results.msh");
+        //gmsh::view::write(viewNodeTag, "results.msh");
 
         gmsh::option::setNumber("View[0].IntervalsType", 3);
         //option::setNumber("View[0].AdaptVisualizationGrid", 1);
         gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
         gmsh::option::setNumber("View[0].TargetError", -0.0001);
+
+        if(electric_field)
+        {
+            int nb2dElements = 0;
+            for(size_t i = 0; i < elementTypes2d_domain_BEM.size(); i++)
+            {
+                nb2dElements += elementTags2d_domain_BEM[i].size();
+            }
+            std::vector<size_t> tags(nb2dElements);
+
+            start = std::chrono::system_clock::now();
+            std::vector<std::vector<double>> data_Electric_field(nb2dElements,std::vector<double>(3,0));
+            electricField(nb2dElements,entities_tags_2d_domain_BEM,elementVector,tags,integrationType, data_Electric_field,solution_type);
+            end = std::chrono::system_clock::now();
+            function_name = "compute Electric Field";
+            display_time(start, end, function_name, show_time);
+            int viewtag = gmsh::view::add("Electric field");
+            gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
+            //gmsh::view::write(viewtag, "results.msh");
+            gmsh::option::setNumber("View[0].IntervalsType", 3);
+            gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+            gmsh::option::setNumber("View[0].TargetError", -0.0001);
+            nbViews++;
+        }
     }
     //visualisation by element barycenter
     if(visualisation == 2 && postProcessing)
@@ -235,11 +268,37 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
         //To displays the time of the this code section
         start = std::chrono::system_clock::now();
         //calculates the potential at the barycentre of each element of the domain
-        computeData(elementVector, tags, phi, integrationType, entities_tags_2d_domain_BEM);
+        computeData(elementVector, tags, phi, integrationType, entities_tags_2d_domain_BEM,solution_type);
         end = std::chrono::system_clock::now();
         function_name = "computeData";
         display_time(start, end, function_name, show_time);
 
+        if(electric_field)
+        {
+            start = std::chrono::system_clock::now();
+            std::vector<std::vector<double>> data_Electric_field(nb2dElements,std::vector<double>(3,0));
+            electricField(nb2dElements,entities_tags_2d_domain_BEM,elementVector,tags,integrationType, data_Electric_field,solution_type);
+            end = std::chrono::system_clock::now();
+            function_name = "compute Electric Field";
+            display_time(start, end, function_name, show_time);
+            int viewtag = gmsh::view::add("Electric field");
+            gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
+            //gmsh::view::write(viewtag, "results.msh");
+            gmsh::option::setNumber("View[0].IntervalsType", 3);
+            gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+            gmsh::option::setNumber("View[0].TargetError", -0.0001);
+            nbViews++;
+        }
+
+        /*
+         *  Convergence
+         */
+        
+        if(convergence)
+        {
+            convergenceFun(entities_tags_2d_domain_BEM,tags,phi);
+        }
+        
         //For ease of use, a function handles the code for the display.
         displayData("phi", names[0], "results.msh", tags, phi);
     }
@@ -254,12 +313,8 @@ int solverBEM(int argc, char **argv, std::map<int, double> &electrostaticPressur
     end_total = std::chrono::system_clock::now();
     function_name = "total time of the code BEM";
     display_time(start_total, end_total, function_name, show_time);
-    if(openGUI && postProcessing)
-    {
-        gmsh::fltk::run();
-    }
 
-    nbViews = 1; // number of views generated (useful for FEM display of results)
+    nbViews++; // number of views generated (useful for FEM display of results)
 
     return 0;
 }

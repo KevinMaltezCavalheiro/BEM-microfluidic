@@ -249,7 +249,7 @@ int solverFEMnonLinear(int argc, char **argv, std::map<int, double> &electrostat
 
         residualNorm = computeResidualNorm(global_f_vector, f_app_vector, residual);
 
-        std::cout << "residual value: " << residualNorm << "\n";
+        // std::cout << "residual value: " << residualNorm << "\n";
 
         /*------------STEP 3: EVALUATING THE RESIDUAL, have we converged ??----------*/
         if (residualNorm < residualTolerance)

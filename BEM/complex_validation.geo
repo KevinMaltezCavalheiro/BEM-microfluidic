@@ -34,7 +34,7 @@ Transfinite Curve {3, 8} = ny+1 Using Progression 1;
 //Transfinite Surface {1};
 //Transfinite Surface {2};
 
-Mesh.ElementOrder = 1;
+Mesh.ElementOrder = 2;
 
 Recombine Surface {1}; // quads instead of triangles
 

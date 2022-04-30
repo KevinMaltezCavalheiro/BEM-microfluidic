@@ -27,16 +27,23 @@
 //todo: mettre en parallèle
 //todo: elementtype pour optimiser elementnodedata
 //todo: commenter le code
+//todo: faire une fonction pour chrono afin de mesurer le temps de toutes les différentes parties du code
+//todo: convergence => utiliser une erreur L2
+//todo: gérer des matériaux composites
+//todo: implémenter solver dynamique
+//todo: demander pour le critical d'openmp
 
 /*-----------------todo qu'il reste vraiment à faire------------------*/
-//todo: convergence
 //todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
 //todo: representation formula pour le champ electrique
-//todo: faire une fonction pour chrono afin de mesurer le temps de toutes les différentes parties du code
 //todo: créer d'autres .geo avec des géométries plus complexes
-//gérer des matériaux composites
 
-//petit test de commit par xcode
+//astuce: pour reverse le sens de parcours d'une courbe et inverser les tangentes dans le .geo, utiliser reversemesh
+
+//todo: openmp
+//todo: séparer analytique et numérique
+//todo: visu electric field, combiner avec les autres
+//todo: refaire le vecteur data pour elementdata (plus d'elementcount)
 
 void element_node_data(std::vector<std::vector<std::vector<double>>> &data, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &nodeTags2d_domain_BEM, std::vector<elementStruct> &elementVector, std::map<int, double> &nodeMapDomain, bool &show_element_node_data, int &entities_tags_for_physical_group_domain_BEM, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
 {
@@ -722,7 +729,9 @@ double computeG(const double &x, const double &y, const elementStruct &element, 
         gSum += log(r) * weights[k];
     }
 
-    return gSum * element.length / (4*M_PI);
+    double g = gSum * element.length / (4*M_PI);
+
+    return g;
 }
 
 void displayData(const std::string viewName, const std::string modelName, const std::string fileName, const std::vector<size_t> &tags, const std::vector<std::vector<double>> &data)
@@ -737,19 +746,20 @@ void displayData(const std::string viewName, const std::string modelName, const 
     gmsh::option::setNumber("View[0].TargetError", -0.0001);
 }
 
-void compute_internal_phi(std::vector<double> &allCoord, std::vector<size_t> &NodeTags2d_domain, std::map<size_t, int> &allNodeIndex, std::vector<elementStruct> &elementVector, std::map<int,double> &nodeMapDomain, const std::string integrationType, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
+void compute_internal_phi(std::vector<double> &allCoord, std::vector<size_t> &NodeTags2d_domain, std::map<size_t, int> &allNodeIndex, std::vector<elementStruct> &elementVector, std::map<int,double> &nodeMapDomain, const std::string integrationType, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary, bool &solution_type)
 {
     double x = 0;
     double y = 0;
     double phi = 0;
     double h = 0;
     double g = 0;
+    std::vector<double> vectorForNodeMap(NodeTags2d_domain.size(),0);
 
-#pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(NodeTags2d_domain,allCoord,elementVector,nodeMapDomain,nodeOnBoundary)
-    for(size_t i = 0; i < NodeTags2d_domain.size(); i++)
+#pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(NodeTags2d_domain,allCoord,elementVector,nodeMapDomain,nodeOnBoundary,solution_type)
+    for(std::size_t i = 0; i < NodeTags2d_domain.size(); i++)
     {
-        //if(nodeOnBoundary[NodeTags2d_domain[i]].first == 0)
-        //{
+        if(nodeOnBoundary[NodeTags2d_domain[i]].first == 0)
+        {
             // Coordinates of the node
             x = allCoord[3*allNodeIndex[NodeTags2d_domain[i]]];
             y = allCoord[3*allNodeIndex[NodeTags2d_domain[i]] + 1];
@@ -758,18 +768,27 @@ void compute_internal_phi(std::vector<double> &allCoord, std::vector<size_t> &No
             for(size_t j = 0; j < elementVector.size(); j++)
             {
                 h = computeH(x, y, elementVector[j]);
-                g = computeG(x, y, elementVector[j], integrationType);
+                if(solution_type == 0)
+                {
+                    g = computeG(x, y, elementVector[j], integrationType);
+                }
+                else
+                {
+                    g = computeG_analytique(x, y, elementVector[j]);
+                }
 
                 phi = phi + h*elementVector[j].bcValue[0] - g*elementVector[j].bcValue[1];
             }
-            // Potential at the node is phi.
-#pragma omp critical
-            nodeMapDomain[NodeTags2d_domain[i]] = phi;
-        //}
+            vectorForNodeMap[i] = phi;
+        }
+    }
+    for(std::size_t i = 0; i < NodeTags2d_domain.size(); i++)
+    {
+        nodeMapDomain[NodeTags2d_domain[i]] = vectorForNodeMap[i];
     }
 }
 
-void computeData(const std::vector<elementStruct> &elementVector, std::vector<size_t> &tags, std::vector<std::vector<double>> &data, const std::string integrationType, std::vector<int> &entities_tags_2d_domain_BEM)
+void computeData(const std::vector<elementStruct> &elementVector, std::vector<size_t> &tags, std::vector<std::vector<double>> &data, const std::string integrationType, std::vector<int> &entities_tags_2d_domain_BEM, bool &solution_type)
 {
     double x = 0;
     double y = 0;
@@ -790,7 +809,7 @@ void computeData(const std::vector<elementStruct> &elementVector, std::vector<si
         {
             gmsh::model::mesh::getBarycenters(elementTypes_for_entity[l], entities_tags_2d_domain_BEM[i], false, false, barycenters);
 
-#pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(elementTags_for_entity,elementVector,tags,data,elementCount,barycenters)
+#pragma omp parallel for schedule(static) private(x,y,phi,h,g) shared(elementTags_for_entity,elementVector,tags,data,elementCount,barycenters,solution_type)
             for(size_t j = 0; j < elementTags_for_entity[l].size(); j++)
             {
                 x = barycenters[3*j];
@@ -800,13 +819,18 @@ void computeData(const std::vector<elementStruct> &elementVector, std::vector<si
                 for(size_t k = 0; k < elementVector.size(); k++)
                 {
                     h = computeH(x, y, elementVector[k]);
-                    g = computeG(x, y, elementVector[k], integrationType);
+                    if(solution_type == 0)
+                    {
+                        g = computeG(x, y, elementVector[k], integrationType);
+                    }
+                    else
+                    {
+                        g = computeG_analytique(x, y, elementVector[k]);
+                    }
                     phi += h*elementVector[k].bcValue[0] - g*elementVector[k].bcValue[1];
                 }
                 // Potential at the node is phi.
-#pragma omp atomic write
                 tags[elementCount + j] = elementTags_for_entity[l][j];
-#pragma omp atomic write
                 data[elementCount + j][0] = phi;
             }
             elementCount = elementCount + elementTags_for_entity[l].size();
@@ -856,5 +880,348 @@ void display_time(std::chrono::time_point<std::chrono::system_clock> &start, std
         << " sec";
         std::cout << std::endl;
         std::cout << std::endl;
+    }
+}
+
+void convergenceFun(std::vector<int> &entities_tags_2d_domain_BEM, std::vector<size_t> &tags, std::vector<std::vector<double>> &phi)
+{
+    double l = 1.0;
+    double phiLeft = 100.0;
+    double phiRight = 200.0;
+
+    double error = 0.0;
+
+    std::vector<double> barycenters;
+
+    for(std::size_t i = 0; i < entities_tags_2d_domain_BEM.size(); i++)
+    {
+        std::vector<int> elementTypes_for_entity;
+        std::vector<std::vector<size_t> > elementTags_for_entity;
+        std::vector<std::vector<size_t> > nodeTags_for_entity;
+        gmsh::model::mesh::getElements(elementTypes_for_entity, elementTags_for_entity, nodeTags_for_entity, 2, entities_tags_2d_domain_BEM[i]);
+
+        for(std::size_t j = 0; j < elementTypes_for_entity.size(); j++)
+        {
+            gmsh::model::mesh::getBarycenters(elementTypes_for_entity[j], entities_tags_2d_domain_BEM[i], false, false, barycenters);
+            for(std::size_t k = 0; k < elementTags_for_entity[i].size(); k++)
+            {
+                std::size_t tag = elementTags_for_entity[i][k];
+                int index = 0;
+                for(std::size_t l = 0; l < tags.size(); l++)
+                {
+                    if(tag == tags[l])
+                    {
+                        index = l;
+                        break;
+                    }
+                }
+                double numericalPhi = phi[index][0];
+
+                double x = barycenters[3*k];
+                double exactPhi = phiLeft + (phiRight - phiLeft) * x / l;
+
+                double relError = abs( (exactPhi - numericalPhi)/exactPhi );
+                error += relError*relError;
+            }
+        }
+    }
+    error = sqrt(error/tags.size());
+    std::cout << "\nNumber of elements = " << tags.size() << "\t-> Error = " << error << "\n\n";
+}
+
+double computeGradHx(const double &x, const double &y, const elementStruct &element, const std::string &integrationType)
+{
+    double xi = x;
+    double yi = y;
+    double xj = element.x1;
+    double xjp1 = element.x2;
+    double yj = element.y1;
+    double yjp1 = element.y2;
+
+    double dx = xjp1-xj;
+    double dy = yjp1-yj;
+    double nx = dy;
+    double ny = -dx;
+    double norm = sqrt(nx*nx+ny*ny);
+    nx = nx / norm;
+    ny = ny / norm;
+
+    // Computation of the integration points (parametric) and weights.
+    std::vector<double> localCoord;
+    std::vector<double> weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+
+    // Computation of the sum (of integrand evaluated at integration point * weight)
+    double gSum = 0;
+    for(size_t k = 0; k < weights.size(); k++)
+    {
+        // Parametric coordinate
+        double integration_variable = localCoord[3*k];
+        // Global coordinates
+        double hX = element.midX + element.deltaX*integration_variable/2.0;
+        double hY = element.midY + element.deltaY*integration_variable/2.0;
+
+        // Distance between mid point of element 'i' and integration point.
+        double r = sqrt(pow(x - hX, 2.0) + pow(y - hY, 2.0));
+        gSum += (-((1.0/2.0*pow(r, 2) - pow((xi - hX),2))/(pow(r, 4)))*nx + ((xi - hX)*(yi - hY)*ny)/(pow(r, 4))) * weights[k];
+    }
+
+    double gradHx = gSum * element.length / (2*M_PI);
+
+    return gradHx;
+}
+double computeGradHy(const double &x, const double &y, const elementStruct &element, const std::string &integrationType)
+{
+    double xi = x;
+    double yi = y;
+    double xj = element.x1;
+    double xjp1 = element.x2;
+    double yj = element.y1;
+    double yjp1 = element.y2;
+
+    double dx = xjp1-xj;
+    double dy = yjp1-yj;
+    double nx = dy;
+    double ny = -dx;
+    double norm = sqrt(nx*nx+ny*ny);
+    nx = nx / norm;
+    ny = ny / norm;
+
+    // Computation of the integration points (parametric) and weights.
+    std::vector<double> localCoord;
+    std::vector<double> weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+
+    // Computation of the sum (of integrand evaluated at integration point * weight)
+    double gSum = 0;
+    for(size_t k = 0; k < weights.size(); k++)
+    {
+        // Parametric coordinate
+        double integration_variable = localCoord[3*k];
+        // Global coordinates
+        double hX = element.midX + element.deltaX*integration_variable/2.0;
+        double hY = element.midY + element.deltaY*integration_variable/2.0;
+
+        // Distance between mid point of element 'i' and integration point.
+        double r = sqrt(pow(xi - hX, 2.0) + pow(yi - hY, 2.0));
+        gSum += (-((1.0/2.0*pow(r, 2) - pow((yi - hY),2))/(pow(r, 4)))*ny + ((xi - hX)*(yi - hY)*nx)/(pow(r, 4))) * weights[k];
+    }
+
+    double gradHy = gSum * element.length / (2*M_PI);
+
+    return gradHy;
+}
+double computeGradGx(const double &x, const double &y, const elementStruct &element, const std::string &integrationType)
+{
+    // Computation of the integration points (parametric) and weights.
+    std::vector<double> localCoord;
+    std::vector<double> weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+
+    // Computation of the sum (of integrand evaluated at integration point * weight)
+    double gSum = 0;
+    for(size_t k = 0; k < weights.size(); k++)
+    {
+        // Parametric coordinate
+        double integration_variable = localCoord[3*k];
+        // Global coordinates
+        double gX = element.midX + element.deltaX*integration_variable/2.0;
+        double gY = element.midY + element.deltaY*integration_variable/2.0;
+
+        // Distance between mid point of element 'i' and integration point.
+        double r = sqrt(pow(x - gX, 2.0) + pow(y - gY, 2.0));
+        gSum += ((x-gX)/(pow(r, 2))) * weights[k];
+    }
+
+    double gradGx = gSum * element.length / (4*M_PI);
+
+    return gradGx;
+}
+double computeGradGy(const double &x, const double &y, const elementStruct &element, const std::string &integrationType)
+{
+    // Computation of the integration points (parametric) and weights.
+    std::vector<double> localCoord;
+    std::vector<double> weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+
+    // Computation of the sum (of integrand evaluated at integration point * weight)
+    double gSum = 0;
+    for(size_t k = 0; k < weights.size(); k++)
+    {
+        // Parametric coordinate
+        double integration_variable = localCoord[3*k];
+        // Global coordinates
+        double gX = element.midX + element.deltaX*integration_variable/2.0;
+        double gY = element.midY + element.deltaY*integration_variable/2.0;
+
+        // Distance between mid point of element 'i' and integration point.
+        double r = sqrt(pow(x - gX, 2.0) + pow(y - gY, 2.0));
+        gSum += ((y-gY)/(pow(r, 2))) * weights[k];
+    }
+
+    double gradGy = gSum * element.length / (4*M_PI);
+
+    return gradGy;
+}
+
+double computeGradHx_analytique(const double &x, const double &y, const elementStruct &element)
+{
+    double lj = element.length;
+    double xi = x;
+    double yi = y;
+    double xj = element.x1;
+    double xjp1 = element.x2;
+    double yj = element.y1;
+    double yjp1 = element.y2;
+    double Pi = M_PI;
+
+    double dx = xjp1-xj;
+    double dy = yjp1-yj;
+    double nx = dy;
+    double ny = -dx;
+    double norm = sqrt(nx*nx+ny*ny);
+    nx = nx / norm;
+    ny = ny / norm;
+
+    double gradHx_analytique = (lj*(nx*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) -
+                                    ny*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
+                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
+                                  (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+
+    return gradHx_analytique;
+}
+double computeGradHy_analytique(const double &x, const double &y, const elementStruct &element)
+{
+    double lj = element.length;
+    double xi = x;
+    double yi = y;
+    double xj = element.x1;
+    double xjp1 = element.x2;
+    double yj = element.y1;
+    double yjp1 = element.y2;
+    double Pi = M_PI;
+
+    double dx = xjp1-xj;
+    double dy = yjp1-yj;
+    double nx = dy;
+    double ny = -dx;
+    double norm = sqrt(nx*nx+ny*ny);
+    nx = nx / norm;
+    ny = ny / norm;
+
+    double gradHy_analytique = -(lj*(ny*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) +
+                                     nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
+                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
+                                 (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+
+    return gradHy_analytique;
+}
+double computeGradGx_analytique(const double &x, const double &y, const elementStruct &element)
+{
+    double lj = element.length;
+    double xi = x;
+    double yi = y;
+    double xj = element.x1;
+    double xjp1 = element.x2;
+    double yj = element.y1;
+    double yjp1 = element.y2;
+    double Pi = M_PI;
+
+    double gradGx_analytique = (lj*(-2*(yj - yjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
+              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
+         (xj - xjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+
+    return gradGx_analytique;
+}
+double computeGradGy_analytique(const double &x, const double &y, const elementStruct &element)
+{
+    double lj = element.length;
+    double xi = x;
+    double yi = y;
+    double xj = element.x1;
+    double xjp1 = element.x2;
+    double yj = element.y1;
+    double yjp1 = element.y2;
+    double Pi = M_PI;
+
+    double gradGy_analytique = (lj*(2*(xj - xjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
+              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
+         (yj - yjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+    return gradGy_analytique;
+}
+
+double computeG_analytique(const double &x, const double &y, const elementStruct &element)
+{
+    double lj = element.length;
+    double xi = x;
+    double yi = y;
+    double xj = element.x1;
+    double xjp1 = element.x2;
+    double yj = element.y1;
+    double yjp1 = element.y2;
+    double Pi = M_PI;
+
+    double g_analytique = (lj*(-2*(pow(xj - xjp1,2) + pow(yj - yjp1,2)) + 2*(-(xj*yi) + xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*yjp1)* atan(((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1))/(-(xj*yi) + xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*yjp1)) + 2*(-(xjp1*yi) - xi*yj + xjp1*yj + xj*(yi - yjp1) + xi*yjp1)* atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/ (xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) + (-((xi - xj)*(xj - xjp1)) - (yi - yj)*(yj - yjp1))* log(pow(xi - xj,2) + pow(yi - yj,2)) + ((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1))* log(pow(xi - xjp1,2) + pow(yi - yjp1,2))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+
+    return g_analytique;
+}
+
+void electricField(int &nb2dElements, std::vector<int> &entities_tags_2d_domain_BEM, const std::vector<elementStruct> &elementVector, std::vector<size_t> &tags, const std::string &integrationType, std::vector<std::vector<double>> &data_Electric_field, bool &solution_type)
+{
+    double x = 0;
+    double y = 0;
+    double grad_phi_x = 0;
+    double grad_phi_y = 0;
+    double h_x = 0;
+    double g_x = 0;
+    double h_y = 0;
+    double g_y = 0;
+    std::vector<double> barycenters;
+    size_t elementCount = 0;
+
+    for(size_t i = 0; i < entities_tags_2d_domain_BEM.size(); i++)
+    {
+        std::vector<int> elementTypes_for_entity;
+        std::vector<std::vector<size_t> > elementTags_for_entity;
+        std::vector<std::vector<size_t> > nodeTags_for_entity;
+        gmsh::model::mesh::getElements(elementTypes_for_entity, elementTags_for_entity, nodeTags_for_entity, 2, entities_tags_2d_domain_BEM[i]);
+
+        for(size_t l = 0; l < elementTypes_for_entity.size(); l++)
+        {
+            gmsh::model::mesh::getBarycenters(elementTypes_for_entity[l], entities_tags_2d_domain_BEM[i], false, false, barycenters);
+#pragma omp parallel for schedule(static) private(x,y,grad_phi_x,grad_phi_y,h_x,g_x,h_y,g_y) shared(elementTags_for_entity,elementVector,tags,data_Electric_field,elementCount,barycenters,solution_type,integrationType)
+            for(size_t j = 0; j < elementTags_for_entity[l].size(); j++)
+            {
+                x = barycenters[3*j];
+                y = barycenters[3*j+1];
+
+                grad_phi_x = 0;
+                grad_phi_y = 0;
+                for(size_t k = 0; k < elementVector.size(); k++)
+                {
+                    if(solution_type == 0)
+                    {
+                        h_x = computeGradHx(x, y, elementVector[k], integrationType);
+                        g_x = computeGradGx(x, y, elementVector[k], integrationType);
+                        h_y = computeGradHy(x, y, elementVector[k], integrationType);
+                        g_y = computeGradGy(x, y, elementVector[k], integrationType);
+                    }
+                    else
+                    {
+                        h_x = computeGradHx_analytique(x, y, elementVector[k]);
+                        g_x = computeGradGx_analytique(x, y, elementVector[k]);
+                        h_y = computeGradHy_analytique(x, y, elementVector[k]);
+                        g_y = computeGradGy_analytique(x, y, elementVector[k]);
+                    }
+                    grad_phi_x = grad_phi_x + h_x*elementVector[k].bcValue[0] - g_x*elementVector[k].bcValue[1];
+                    grad_phi_y = grad_phi_y + h_y*elementVector[k].bcValue[0] - g_y*elementVector[k].bcValue[1];
+                }
+                tags[elementCount + j] = elementTags_for_entity[l][j];
+                data_Electric_field[elementCount + j][0] = -grad_phi_x;
+                data_Electric_field[elementCount + j][1] = -grad_phi_y;
+                data_Electric_field[elementCount + j][2] = 0;
+            }
+            elementCount = elementCount + elementTags_for_entity[l].size();
+        }
     }
 }

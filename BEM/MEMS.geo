@@ -55,9 +55,10 @@ Transfinite Curve{10, 3} = 6*nx+1 Using Progression 1;
 Transfinite Curve{2, 4} = 2*ny+1 Using Progression 1;
 Transfinite Curve{9, 11} = nx+1 Using Progression 1;
 
-Recombine Surface {1};
+//Recombine Surface {1};
+//Recombine Surface {2};
 
-Mesh.ElementOrder = 1;
+//Mesh.ElementOrder = 2;
 
 Physical Curve("diaphragme", 5) = {3};
 Physical Surface("FEM_domain", 6) = {1};
