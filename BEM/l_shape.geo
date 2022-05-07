@@ -6,10 +6,10 @@ L_outlet = 1.5;
 phi_inlet = 200.;
 phi_outlet = 100.;
 
-n_trans_inlet = 10;
-n_long_inlet = 10;
-n_trans_outlet = 10;
-n_long_outlet = 15;
+n_trans_inlet = 100;
+n_long_inlet = 100;
+n_trans_outlet = 100;
+n_long_outlet = 150;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {w_inlet, 0, 0, 1.0};

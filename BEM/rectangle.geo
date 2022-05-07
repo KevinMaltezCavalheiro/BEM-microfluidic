@@ -1,11 +1,11 @@
-Lx = 1.5;
+Lx = 1.0;
 Ly = 1.0;
 
 phi_left = 200.;
 phi_right = 100.;
 
-nx = 30;
-ny = 30;
+nx = 400;
+ny = 400;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {Lx, 0, 0, 1.0};
@@ -21,7 +21,7 @@ Transfinite Curve {3, 1} = nx+1 Using Progression 1;
 Transfinite Curve {4, 2} = ny+1 Using Progression 1;
 Transfinite Surface {1};
 
-Recombine Surface {1}; // quads instead of triangles
+//Recombine Surface {1}; // quads instead of triangles
 
 Physical Curve("left_edge", 5) = {4};
 Physical Curve("bottom_edge", 6) = {1};

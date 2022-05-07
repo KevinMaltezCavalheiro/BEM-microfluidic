@@ -50,6 +50,8 @@
 		0A7EE32A27FF372A00DEE3F2 /* functionsFEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functionsFEM.cpp; sourceTree = "<group>"; };
 		0A7EE32B27FF372B00DEE3F2 /* functionsFEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsFEM.hpp; sourceTree = "<group>"; };
 		0A7EE32E27FF379200DEE3F2 /* solverFEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = solverFEM.cpp; sourceTree = "<group>"; };
+		0AD877C428215DB0009EFF67 /* longitudinal_comb.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = longitudinal_comb.geo; sourceTree = "<group>"; };
+		0AD877C528215DB9009EFF67 /* transverse_comb.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = transverse_comb.geo; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +106,8 @@
 				0A194E71281DCB2A00A3BEF4 /* two_BEM_test.geo */,
 				0A194E70281DCB2A00A3BEF4 /* hybrid_complex.geo */,
 				0A194E72281DCB2A00A3BEF4 /* uniform_charge.geo */,
+				0AD877C428215DB0009EFF67 /* longitudinal_comb.geo */,
+				0AD877C528215DB9009EFF67 /* transverse_comb.geo */,
 			);
 			path = BEM;
 			sourceTree = "<group>";

@@ -92,14 +92,15 @@ int main(int argc, char **argv)
                 break;
         }
 
-
-        nbViews = 0;
         postProcessing = true;
-        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration);
-        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF);
 
+        /*---------no deformation of BEM domain--------*/
+//        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration);
+//        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF);
+
+        /*---------deformation of BEM domain--------*/
         /*--------get physical groups--------------*/
-        /*std::map<std::string, std::pair<int, int>> groups;
+        std::map<std::string, std::pair<int, int>> groups;
         gmsh::vectorpair dimTags;
         gmsh::model::getPhysicalGroups(dimTags);
         for (std::size_t i = 0; i < dimTags.size(); ++i)
@@ -111,7 +112,7 @@ int main(int argc, char **argv)
             groups[name] = {dim, tag};
         }
 
-        std::string groupname = "BEM_domain";
+        std::string groupname = "BEM_domain_1";
         int dim = groups[groupname].first;
         int tag = groups[groupname].second;
 
@@ -134,7 +135,7 @@ int main(int argc, char **argv)
         }
         gmsh::model::mesh::optimize("UntangleMeshGeometry", false, 1, dimTagsBis);
         std::map<int,std::pair<double,double>> boundaryDisplacementMap2;
-        solverBEM(argc, argv, electrostaticPressure, boundaryDisplacementMap2, nbViews, postProcessing, iteration);*/
+        solverBEM(electrostaticPressure, boundaryDisplacementMap2, nbViews, postProcessing, iteration);
     }
     else
     {
@@ -146,11 +147,11 @@ int main(int argc, char **argv)
         int nbViews = 0;
 
         solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1);
-        //solverFEM(electrostaticPressure, nbViews);
+        double bem_end = omp_get_wtime();
+        solverFEM(electrostaticPressure, nbViews);
+        double fem_end = omp_get_wtime();
+        std::cout << "time for FEM: " << fem_end - bem_end << "\n";
     }
-
-    //double fem_end = omp_get_wtime();
-    //std::cout << "time for FEM: " << fem_end - bem_end << "\n";
 
     gmsh::fltk::run();
     

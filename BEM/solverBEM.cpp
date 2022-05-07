@@ -13,7 +13,6 @@
 
 void solverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration)
 {
-
     gmsh::vectorpair physicalGroupsDimTags;
     gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
@@ -81,7 +80,7 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
 
     // Initialises a vector of elements (that will contain all the elements of interrest)
     std::vector<elementStruct> elementVector;
-    std::string integrationType = "Gauss4"; // Could vary depending on the distance between the elements.
+    std::string integrationType = "Gauss12"; // Could vary depending on the distance between the elements.
 
     // Gets the tags, the coordinates and the parametric coordinates of the nodes.
     std::map<size_t, int> allNodeIndex; // nodeTag -> position in allNodeTags and allCoord
@@ -260,10 +259,10 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
         }
         gmsh::view::write(viewNodeTag, "results.msh");
 
-        gmsh::option::setNumber("View[" + std::to_string(domainTag-1) + "].IntervalsType", 3);
+        gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].IntervalsType", 3);
         //option::setNumber("View[0].AdaptVisualizationGrid", 1);
-        gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
-        gmsh::option::setNumber("View[0].TargetError", -0.0001);
+        gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].MaxRecursionLevel", 3);
+        gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].TargetError", -0.0001);
         nbViews++; // number of views generated (useful for FEM display of results)
 
         if(electric_field)
@@ -283,10 +282,10 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
             display_time(start, end, function_name, show_time);
             int viewtag = gmsh::view::add("Electric field");
             gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
-            //gmsh::view::write(viewtag, "results.msh");
-            gmsh::option::setNumber("View[0].IntervalsType", 3);
-            gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
-            gmsh::option::setNumber("View[0].TargetError", -0.0001);
+            gmsh::view::write(viewtag, "results.msh");
+            //gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].IntervalsType", 3);
+            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].MaxRecursionLevel", 3);
+            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].TargetError", -0.0001);
             nbViews++;
         }
     }
@@ -324,9 +323,9 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
             int viewtag = gmsh::view::add("Electric field");
             gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
             //gmsh::view::write(viewtag, "results.msh");
-            gmsh::option::setNumber("View[0].IntervalsType", 3);
-            gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
-            gmsh::option::setNumber("View[0].TargetError", -0.0001);
+            //gmsh::option::setNumber("View[0].IntervalsType", 3);
+            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].MaxRecursionLevel", 3);
+            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].TargetError", -0.0001);
             nbViews++;
         }
 

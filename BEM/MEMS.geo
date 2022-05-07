@@ -48,14 +48,14 @@ Plane Surface(1) = {1};
 Curve Loop(2) = {2, 9, 10, 11, 4, 3};
 Plane Surface(2) = {2};
 
-Transfinite Curve{7} = 10*nx+1 Using Progression 1;
-Transfinite Curve{1, 5} = nx+1 Using Progression 1;
-Transfinite Curve{8, 6} = ny+1 Using Progression 1;
+Transfinite Curve{7} = 15*nx+1 Using Progression 1;
+Transfinite Curve{1, 5} = 2*nx+1 Using Progression 1;
+Transfinite Curve{8, 6} = 3*ny+1 Using Progression 1;
 Transfinite Curve{10, 3} = 6*nx+1 Using Progression 1;
 Transfinite Curve{2, 4} = 2*ny+1 Using Progression 1;
 Transfinite Curve{9, 11} = nx+1 Using Progression 1;
 
-Recombine Surface {1};
+Recombine Surface {1,2};
 
 Mesh.ElementOrder = 1;
 

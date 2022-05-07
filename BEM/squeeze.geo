@@ -7,8 +7,8 @@ h_diaph = 4.4*scale;
 h_end_diaph = 4.6*scale;
 Lx_diaph = 1*scale;
 
-nx = 10; // prend beaucoup de temps àpd de 200x40
-ny = 4;
+nx = 20; // prend beaucoup de temps àpd de 200x40
+ny = 8;
 
 Point(1) = {0, 0, 0, 2};
 Point(2) = {w_tot, 0, 0, 2};
@@ -41,11 +41,11 @@ Curve Loop(2) = {9, 10, 11, 3, 2, 1};
 Plane Surface(2) = {2}; 
 
 Transfinite Curve {10} = 10*nx+1 Using Progression 1;
-Transfinite Curve {1, 2, 3} = 3*nx+1 Using Progression 1;
+Transfinite Curve {1, 2, 3} = 10*nx+1 Using Progression 1;
 Transfinite Curve {7, 6, 5} = 3*nx+1 Using Progression 1;
 Transfinite Curve {8, 4} = 2*ny+1 Using Progression 1;
-Transfinite Curve {7, 1, 5, 3} = 1*ny+1 Using Progression 1;
-Transfinite Curve {9, 11}  = 4*ny+1 Using Progression 1;
+Transfinite Curve {7, 1, 5, 3} = 5*ny+1 Using Progression 1;
+Transfinite Curve {9, 11}  = 10*ny+1 Using Progression 1;
 
 //Transfinite Surface {1};
 
