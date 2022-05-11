@@ -46,6 +46,7 @@
 		0A591E4527F9CE1700B1D4E1 /* BEM */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = BEM; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A591E5027F9D06200B1D4E1 /* functionsBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functionsBEM.cpp; sourceTree = "<group>"; };
 		0A591E5127F9D06200B1D4E1 /* functionsBEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsBEM.hpp; sourceTree = "<group>"; };
+		0A62F479282A91D000989F1C /* large_rotation_validation.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = large_rotation_validation.geo; sourceTree = "<group>"; };
 		0A7EE32527FF351B00DEE3F2 /* solverBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 4; lastKnownFileType = sourcecode.cpp.cpp; path = solverBEM.cpp; sourceTree = "<group>"; tabWidth = 4; };
 		0A7EE32A27FF372A00DEE3F2 /* functionsFEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functionsFEM.cpp; sourceTree = "<group>"; };
 		0A7EE32B27FF372B00DEE3F2 /* functionsFEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsFEM.hpp; sourceTree = "<group>"; };
@@ -108,6 +109,7 @@
 				0A194E72281DCB2A00A3BEF4 /* uniform_charge.geo */,
 				0AD877C428215DB0009EFF67 /* longitudinal_comb.geo */,
 				0AD877C528215DB9009EFF67 /* transverse_comb.geo */,
+				0A62F479282A91D000989F1C /* large_rotation_validation.geo */,
 			);
 			path = BEM;
 			sourceTree = "<group>";

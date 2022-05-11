@@ -13,10 +13,12 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    bool nonLinearSolver = false; // use non-linear solver or not
+    bool nonLinearSolver = false; // use non-linear solver or not -> SET AS AN ARGUMENT OF MAIN, much easier
+    bool untangleMesh = false; // untangle geometry (deformed geometry, only available for nonLinear)
 
     // If compiled with OpenMP support, gmsh::initialize 
     // also sets the number of threads to "General.NumThreads".
+    double start = omp_get_wtime();
     int nthreads = omp_get_max_threads();
     gmsh::initialize();
     omp_set_num_threads(nthreads);
@@ -45,8 +47,8 @@ int main(int argc, char **argv)
     
 
 
-        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, 1);
-        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, 1, viewTagU, viewTagF);
+        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, 1, false);
+        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, 1, viewTagU, viewTagF, false);
         
         std::vector<int> nodeTags(boundaryDisplacementMap.size());
         std::vector<double> displacements(boundaryDisplacementMap.size());
@@ -55,7 +57,7 @@ int main(int argc, char **argv)
 
         double relativeDisplacement;
         const double criticalNorm = 0.0000001;
-        const int maxNbIteration = 10; // à modifier
+        const int maxNbIteration = 50; // à modifier
 
         int i = 0;
         for(auto p : boundaryDisplacementMap)
@@ -67,8 +69,8 @@ int main(int argc, char **argv)
 
         for(iteration = 2; iteration <= maxNbIteration; iteration++)
         {        
-            solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration);
-            solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF);
+            solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, false);
+            solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF, false);
 
             i = 0;
             relativeDisplacement = 0;
@@ -87,55 +89,26 @@ int main(int argc, char **argv)
             }
             relativeDisplacement = sqrt(relativeDisplacement/i);
             //std::cout << iteration << ", " << relativeDisplacement << ";\n";
-            // std::cout << "Iteration: " << iteration << "\t-> Averaged relative displacement = " << relativeDisplacement << "\n";
+            std::cout << "Iteration: " << iteration << "\t-> Averaged relative displacement = " << relativeDisplacement << "\n";
             if(relativeDisplacement < criticalNorm)
                 break;
         }
 
+
+        nbViews = 0;
+        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, false);
         postProcessing = true;
+        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF, untangleMesh);
 
-        /*---------no deformation of BEM domain--------*/
-//        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration);
-//        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, viewTagU, viewTagF);
-
-        /*---------deformation of BEM domain--------*/
-        /*--------get physical groups--------------*/
-        std::map<std::string, std::pair<int, int>> groups;
-        gmsh::vectorpair dimTags;
-        gmsh::model::getPhysicalGroups(dimTags);
-        for (std::size_t i = 0; i < dimTags.size(); ++i)
+        if(untangleMesh)
         {
-            int dim = dimTags[i].first;
-            int tag = dimTags[i].second;
-            std::string name;
-            gmsh::model::getPhysicalName(dim, tag, name);
-            groups[name] = {dim, tag};
+            std::map<int,std::pair<double,double>> boundaryDisplacementMap2;
+            solverBEM(electrostaticPressure, boundaryDisplacementMap2, nbViews, postProcessing, iteration, untangleMesh);
         }
-
-        std::string groupname = "BEM_domain_1";
-        int dim = groups[groupname].first;
-        int tag = groups[groupname].second;
-
-        std::vector<int> tags;
-        gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
-
-        gmsh::vectorpair dimTagsBis(tags.size());
-        for(size_t i = 0; i < tags.size(); i++)
+        else
         {
-            dimTagsBis[i] = std::pair<int,int>(dim, tags[i]);
+            solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, false);
         }
-
-        for(auto &p:boundaryDisplacementMap)
-        {
-            std::vector<double> coord, parametricCoord;
-            int dim, tag;
-            gmsh::model::mesh::getNode(p.first, coord, parametricCoord, dim, tag);
-            std::vector<double> total_disp = {coord[0] + p.second.first, coord[1] + p.second.second, coord[2]};
-            gmsh::model::mesh::setNode(p.first, total_disp, {});
-        }
-        gmsh::model::mesh::optimize("UntangleMeshGeometry", false, 1, dimTagsBis);
-        std::map<int,std::pair<double,double>> boundaryDisplacementMap2;
-        solverBEM(electrostaticPressure, boundaryDisplacementMap2, nbViews, postProcessing, iteration);
     }
     else
     {
@@ -146,12 +119,16 @@ int main(int argc, char **argv)
 
         int nbViews = 0;
 
-        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1);
-        double bem_end = omp_get_wtime();
+        solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1, false);
         solverFEM(electrostaticPressure, nbViews);
-        double fem_end = omp_get_wtime();
-        std::cout << "time for FEM: " << fem_end - bem_end << "\n";
+
     }
+
+    //double fem_end = omp_get_wtime();
+    //std::cout << "time for FEM: " << fem_end - bem_end << "\n";
+
+    double total_time = omp_get_wtime() - start;
+    std::cout << "total execution time: " << total_time << " [s]. \n";
 
     gmsh::fltk::run();
     

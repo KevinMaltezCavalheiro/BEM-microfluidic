@@ -4,8 +4,8 @@ Ly = 1.0;
 phi_left = 200.;
 phi_right = 100.;
 
-nx = 400;
-ny = 400;
+nx = 20;
+ny = 20;
 
 Point(1) = {0, 0, 0, 1.0};
 Point(2) = {Lx, 0, 0, 1.0};

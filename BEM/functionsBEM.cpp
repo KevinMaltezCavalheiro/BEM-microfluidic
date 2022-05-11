@@ -32,24 +32,25 @@
 //todo: gérer des matériaux composites
 //todo: implémenter solver dynamique
 //todo: demander pour le critical d'openmp
+//calcul analytique de G et des gradients
+//todo: representation formula pour le champ electrique
+//refaire graphique vectoriel
+
 
 /*-----------------todo qu'il reste vraiment à faire------------------*/
 //todo: afficher les déplacements, le potentiel en fonction de la distance dans l'élément (une coupe 1D dans le domaine)
-//todo: representation formula pour le champ electrique
 //todo: créer d'autres .geo avec des géométries plus complexes
 
 //astuce: pour reverse le sens de parcours d'une courbe et inverser les tangentes dans le .geo, utiliser reversemesh
 
-//implémenter openmp pour getBC + résoudre problème temps de calcul (section critical à enlever)
-//calcul analytique de G et des gradients
-//coupe 2d
 //pourquoi bem_domain_1 fonctionne
 //comment utiliser les plugins dans le code (continuous color map)
 //convergence par type d'élément
 //convergence de la solution numérique par rapport à l'annalytique pour le champs éléectrique en fonction du nombre de points de gauss
 //temps de calculs
-//refaire graphique vectoriel
-
+//convergence et temps de la solution numerique vs analytique
+//remettre le mathematica au propre et le push sur le git
+//domaine infini
 
 void element_node_data(std::vector<std::vector<std::vector<double>>> &data, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &nodeTags2d_domain_BEM, std::vector<elementStruct> &elementVector, std::map<int, double> &nodeMapDomain, bool &show_element_node_data, int &entities_tags_for_physical_group_domain_BEM, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary)
 {
@@ -477,19 +478,8 @@ void dispValuesFun(const std::vector<elementStruct> &elementVector)
 
 void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, std::vector<size_t> &NodeTags2d_domain, std::vector<double> &NodeCoord2d_domain, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<std::vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM, std::vector<int> &entities_tags_2d_domain_BEM, std::map<int, std::pair<double, double>> &boundaryDisplacementMap, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary, const int domainTag)
 {
-//    start = std::chrono::system_clock::now();
-
-//    end = std::chrono::system_clock::now();
-//    function_name = "getBC";
-//    display_time(start, end, function_name, show_time);
-
     // pour moi nodeTags2d_domain inutile, ainsi que nodeCoords2d_domain
     // Gets the dim and the tags of the physical groups
-    //std::chrono::time_point<std::chrono::system_clock> start, end;
-    //std::string function_name;
-    //bool show_time = 1;
-
-    //start = std::chrono::system_clock::now();
     gmsh::vectorpair physicalGroupsDimTags;
     gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
@@ -518,10 +508,6 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
         }
     }
 
-//    end = std::chrono::system_clock::now();
-//    function_name = "get boundary conditions";
-//    display_time(start, end, function_name, show_time);
-
     // Initially, these are 0 and are incremented each time a dirichlet/neumann-element is encountered.
     for (size_t i = 0; i < physicalGroupsDimTags.size(); i++)
     {
@@ -532,7 +518,6 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
 
         if(name == domainName)
         {
-            //start = std::chrono::system_clock::now();
             gmsh::model::mesh::getNodesForPhysicalGroup(physicalGroupsDim,physicalGroupsTag,NodeTags2d_domain,NodeCoord2d_domain);
 
             entities_tags_for_physical_group_domain_BEM = physicalGroupsTag;
@@ -547,9 +532,7 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
                 elementTypes2d_domain_BEM.insert(elementTypes2d_domain_BEM.end(), elementTypes.begin(), elementTypes.end());
                 elementTags2d_domain_BEM.insert(elementTags2d_domain_BEM.end(), elementTags.begin(), elementTags.end());
             }
-//            end = std::chrono::system_clock::now();
-//            function_name = "get domain mesh";
-//            display_time(start, end, function_name, show_time);
+            //remove_no_domain_nodes(NodeTags2d_domain, elementVector); //ça fait bugger
         }
 
         //s'il ne trouve pas name dans la map, find retourne map.end() => condition pour continue
@@ -560,7 +543,6 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
 
         // Retrieves the type and the value of the boundary condition of this physical group.
         // /!\ Should check that this physical groups was well defined in the list of "Boundary Condition" !
-        //start = std::chrono::system_clock::now();
         std::string bcType = bcMap[name].first;
         double bcValue = bcMap[name].second;
 
@@ -578,6 +560,7 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
             if(dispHierarchy)
                 std::cout << "\t contains entity '" << entitiesTags[k] << "' ";
 
+
             std::vector<size_t> elementTags1;
             std::vector<size_t> nodeTags1;
             std::vector<size_t> elementTags8;
@@ -590,10 +573,8 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
             if(dispHierarchy)
                 std::cout << "which has " << elementTags1.size() + elementTags8.size() << " elements:\n";
 
-            //start = std::chrono::system_clock::now();
             for(size_t el = 0; el < elementTags1.size(); el++)
             {
-
                 int elTag = elementTags1[el];
 
                 elementStruct element;
@@ -601,7 +582,7 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
                 element.nodeTags[0] = nodeTags1[2*el];
                 element.nodeTags[1] = nodeTags1[2*el + 1];
                 element.midNodeTags = 0;
-
+                
                 std::pair<double, double> nodalDisp1 = {0.0, 0.0}, nodalDisp2 = {0.0, 0.0};
                 if(boundaryDisplacementMap.count(element.nodeTags[0]))
                     nodalDisp1 = boundaryDisplacementMap[element.nodeTags[0]];
@@ -628,9 +609,6 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
                     std::cout << "\t\t\t-> Node '" << element.nodeTags[1] << "' (" << allCoord[3*allNodeIndex[element.nodeTags[1]]] << "; " << allCoord[3*allNodeIndex[element.nodeTags[1]] + 1] << ")\n";
                 }
             }
-//            end = std::chrono::system_clock::now();
-//            function_name = "get elements";
-//            display_time(start, end, function_name, show_time);
             for(size_t el = 0; el < elementTags8.size(); el++)
             {
                 int elTag = elementTags8[el];
@@ -671,9 +649,6 @@ void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCo
             if(dispHierarchy)
                 std::cout << "\n";
         }
-//        end = std::chrono::system_clock::now();
-//        function_name = "get boundary elements";
-//        display_time(start, end, function_name, show_time);
     }
     for(std::size_t i = 0; i < NodeTags2d_domain.size(); i++)
     {
@@ -711,7 +686,6 @@ void computeGeometricParam(elementStruct &element, std::map<std::size_t, int> &a
     element.deltaY = element.y2 - element.y1;
     element.length = sqrt(pow(element.deltaX, 2.0) + pow(element.deltaY, 2.0));
 }
-
 
 double computeH(const double &x, const double &y, const elementStruct &element)
 {
@@ -775,10 +749,10 @@ void displayData(const std::string viewName, const std::string modelName, const 
     gmsh::view::addModelData(viewTag, 0, modelName, "ElementData", tags, data);
     gmsh::view::write(viewTag, fileName);
 
-    gmsh::option::setNumber("View[0].IntervalsType", 3);
+    //gmsh::option::setNumber("View[0].IntervalsType", 3);
     // option::setNumber("View[0].AdaptVisualizationGrid", 1); // Problem with this command !
-    gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
-    gmsh::option::setNumber("View[0].TargetError", -0.0001);
+    //gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+    //gmsh::option::setNumber("View[0].TargetError", -0.0001);
 }
 
 void compute_internal_phi(std::vector<double> &allCoord, std::vector<size_t> &NodeTags2d_domain, std::map<size_t, int> &allNodeIndex, std::vector<elementStruct> &elementVector, std::map<int,double> &nodeMapDomain, const std::string integrationType, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary, bool &solution_type)
@@ -891,13 +865,13 @@ void disp_element_node_data(std::vector<int> &nodes_commun_tag, std::vector<int>
     std::cout << std::endl;
 }
 
-void display_time(std::chrono::time_point<std::chrono::system_clock> &start, std::chrono::time_point<std::chrono::system_clock> &end, std::string &function_name, bool &show_time)
+void display_time(std::chrono::time_point<std::chrono::system_clock> &start, std::chrono::time_point<std::chrono::system_clock> &end, std::string &function_name, bool &show_time, const int domainTag)
 {
     //displays the time of the desired code section
     if(show_time)
     {
         std::cout << std::endl;
-        std::cout << function_name << std::endl;
+        std::cout << function_name << " in BEM domain " << domainTag << std::endl;
         std::cout << "Elapsed time in nanoseconds: "
         << std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()
         << " ns" << std::endl;
@@ -1118,7 +1092,11 @@ double computeGradHx_analytique(const double &x, const double &y, const elementS
     nx = nx / norm;
     ny = ny / norm;
 
-    double gradHx_analytique = (lj*(nx*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) - ny*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/(2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*(pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+    double gradHx_analytique = (lj*(nx*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) -
+                                    ny*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
+                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
+                                  (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+
     return gradHx_analytique;
 }
 double computeGradHy_analytique(const double &x, const double &y, const elementStruct &element)
@@ -1140,7 +1118,11 @@ double computeGradHy_analytique(const double &x, const double &y, const elementS
     nx = nx / norm;
     ny = ny / norm;
 
-    double gradHy_analytique = -(lj*(ny*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) + nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/(2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*(pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+    double gradHy_analytique = -(lj*(ny*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) +
+                                     nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
+                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
+                                 (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+
     return gradHy_analytique;
 }
 double computeGradGx_analytique(const double &x, const double &y, const elementStruct &element)
@@ -1154,7 +1136,10 @@ double computeGradGx_analytique(const double &x, const double &y, const elementS
     double yjp1 = element.y2;
     double Pi = M_PI;
 
-    double gradGx_analytique = (lj*(-2*(yj - yjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) + atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) - (xj - xjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+    double gradGx_analytique = (lj*(-2*(yj - yjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
+              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
+         (xj - xjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+
     return gradGx_analytique;
 }
 double computeGradGy_analytique(const double &x, const double &y, const elementStruct &element)
@@ -1168,7 +1153,9 @@ double computeGradGy_analytique(const double &x, const double &y, const elementS
     double yjp1 = element.y2;
     double Pi = M_PI;
 
-    double gradGy_analytique = (lj*(2*(xj - xjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) + atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) - (yj - yjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+    double gradGy_analytique = (lj*(2*(xj - xjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
+              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
+         (yj - yjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
     return gradGy_analytique;
 }
 
@@ -1184,6 +1171,7 @@ double computeG_analytique(const double &x, const double &y, const elementStruct
     double Pi = M_PI;
 
     double g_analytique = (lj*(-2*(pow(xj - xjp1,2) + pow(yj - yjp1,2)) + 2*(-(xj*yi) + xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*yjp1)* atan(((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1))/(-(xj*yi) + xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*yjp1)) + 2*(-(xjp1*yi) - xi*yj + xjp1*yj + xj*(yi - yjp1) + xi*yjp1)* atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/ (xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) + (-((xi - xj)*(xj - xjp1)) - (yi - yj)*(yj - yjp1))* log(pow(xi - xj,2) + pow(yi - yj,2)) + ((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1))* log(pow(xi - xjp1,2) + pow(yi - yjp1,2))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+
     return g_analytique;
 }
 

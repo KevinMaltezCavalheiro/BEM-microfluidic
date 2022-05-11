@@ -1,7 +1,7 @@
 Lx_in = 1.0;
 Ly_in = 0.1;
 cx = 0.0;
-cy = -0.6;
+cy = 0.0;
 
 Lx_out = 2.0;
 Ly_out = 1.5;

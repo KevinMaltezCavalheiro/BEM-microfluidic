@@ -17,7 +17,7 @@
 #include <algorithm> // to sort and merge the FEM node vectors
 #include <omp.h>
 
-void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, const int nbViews, bool postProcessing, const int iteration, const int viewTagU, const int viewTagF)
+void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int &nbViews, bool postProcessing, const int iteration, const int viewTagU, const int viewTagF, bool untangleMesh)
 {
     /*--------------INITIALIZATION OF ITERATIVE ALGORITHM----------------*/
     /* FIRST STEP: 
@@ -26,10 +26,10 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
     - initialize the full d vector with Dirichlet boundary conditions and set pg = 0
     - important remark: in pg we focus only on the free DOFs (we do not focus on the DOFs fixed by dirichlet BCs)*/
 
-    bool openGUI = false;        // Graphical interface of GMSH.
+    bool display_time = false;
 
-    //double start = omp_get_wtime();
-    int max_threads = omp_get_max_threads();
+    double start = omp_get_wtime();
+    //int max_threads = omp_get_max_threads();
 
 
     /*--------Integration rule used in the code----------*/
@@ -79,11 +79,16 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
         }
         std::sort(tmp_nodeTags[i].begin(), tmp_nodeTags[i].end());
         std::set_union(tmp_nodeTags[i-1].begin(), tmp_nodeTags[i-1].end(),
-                       tmp_nodeTags[i].begin(), tmp_nodeTags[i].end(), std::back_inserter(FEM_nodeTags));
+                       tmp_nodeTags[i].begin(), tmp_nodeTags[i].end(), std::back_inserter(FEM_nodeTags)); // works only for 2 domains -> see little trick just below
         
     }
     if(tags.size() == 1){ // if the domain contains one single entity
         FEM_nodeTags = tmp_nodeTags[0];
+    }
+    else{ // little trick for more than 2 domains
+        std::sort(FEM_nodeTags.begin(), FEM_nodeTags.end());
+        auto last = std::unique(FEM_nodeTags.begin(), FEM_nodeTags.end());
+        FEM_nodeTags.erase(last, FEM_nodeTags.end());
     }
 
     /*-----get elements related to FEM--------------*/
@@ -91,6 +96,11 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
     std::map<int,elementData> FEM_kinematicsMap; // map between elementTag and all the kinematics associated to this element
     // map is initialized, see functionsFEM.hpp for structure of elementData type
     int nbelems = initKinematics(FEM_elementTags, FEM_kinematicsMap, FEM_nodeCoordsMap, dim, tags);
+
+    if(iteration == 1)
+    {
+        std::cout << "The FEM domain contains " << nbelems << " element(s) and " << FEM_nodeTags.size() << " nodes\n";
+    }
 
     /*-------map between nodeTag and index of first nodal displacement associated to the node (second one is the same +1)------*/
     std::map<int, int> nodeIndexMap;
@@ -114,8 +124,9 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
 
     /*-----------------H matrix involved in stress computation------------------*/
     Eigen::Matrix<double, 3, 3> H_matrix = computeHmatrix(E, nu);
-    //double startbis = omp_get_wtime();
-    //std::cout << "preliminary: " << startbis-start << "\n";
+    double start2 = omp_get_wtime();
+    std::string step_name = "initialization of global variables";
+    displayTime(start, start2, step_name, display_time);
 
     /*------------computing full f vector------------------------*/
     // we first consider volumic part of the f vector, computed simultaneously with local K matrices
@@ -125,21 +136,12 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
         full_f_vector[i] = 0;
     }
 
-    std::vector<std::list<Eigen::Triplet <double>>> my_k_list(max_threads);
-    std::vector<std::list<std::pair<int,double>>> thread_f_vector(max_threads);
-
     // Looping over entities and compute local K matrices and volumic f vector
-    fillElementalKandF(H_matrix, rho, bx, by, integration_rule, dim, tags, nodeIndexMap, my_k_list, thread_f_vector, FEM_kinematicsMap);
+    fillElementalKandF(H_matrix, rho, bx, by, integration_rule, dim, tags, nodeIndexMap, full_f_vector, FEM_kinematicsMap);
 
-    for(int i = 0; i < max_threads; i++){
-        std::list<std::pair<int,double>> &tmp_vector = thread_f_vector[i];
-        for(auto &p : tmp_vector) {
-            full_f_vector[p.first] += p.second;
-        }
-    }
-
-    //double start2 = omp_get_wtime();
-    //std::cout << "time for K assembly: " << start2-startbis << "\n";
+    double start3 = omp_get_wtime();
+    step_name = "volumic f and elemental Kl";
+    displayTime(start2, start3, step_name, display_time);
 
 
     /*-----------------BOUNDARY CONDITIONS------------*/
@@ -148,14 +150,12 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
     /*-----------first focus on neumann BC's (surface traction) into full_f_vector------------*/
     includeNeumannBC(keys, integration_rule, nodeIndexMap, groups, full_f_vector);
 
-    //double start3 = omp_get_wtime();
-    //std::cout << "time for neumann: " << start3 - start2 << "\n";
-
-    /* taking ELECTROSTATIC PRESSURE */
+    /* taking ELECTROSTATIC PRESSURE into account */
     if(electrostaticPressure.size() != 0)
         applyElecPressure(integration_rule, FEM_nodeCoordsMap, nodeIndexMap, groups, electrostaticPressure, full_f_vector);
-    //double start4 = omp_get_wtime();
-    //std::cout << "time for elec pressure: " << start4 - start3 << "\n";
+    double start4 = omp_get_wtime();
+    step_name = "Neumann BC and elec pressure";
+    displayTime(start3, start4, step_name, display_time);
 
     /*------------FOCUS ON DIRICHLET BC'S---------------*/
     // new_DOFindices vector will contain the new indices of the K matrix after the rows/columns corresponding
@@ -211,26 +211,33 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
         f_app_norm += f_app_vector[i]*f_app_vector[i];
     }
     f_app_norm = sqrt(f_app_norm);
-    std::cout << "f app norm: " << f_app_norm << "\n";
+    //std::cout << "f app norm: " << f_app_norm << "\n";
 
     std::vector<double> global_f_vector(nb_free_DOFs);
 
     Eigen::Matrix<double, Eigen::Dynamic, 1> residual(nb_free_DOFs, 1);
 
-    double residualNorm = 100000000; // hardcoded and arbitrary
-    double residualTolerance = 2e-12; // empirical
+    double residualTolerance = 1e-11; // empirical
 
-    /*double max_applied_force = 0;
-    for(int i = 0; i < nb_free_DOFs; i++)
+    // implementation of second stopping criterion
+    std::vector<double> previousTotalNodalForces(2*FEM_nodeTags.size());
+    std::vector<double> currentTotalNodalForces(2*FEM_nodeTags.size());
+    std::vector<double> relativeDifference(2*FEM_nodeTags.size());
+    double relativeForces = 1e17;
+    double currentMaxNodalForce;
+    for(size_t i = 0; i < 2*FEM_nodeTags.size(); i++)
     {
-        if(abs(f_app_vector[i]) > max_applied_force)
-            max_applied_force = abs(f_app_vector[i]);
+        previousTotalNodalForces[i] = 0;
+        currentTotalNodalForces[i] = 0;
     }
-    std::cout << "max applied force: " << max_applied_force << "\n";*/
+
+    double start5 = omp_get_wtime();
+    step_name = "further initialization of global variables for the iterative algorithm";
+    displayTime(start4, start5, step_name, display_time);
 
 
     /*---------ITERATIVE PART---------------*/
-    int max_number_of_steps = 10; // purely arbitrary
+    int max_number_of_steps = 50; // purely arbitrary
     for(int step = 0; step < max_number_of_steps; step++)
     {
         /*------------STEP 2 of the algorithm----------------*/
@@ -240,7 +247,46 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
         - compute the residual = norm(f_g - f_app)*/
 
         /*--------- UPDATING KINEMATICS---------------*/
+        double start_update = omp_get_wtime();
         updateKinematics(FEM_kinematicsMap, full_d_vector, nodeIndexMap, FEM_elementTags);
+        double end_update = omp_get_wtime();
+        step_name = "update kinematics";
+        displayTime(start_update, end_update, step_name, display_time);
+
+
+        // stopping criterion: focussing on the iterative difference of the full nodal forces vector
+        for(size_t i = 0; i < 2*FEM_nodeTags.size(); i++)
+        {
+            previousTotalNodalForces[i] = currentTotalNodalForces[i];
+        }
+        retrieveTotalNodalForces(currentTotalNodalForces, FEM_kinematicsMap, nodeIndexMap, FEM_elementTags);
+        double end_retrieveTotalForces = omp_get_wtime();
+        step_name = "retrieve total nodal forces";
+        displayTime(end_update, end_retrieveTotalForces, step_name, display_time);
+
+        if(step > 1)
+        {
+            relativeForces = 0;
+            currentMaxNodalForce = 0;
+            for(size_t i = 0; i < 2*FEM_nodeTags.size(); i++)
+            {
+                if(previousTotalNodalForces[i] != 0.0)
+                    relativeDifference[i] = abs( (currentTotalNodalForces[i] - previousTotalNodalForces[i]));
+                else
+                    relativeDifference[i] = 0;
+                
+                if(abs(currentTotalNodalForces[i]) > currentMaxNodalForce)
+                    currentMaxNodalForce = abs(currentTotalNodalForces[i]);
+
+                relativeForces += relativeDifference[i]*relativeDifference[i];
+            }
+            if(currentMaxNodalForce > 0)
+                relativeForces = sqrt(relativeForces/(2*FEM_nodeTags.size())/currentMaxNodalForce); // norm made relative
+            else
+                relativeForces = 1e17;
+            std::cout << "step: " << step << ", relativeForces: " << relativeForces << "\n";
+        }
+
 
         /*--------COMPUTING AND ASSEMBLING THE GLOBAL F VECTOR BASED ON PREVIOUS ITERATION-----------*/
         for(int i = 0; i < nb_free_DOFs; i++)
@@ -249,18 +295,25 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
         }
         assembleGlobalF(global_f_vector, FEM_kinematicsMap, nodeIndexMap, new_DOFindices, FEM_elementTags);
 
-        residualNorm = computeResidualNorm(global_f_vector, f_app_vector, residual);
+        //double residualNorm = computeResidualNorm(global_f_vector, f_app_vector, residual);
+        computeResidualNorm(global_f_vector, f_app_vector, residual);
 
-        std::cout << "residual value: " << residualNorm/f_app_norm << "\n";
+        double end_assembleglobalf = omp_get_wtime();
+        step_name = "assemble global f and residual norm";
+        displayTime(end_retrieveTotalForces, end_assembleglobalf, step_name, display_time);
 
         /*------------STEP 3: EVALUATING THE RESIDUAL, have we converged ??----------*/
-        if (residualNorm/f_app_norm < residualTolerance)
-            break;
+        if (relativeForces < residualTolerance && step > 0)
+           break;
 
         /*------------STEP 4: ASSEMBLING THE GLOBAL TANGENT STIFFNESS MATRIX----------*/
         // it is assembled as a sparse matrix
         Eigen::SparseMatrix<double> global_tangent_matrix(nb_free_DOFs, nb_free_DOFs);
         assembleGlobalKg(global_tangent_matrix, FEM_kinematicsMap, nodeIndexMap, new_DOFindices, FEM_elementTags);
+
+        double end_assembleglobalKg = omp_get_wtime();
+        step_name = "assemble global stiffness matrix";
+        displayTime(end_assembleglobalf, end_assembleglobalKg, step_name, display_time);
 
         //std::cout << "global tangent matrix: " << global_tangent_matrix << "\n";
 
@@ -273,24 +326,33 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
 
         global_delta_p = solver.solve(-residual);
 
+        double end_solve = omp_get_wtime();
+        step_name = "solving the system";
+        displayTime(end_assembleglobalKg, end_solve, step_name, display_time);
+
         /*----------STEP 6: updating the global p vector and the full d vector of nodal values-----------*/
         for(size_t i = 0; i < global_p_vector.size(); i++)
         {
             global_p_vector[i] += global_delta_p(i,0);
         }
         updateNodalDispVector(full_d_vector, global_p_vector, new_DOFindices);
+
+        double end_updateNodalDisp = omp_get_wtime();
+        step_name = "updating the nodal disp vector";
+        displayTime(end_solve, end_updateNodalDisp, step_name, display_time);
     }
+
+    double start_postPro = omp_get_wtime();
     
     //updating the kinematics according to the results of last iteration
     updateKinematics(FEM_kinematicsMap, full_d_vector, nodeIndexMap, FEM_elementTags);
 
     /*--------------COMPUTING NODAL FORCES-------------*/
     std::vector<double> final_nodal_forces(2*FEM_nodeTags.size());
-    retrieveFinalNodalForces(final_nodal_forces, FEM_kinematicsMap, nodeIndexMap, FEM_elementTags);
+    retrieveTotalNodalForces(final_nodal_forces, FEM_kinematicsMap, nodeIndexMap, FEM_elementTags);
 
     /*--------------RETRIEVING NODAL DISPLACEMENTS ON BEM-FEM BOUNDARY------------*/
     //those displacements will be sent to the BEM code in the non-linear iterative solver
-    //std::map<int,std::pair<double,double>> boundaryDisplacementMap;
     // mapping nodeTag (of node on the boundary) into (u,v) displacements of the node
     retrieveBoundaryDisplacements(boundaryDisplacementMap, full_d_vector, nodeIndexMap, groups);
 
@@ -299,97 +361,145 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
 
     if(postProcessing)
     {
+        /*------------- ROTATION VALIDATION: APPLY 90 degree rotation-------------*/
+        //elementData* element = &FEM_kinematicsMap[6];
+        //std::cout << "hello: " <<  element->theta << "\n";
+        //std::cout << "pl: " <<  element->pl << "\n";
+        /*for(size_t i = 0; i < FEM_nodeTags.size(); i++)
+        {
+            std::vector<double> coord, parametricCoord;
+            int dim, tag;
+            double angle = M_PI /4;
+            gmsh::model::mesh::getNode(FEM_nodeTags[i], coord, parametricCoord, dim, tag);
+            std::vector<double> total_disp = {cos(angle)*(coord[0] + full_d_vector[2*i])-sin(angle)*(coord[1] + full_d_vector[2*i + 1]), cos(angle)*(coord[1] + full_d_vector[2*i + 1])+sin(angle)*(coord[0] + full_d_vector[2*i]), coord[2]};
+            full_d_vector[2*i] = total_disp[0] - coord[0];
+            full_d_vector[2*i+1] = total_disp[1] - coord[1];
+            //std::cout << "nodetag: " << FEM_nodeTags[i] << ", new u: " << full_d_vector[2*i] << ", new v: " << full_d_vector[2*i+1] << "\n";
+        }
+        updateKinematics(FEM_kinematicsMap, full_d_vector, nodeIndexMap, FEM_elementTags);*/
+
+        // retrieving maximal nodal displacement
+        double max_disp = 0;
+        double max_u = 0;
+        double max_v = 0;
+        int max_disp_nodeTag = 0;
+
+        for(size_t i = 0; i < FEM_nodeTags.size(); i++)
+        {
+            double tmp_index = nodeIndexMap[FEM_nodeTags[i]];
+            double tmp_disp = full_d_vector[tmp_index]*full_d_vector[tmp_index] + full_d_vector[tmp_index + 1]*full_d_vector[tmp_index + 1];
+            if (tmp_disp > max_disp)
+            {
+                max_disp = tmp_disp;
+                max_disp_nodeTag = FEM_nodeTags[i];
+                max_u = full_d_vector[tmp_index];
+                max_v = full_d_vector[tmp_index + 1];
+            }
+        }
+        std::cout << "-----------------------------------------\n";
+        std::cout << "maximal nodal displacement (u,v) = (" << max_u << "," << max_v << ") [m], at node " << max_disp_nodeTag << "\n";
+
         /*--------------REACTION FORCES COMPUTATION------------------*/
         computeReactionForces(groups, nodeIndexMap, final_nodal_forces, keys);
 
-        //double start5 = omp_get_wtime();
-        //std::cout << "time for rest: " << start5 - start4 << "\n";
-
         /*--------------PLOTTING NODAL VALUES------------------*/
-        plotUxUy(FEM_nodeTags, full_d_vector, nbViews, names);
+        plotUxUy(FEM_nodeTags, full_d_vector, names);
 
         /*-------------POST PROCESSING---------------*/
         /*-------------Computing and saving strains/stresses-----------------*/
 
 
         /*-------------------ELEMENTAL-NODAL VALUES-----------------------*/
-        // éventuellement faire un tableau ici qui regroupe tout le bazar pour ne pas avoir la même ligne 7 fois ...
-        int viewtag3 = gmsh::view::add("nodal_eps_x");
-        int viewtag4 = gmsh::view::add("nodal_eps_y");
-        int viewtag5 = gmsh::view::add("nodal_eps_xy");
-        int viewtag6 = gmsh::view::add("nodal_eps_z");
-        int viewtag7 = gmsh::view::add("nodal_sig_x");
-        int viewtag8 = gmsh::view::add("nodal_sig_y");
-        int viewtag9 = gmsh::view::add("nodal_sig_xy");
-        int viewtag10 = gmsh::view::add("nodal_sig_VM");
-        std::vector<std::vector<double>> data3(nbelems);
-        std::vector<std::vector<double>> data4(nbelems);
-        std::vector<std::vector<double>> data5(nbelems);
-        std::vector<std::vector<double>> data6(nbelems);
-        std::vector<std::vector<double>> data7(nbelems);
-        std::vector<std::vector<double>> data8(nbelems);
-        std::vector<std::vector<double>> data9(nbelems);
-        std::vector<std::vector<double>> data10(nbelems);
-        std::vector<std::size_t> elems2D(nbelems);
+        int viewTagEpsX = gmsh::view::add("nodal_eps_x");
+        int viewTagEpsY = gmsh::view::add("nodal_eps_y");
+        int viewTagEpsXY = gmsh::view::add("nodal_2eps_xy");
+        int viewTagEpsZ = gmsh::view::add("nodal_eps_z");
+        int viewTagSigX = gmsh::view::add("nodal_sig_x");
+        int viewTagSigY = gmsh::view::add("nodal_sig_y");
+        int viewTagSigXY = gmsh::view::add("nodal_sig_xy");
+        int viewTagSigVM = gmsh::view::add("nodal_sig_VM");
 
-        std::vector<int> elementTypes;
-        std::vector<std::vector<std::size_t>> elementTags;
-        std::vector<std::vector<std::size_t>> elnodeTags;
+        std::vector<std::vector<std::vector<double>>> dataEps(4);
+        dataEps[0].resize(nbelems); // eps X
+        dataEps[1].resize(nbelems); // eps Y
+        dataEps[2].resize(nbelems); // eps XY
+        dataEps[3].resize(nbelems); // eps Z
+
+        std::vector<std::vector<std::vector<double>>> dataSig(4);
+        dataSig[0].resize(nbelems); // Sig X
+        dataSig[1].resize(nbelems); // Sig Y
+        dataSig[2].resize(nbelems); // Sig XY
+        dataSig[3].resize(nbelems); // Sig VM
+        std::vector<std::size_t> elems2D(nbelems);
         
         // computing the elemental nodal data for each physical group of the domain
-        int k = 0; // current index of data vectors, k is incremented in computeStressStrainElNodal at each element
-        for(std::size_t i=0; i< tags.size(); ++i)
-        {
-            gmsh::model::mesh::getElements(elementTypes, elementTags, elnodeTags, dim, tags[i]);
-            computeStressStrainElNodal(elementTypes, elementTags, elnodeTags, elems2D, H_matrix, 
-                                        nu, E, FEM_kinematicsMap, data3, data4, data5, data6, data7, data8, data9, data10, k);
-        }
+        double max_VM_stress = 0;
+        int max_VM_nodeTag;
+        computeStressStrainElNodal(dim, tags, elems2D, H_matrix, nu, E, FEM_kinematicsMap, dataEps, dataSig, max_VM_stress, max_VM_nodeTag);
+        std::cout << "-----------------------------------------\n";
+        std::cout << "maximal nodal von Mises stress: " << max_VM_stress << " [Pa], at node " << max_VM_nodeTag << "\n";
 
-        gmsh::view::addModelData(viewtag3, 0, names[0], "ElementNodeData",
-                                    elems2D, data3, 1);  // the last ,1 is important!
-        gmsh::view::addModelData(viewtag4, 0, names[0], "ElementNodeData",
-                                    elems2D, data4, 1);  // the last ,1 is important!
-        gmsh::view::addModelData(viewtag5, 0, names[0], "ElementNodeData",
-                                    elems2D, data5, 1);  // the last ,1 is important!
-        gmsh::view::addModelData(viewtag6, 0, names[0], "ElementNodeData",
-                                    elems2D, data6, 1);  // the last ,1 is important!
-        gmsh::view::addModelData(viewtag7, 0, names[0], "ElementNodeData",
-                                    elems2D, data7, 1);  // the last ,1 is important!
-        gmsh::view::addModelData(viewtag8, 0, names[0], "ElementNodeData",
-                                    elems2D, data8, 1);  // the last ,1 is important!
-        gmsh::view::addModelData(viewtag9, 0, names[0], "ElementNodeData",
-                                    elems2D, data9, 1);  // the last ,1 is important!
-        gmsh::view::addModelData(viewtag10, 0, names[0], "ElementNodeData",
-                                    elems2D, data10, 1);  // the last ,1 is important!
+
+        gmsh::view::addModelData(viewTagEpsX, 0, names[0], "ElementNodeData",
+                                    elems2D, dataEps[0], 1);  // the last ,1 is important!
+        gmsh::view::addModelData(viewTagEpsY, 0, names[0], "ElementNodeData",
+                                    elems2D, dataEps[1], 1);  // the last ,1 is important!
+        gmsh::view::addModelData(viewTagEpsXY, 0, names[0], "ElementNodeData",
+                                    elems2D, dataEps[2], 1);  // the last ,1 is important!
+        gmsh::view::addModelData(viewTagEpsZ, 0, names[0], "ElementNodeData",
+                                    elems2D, dataEps[3], 1);  // the last ,1 is important!
+        gmsh::view::addModelData(viewTagSigX, 0, names[0], "ElementNodeData",
+                                    elems2D, dataSig[0], 1);  // the last ,1 is important!
+        gmsh::view::addModelData(viewTagSigY, 0, names[0], "ElementNodeData",
+                                    elems2D, dataSig[1], 1);  // the last ,1 is important!
+        gmsh::view::addModelData(viewTagSigXY, 0, names[0], "ElementNodeData",
+                                    elems2D, dataSig[2], 1);  // the last ,1 is important!
+        gmsh::view::addModelData(viewTagSigVM, 0, names[0], "ElementNodeData",
+                                    elems2D, dataSig[3], 1);  // the last ,1 is important!
+
+        // retrieving work done by external forces
+        double externalWork = 0;
+        computeWorkDoneByExternalForces(externalWork, full_d_vector, final_nodal_forces);
+        std::cout << "-----------------------------------------\n";
+        std::cout << "work done by external forces: " << externalWork << " [J/m].\n";
+
+        // strain energy
+        double strainEnergy = 0;
+        computeStrainEnergy(strainEnergy, dim, tags, FEM_kinematicsMap, H_matrix, integration_rule);
+        // peut etre pas OK en non-linear -> repartir des local displacements pour calculer tout ça
+
+        std::cout << "-----------------------------------------\n";
+        std::cout << "strain energy: " << strainEnergy << " [J/m].\n";
+
+        std::cout << "-----------------------------------------\n";
+        std::cout << "Total potential energy: " << strainEnergy - externalWork << " [J/m].\n";
     }
     // representing vector displacement field and nodal forces
-    //int viewTagU = gmsh::view::add("u");
-    //int viewTagF = gmsh::view::add("f");
-    std::vector<std::vector<double>> data11(FEM_nodeTags.size());
-    std::vector<std::vector<double>> data12(FEM_nodeTags.size());
+    std::vector<std::vector<double>> dataU(FEM_nodeTags.size());
+    std::vector<std::vector<double>> dataF(FEM_nodeTags.size());
     for (std::size_t i = 0; i < FEM_nodeTags.size(); ++i)
     {
-        data11[i].resize(3);
-        data12[i].resize(3);
-        data11[i][0] = full_d_vector[2*i]; //ux, here use NodeIndexMap
-        data11[i][1] = full_d_vector[2*i+1]; //uy
-        data11[i][2] = 0.; //uz
-        data12[i][0] = final_nodal_forces[2*i]; //fx
-        data12[i][1] = final_nodal_forces[2*i+1]; //fy
-        data12[i][2] = 0.; //fz
+        dataU[i].resize(3);
+        dataF[i].resize(3);
+        dataU[i][0] = full_d_vector[2*i]; //ux, here use NodeIndexMap
+        dataU[i][1] = full_d_vector[2*i+1]; //uy
+        dataU[i][2] = 0.; //uz
+        dataF[i][0] = final_nodal_forces[2*i]; //fx
+        dataF[i][1] = final_nodal_forces[2*i+1]; //fy
+        dataF[i][2] = 0.; //fz
     }
 
     gmsh::view::addModelData(viewTagU, iteration, names[0], "NodeData",
-                             FEM_nodeTags, data11, iteration); //independent of time here
+                             FEM_nodeTags, dataU, iteration); //independent of time here
     gmsh::view::addModelData(viewTagF, iteration, names[0], "NodeData",
-                             FEM_nodeTags, data12, iteration); //independent of time here
+                             FEM_nodeTags, dataF, iteration); //independent of time here
 
 
     if(postProcessing)
     {
         // empeche que tout se plot l'un sur l'autre
-        int nb_views = 12 + nbViews; //hardcoded
-        for( int i = 0; i < nb_views; ++i){
+        nbViews = 12 + nbViews; //hardcoded
+        for( int i = 0; i < nbViews; ++i){
             std::string my_string = "View[" + std::to_string(i) + "].Visible";
             gmsh::option::setNumber(my_string, 0);
         }
@@ -397,19 +507,28 @@ void solverFEMnonLinear(std::map<int, double> &electrostaticPressure, std::map<i
         gmsh::option::setNumber("View[0].RangeType", 3); // abscisses par step
     }
 
+    double end_postPro = omp_get_wtime();
+    step_name = "post processing";
+    displayTime(start_postPro, end_postPro, step_name, display_time);
 
-    if(openGUI && postProcessing)
-        gmsh::fltk::run(); // opens the gmsh window
+    if(untangleMesh)
+    {
+        for(size_t i = 0; i < FEM_nodeTags.size(); i++)
+        {
+            std::vector<double> coord, parametricCoord;
+            int dim, tag;
+            gmsh::model::mesh::getNode(FEM_nodeTags[i], coord, parametricCoord, dim, tag);
+            std::vector<double> total_disp = {coord[0] + full_d_vector[2*i], coord[1] + full_d_vector[2*i + 1], coord[2]};
+            gmsh::model::mesh::setNode(FEM_nodeTags[i], total_disp, {});
+        }
+    }
 }
 
 
-void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
+void solverFEM(std::map<int, double> &electrostaticPressure, int &nbViews)
 {
     /*--------------INIT----------------*/
 
-    bool openGUI = false;        // Graphical interface of GMSH.
-
-    //double start = omp_get_wtime();
     int max_threads = omp_get_max_threads();
 
 
@@ -457,6 +576,11 @@ void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
     if(tags.size() == 1){ // if the domain contains one single entity
         FEM_nodeTags = tmp_nodeTags[0];
     }
+    else{ // little trick for more than 2 domains
+        std::sort(FEM_nodeTags.begin(), FEM_nodeTags.end());
+        auto last = std::unique(FEM_nodeTags.begin(), FEM_nodeTags.end());
+        FEM_nodeTags.erase(last, FEM_nodeTags.end());
+    }
 
     
 
@@ -494,14 +618,14 @@ void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
         full_f_vector[i] = 0;
     }
 
-    std::vector<std::list<Eigen::Triplet <double>>> my_k_list(max_threads);
-    std::vector<std::list<std::pair<int,double>>> thread_f_vector(max_threads);
+    std::vector<std::vector<Eigen::Triplet <double>>> my_k_list(max_threads);
+    std::vector<std::vector<std::pair<int,double>>> thread_f_vector(max_threads);
 
     // Looping over entities and compute full K (under tripletlist form) and F
     assembleKlistVolumicF(H_matrix, rho, bx, by, integration_rule, dim, tags, nodeIndexMap, my_k_list, thread_f_vector);
 
 
-    std::list<Eigen::Triplet <double>> k_tripletList = my_k_list[0];
+    std::vector<Eigen::Triplet <double>> k_tripletList = my_k_list[0];
 
     if(max_threads > 1)
     {
@@ -512,7 +636,7 @@ void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
     }
     full_K_matrix.setFromTriplets(k_tripletList.begin(), k_tripletList.end());
     for(int i = 0; i < max_threads; i++){
-        std::list<std::pair<int,double>> &tmp_vector = thread_f_vector[i];
+        std::vector<std::pair<int,double>> &tmp_vector = thread_f_vector[i];
         for(auto &p : tmp_vector) {
             full_f_vector[p.first] += p.second;
         }
@@ -649,12 +773,12 @@ void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
     /*--------------PLOTTING AND SAVING NODAL VALUES------------------*/
     std::vector<std::string> names;
     gmsh::model::list(names);
-    plotUxUy(FEM_nodeTags, full_d_vector, nbViews, names);
+    plotUxUy(FEM_nodeTags, full_d_vector, names);
 
     /*-------------POST PROCESSING---------------*/
     /*-------------Computing and saving strains/stresses-----------------*/
 
-    groupname = "FEM_domain"; // we consider the domain as containing the FEM 2d model
+    groupname = "FEM_domain"; // we consider the FEM domain as containing the FEM 2d model
     dim = groups[groupname].first;
     tag = groups[groupname].second;
     gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
@@ -675,74 +799,71 @@ void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
 
 
     /*-------------------ELEMENTAL-NODAL VALUES-----------------------*/
-    // éventuellement faire un tableau ici qui regroupe tout le bazar pour ne pas avoir la même ligne 7 fois ...
-    int viewtag3 = gmsh::view::add("nodal_eps_x");
-    int viewtag4 = gmsh::view::add("nodal_eps_y");
-    int viewtag5 = gmsh::view::add("nodal_2eps_xy");
-    int viewtag6 = gmsh::view::add("nodal_eps_z");
-    int viewtag7 = gmsh::view::add("nodal_sig_x");
-    int viewtag8 = gmsh::view::add("nodal_sig_y");
-    int viewtag9 = gmsh::view::add("nodal_sig_xy");
-    int viewtag10 = gmsh::view::add("nodal_sig_VM");
-    std::vector<std::vector<double>> data3(nbelems);
-    std::vector<std::vector<double>> data4(nbelems);
-    std::vector<std::vector<double>> data5(nbelems);
-    std::vector<std::vector<double>> data6(nbelems);
-    std::vector<std::vector<double>> data7(nbelems);
-    std::vector<std::vector<double>> data8(nbelems);
-    std::vector<std::vector<double>> data9(nbelems);
-    std::vector<std::vector<double>> data10(nbelems);
+    int viewTagEpsX = gmsh::view::add("nodal_eps_x");
+    int viewTagEpsY = gmsh::view::add("nodal_eps_y");
+    int viewTagEpsXY = gmsh::view::add("nodal_2eps_xy");
+    int viewTagEpsZ = gmsh::view::add("nodal_eps_z");
+    int viewTagSigX = gmsh::view::add("nodal_sig_x");
+    int viewTagSigY = gmsh::view::add("nodal_sig_y");
+    int viewTagSigXY = gmsh::view::add("nodal_sig_xy");
+    int viewTagSigVM = gmsh::view::add("nodal_sig_VM");
+
+    std::vector<std::vector<std::vector<double>>> dataEps(4);
+    dataEps[0].resize(nbelems); // eps X
+    dataEps[1].resize(nbelems); // eps Y
+    dataEps[2].resize(nbelems); // eps XY
+    dataEps[3].resize(nbelems); // eps Z
+
+    std::vector<std::vector<std::vector<double>>> dataSig(4);
+    dataSig[0].resize(nbelems); // Sig X
+    dataSig[1].resize(nbelems); // Sig Y
+    dataSig[2].resize(nbelems); // Sig XY
+    dataSig[3].resize(nbelems); // Sig VM
     std::vector<std::size_t> elems2D(nbelems);
     
     // computing the elemental nodal data for each physical group of the domain
-    int k = 0; // current index of data vectors, k is incremented in Compute_Stress_Strain_Elemental_Nodal at each element
-    for(std::size_t i=0; i< tags.size(); ++i)
-    {
-        gmsh::model::mesh::getElements(elementTypes, elementTags, elnodeTags, dim, tags[i]);
-        computeStressStrainLinearWay(elementTypes, elementTags, elnodeTags, full_d_vector, elems2D, H_matrix, 
-                                    nu, E, nodeIndexMap, data3, data4, data5, data6, data7, data8, data9, data10, k);
-    }
+    computeStressStrainLinearWay(dim, tags, full_d_vector, elems2D, H_matrix, nu, E, nodeIndexMap, dataEps, dataSig);
 
-    gmsh::view::addModelData(viewtag3, 0, names[0], "ElementNodeData",
-                                elems2D, data3, 1);  // the last ,1 is important!
-    gmsh::view::addModelData(viewtag4, 0, names[0], "ElementNodeData",
-                                elems2D, data4, 1);  // the last ,1 is important!
-    gmsh::view::addModelData(viewtag5, 0, names[0], "ElementNodeData",
-                                elems2D, data5, 1);  // the last ,1 is important!
-    gmsh::view::addModelData(viewtag6, 0, names[0], "ElementNodeData",
-                                elems2D, data6, 1);  // the last ,1 is important!
-    gmsh::view::addModelData(viewtag7, 0, names[0], "ElementNodeData",
-                                elems2D, data7, 1);  // the last ,1 is important!
-    gmsh::view::addModelData(viewtag8, 0, names[0], "ElementNodeData",
-                                elems2D, data8, 1);  // the last ,1 is important!
-    gmsh::view::addModelData(viewtag9, 0, names[0], "ElementNodeData",
-                                elems2D, data9, 1);  // the last ,1 is important!
-    gmsh::view::addModelData(viewtag10, 0, names[0], "ElementNodeData",
-                                elems2D, data10, 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagEpsX, 0, names[0], "ElementNodeData",
+                                elems2D, dataEps[0], 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagEpsY, 0, names[0], "ElementNodeData",
+                                elems2D, dataEps[1], 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagEpsXY, 0, names[0], "ElementNodeData",
+                                elems2D, dataEps[2], 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagEpsZ, 0, names[0], "ElementNodeData",
+                                elems2D, dataEps[3], 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagSigX, 0, names[0], "ElementNodeData",
+                                elems2D, dataSig[0], 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagSigY, 0, names[0], "ElementNodeData",
+                                elems2D, dataSig[1], 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagSigXY, 0, names[0], "ElementNodeData",
+                                elems2D, dataSig[2], 1);  // the last ,1 is important!
+    gmsh::view::addModelData(viewTagSigVM, 0, names[0], "ElementNodeData",
+                                elems2D, dataSig[3], 1);  // the last ,1 is important!
 
     // representing vector displacement field and nodal forces
-    int viewtag11 = gmsh::view::add("u");
-    int viewtag12 = gmsh::view::add("f");
+    int viewTagU = gmsh::view::add("u");
+    int viewTagF = gmsh::view::add("f");
     int nodeIndex;
-    std::vector<std::vector<double>> data11(FEM_nodeTags.size());
-    std::vector<std::vector<double>> data12(FEM_nodeTags.size());
+    std::vector<std::vector<double>> dataU(FEM_nodeTags.size());
+    std::vector<std::vector<double>> dataF(FEM_nodeTags.size());
     for (std::size_t i = 0; i < FEM_nodeTags.size(); ++i)
     {
         nodeIndex = nodeIndexMap[FEM_nodeTags[i]];
-        data11[i].resize(3);
-        data12[i].resize(3);
-        data11[i][0] = full_d_vector[nodeIndex]; //ux
-        data11[i][1] = full_d_vector[nodeIndex+1]; //uy
-        data11[i][2] = 0.; //uz
-        data12[i][0] = nodal_forces[nodeIndex]; //fx
-        data12[i][1] = nodal_forces[nodeIndex+1]; //fy
-        data12[i][2] = 0.; //fz
+        dataU[i].resize(3);
+        dataF[i].resize(3);
+        dataU[i][0] = full_d_vector[nodeIndex]; //ux
+        dataU[i][1] = full_d_vector[nodeIndex+1]; //uy
+        dataU[i][2] = 0.; //uz
+        dataF[i][0] = nodal_forces[nodeIndex]; //fx
+        dataF[i][1] = nodal_forces[nodeIndex+1]; //fy
+        dataF[i][2] = 0.; //fz
     }
 
-    gmsh::view::addModelData(viewtag11, 0, names[0], "NodeData",
-                             FEM_nodeTags, data11); //independent of time here
-    gmsh::view::addModelData(viewtag12, 0, names[0], "NodeData",
-                             FEM_nodeTags, data12); //independent of time here
+    gmsh::view::addModelData(viewTagU, 0, names[0], "NodeData",
+                             FEM_nodeTags, dataU); //independent of time here
+    gmsh::view::addModelData(viewTagF, 0, names[0], "NodeData",
+                             FEM_nodeTags, dataF); //independent of time here
 
 
 
@@ -753,10 +874,19 @@ void solverFEM(std::map<int, double> &electrostaticPressure, const int nbViews)
         gmsh::option::setNumber(my_string, 0);
     }
 
-    //double start6 = omp_get_wtime();
-    //std::cout << "time for saving results: " << start6 - start5 << "\n";
+    // retrieving work done by external forces
+    double externalWork = 0;
+    computeWorkDoneByExternalForces(externalWork, full_d_vector, nodal_forces);
+    std::cout << "-----------------------------------------\n";
+    std::cout << "work done by external forces: " << externalWork << " [J/m].\n";
 
+    // strain energy
+    double strainEnergy = 0;
+    computeStrainEnergyLinearWay(strainEnergy, dim, tags, full_d_vector, H_matrix, nodeIndexMap, integration_rule);
 
-    if(openGUI)
-        gmsh::fltk::run(); // opens the gmsh window
+    std::cout << "-----------------------------------------\n";
+    std::cout << "strain energy: " << strainEnergy << " [J/m].\n";
+
+    std::cout << "-----------------------------------------\n";
+    std::cout << "Total potential energy: " << strainEnergy - externalWork << " [J/m].\n";
 }

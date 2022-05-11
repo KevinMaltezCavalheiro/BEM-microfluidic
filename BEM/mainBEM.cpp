@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     std::map<int,std::pair<double,double>> boundaryDisplacementMap;
 
     //solverBEM(argc, argv, finalElementTags, electrostaticPressure, nbViews);
-    solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1); // iteration number randomly set to 1
+    solverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1, false); // iteration number randomly set to 1
 
     std::map<int, double>::iterator it;
 

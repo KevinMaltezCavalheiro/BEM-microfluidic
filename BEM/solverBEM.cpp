@@ -11,8 +11,40 @@
 #include <omp.h>
 #include <list>
 
-void solverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration)
+void solverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration, bool untangleMesh)
 {
+
+    if(untangleMesh)
+    {
+        /*--------get physical groups--------------*/
+        std::map<std::string, std::pair<int, int>> groups;
+        gmsh::vectorpair dimTags;
+        gmsh::model::getPhysicalGroups(dimTags);
+        for (std::size_t i = 0; i < dimTags.size(); ++i)
+        {
+            int dim = dimTags[i].first;
+            int tag = dimTags[i].second;
+            std::string name;
+            gmsh::model::getPhysicalName(dim, tag, name);
+            groups[name] = {dim, tag};
+        }
+
+        std::string groupname = "BEM_domain_1";
+        int dim = groups[groupname].first;
+        int tag = groups[groupname].second;
+
+        std::vector<int> tags;
+        gmsh::model::getEntitiesForPhysicalGroup(dim, tag, tags);
+
+        gmsh::vectorpair dimTagsBis(tags.size());
+        for(size_t i = 0; i < tags.size(); i++)
+        {
+            dimTagsBis[i] = std::pair<int,int>(dim, tags[i]);
+        }
+
+        gmsh::model::mesh::optimize("UntangleMeshGeometry", false, 1, dimTagsBis);
+    }
+    
     gmsh::vectorpair physicalGroupsDimTags;
     gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
@@ -43,12 +75,18 @@ void solverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::p
         }
     }
 
+    if(iteration == 1)
+    {
+        std::cout << "The model contains " << nbDomains << " BEM domain(s) \n";
+    }
+
     if (nbDomains == 0)
     {
         std::cerr << "Wrong names for the BEM domains. Usage: <BEM_domain_'i'>\n";
         exit(0);
     }
 
+//#pragma omp parallel for schedule(static) shared(nbDomains,electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration)
     for(int i = 1; i <= nbDomains; i++)
     {
         singleDomainSolverBEM(electrostaticPressure, boundaryDisplacementMap, nbViews, postProcessing, iteration, i);
@@ -80,7 +118,7 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
 
     // Initialises a vector of elements (that will contain all the elements of interrest)
     std::vector<elementStruct> elementVector;
-    std::string integrationType = "Gauss12"; // Could vary depending on the distance between the elements.
+    std::string integrationType = "Gauss4"; // Could vary depending on the distance between the elements.
 
     // Gets the tags, the coordinates and the parametric coordinates of the nodes.
     std::map<size_t, int> allNodeIndex; // nodeTag -> position in allNodeTags and allCoord
@@ -124,7 +162,7 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
     getBC(allNodeIndex, allCoord, elementVector, dirichletCount, dispHierarchy, NodeTags2d_domain, NodeCoord2d_domain,elementTypes2d_domain_BEM,elementTags2d_domain_BEM,nodeTags2d_domain_BEM,entities_tags_for_physical_group_domain_BEM, entities_tags_2d_domain_BEM, boundaryDisplacementMap, nodeOnBoundary,domainTag);
     end = std::chrono::system_clock::now();
     function_name = "getBC";
-    display_time(start, end, function_name, show_time);
+    display_time(start, end, function_name, show_time, domainTag);
 
     if(show_node_class)
     {
@@ -148,7 +186,7 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
     start = std::chrono::system_clock::now();
     double h;
     double g;
-#pragma omp parallel for schedule(guided) shared(elementVector,A,B,c,integrationType,dirichletCount) private(h,g)
+    #pragma omp parallel for schedule(static) shared(elementVector,A,B,c,integrationType,dirichletCount) private(h,g)
     for(int i = 0; i < (int) elementVector.size(); i++)
     {
         for(int j = 0; j < (int) elementVector.size(); j++)
@@ -192,7 +230,7 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
     }
     end = std::chrono::system_clock::now();
     function_name = "compute H and G";
-    display_time(start, end, function_name, show_time);
+    display_time(start, end, function_name, show_time, domainTag);
 
 
     //If we want to display the time it takes for eigen to solve the linear system
@@ -201,7 +239,7 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
     Eigen::MatrixXd x = A.fullPivLu().solve(b);
     end = std::chrono::system_clock::now();
     function_name = "solve linear system";
-    display_time(start, end, function_name, show_time);
+    display_time(start, end, function_name, show_time, domainTag);
 
     // Matrices verification
     if(dispMatrices)
@@ -242,28 +280,33 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
         compute_internal_phi(allCoord,NodeTags2d_domain,allNodeIndex,elementVector,nodeMapDomain,integrationType,nodeOnBoundary,solution_type);
         end = std::chrono::system_clock::now();
         function_name = "compute_internal_phi";
-        display_time(start, end, function_name, show_time);
+        display_time(start, end, function_name, show_time, domainTag);
 
         //this function allows to correctly associate the value of the potential to each node of an element in order to display the ElementNodeData view
         start = std::chrono::system_clock::now();
         element_node_data(data,elementTags2d_domain_BEM,elementTypes2d_domain_BEM,nodeTags2d_domain_BEM,elementVector, nodeMapDomain,show_element_node_data,entities_tags_for_physical_group_domain_BEM,nodeOnBoundary);
         end = std::chrono::system_clock::now();
         std::string function_name = "ElementNodeData";
-        display_time(start, end, function_name, show_time);
+        display_time(start, end, function_name, show_time, domainTag);
 
-        int viewNodeTag = gmsh::view::add("phi");
-
-        for(size_t i = 0; i < data.size(); i++)
+        //#pragma omp critical (addPhiView)
         {
-            gmsh::view::addModelData(viewNodeTag,0,names[0],"ElementNodeData",elementTags2d_domain_BEM[i],data[i],0.0,1);
-        }
-        gmsh::view::write(viewNodeTag, "results.msh");
+            int viewNodeTag = gmsh::view::add("phi");
 
-        gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].IntervalsType", 3);
-        //option::setNumber("View[0].AdaptVisualizationGrid", 1);
-        gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].MaxRecursionLevel", 3);
-        gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].TargetError", -0.0001);
-        nbViews++; // number of views generated (useful for FEM display of results)
+            for(size_t i = 0; i < data.size(); i++)
+            {
+                gmsh::view::addModelData(viewNodeTag,0,names[0],"ElementNodeData",elementTags2d_domain_BEM[i],data[i],0.0,1);
+            }
+            gmsh::view::write(viewNodeTag, "results.msh");
+
+            //gmsh::option::setNumber("View[" + std::to_string(domainTag-1) + "].IntervalsType", 3);
+            //option::setNumber("View[0].AdaptVisualizationGrid", 1);
+            //gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+            //gmsh::option::setNumber("View[0].TargetError", -0.0001);
+            std::string my_string = "View[" + std::to_string(nbViews) + "].Visible";
+            gmsh::option::setNumber(my_string, 0);
+            nbViews++; // number of views generated (useful for FEM display of results)
+        }
 
         if(electric_field)
         {
@@ -279,14 +322,19 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
             electricField(nb2dElements,entities_tags_2d_domain_BEM,elementVector,tags,integrationType, data_Electric_field,solution_type);
             end = std::chrono::system_clock::now();
             function_name = "compute Electric Field";
-            display_time(start, end, function_name, show_time);
-            int viewtag = gmsh::view::add("Electric field");
-            gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
-            gmsh::view::write(viewtag, "results.msh");
-            //gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].IntervalsType", 3);
-            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].MaxRecursionLevel", 3);
-            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].TargetError", -0.0001);
-            nbViews++;
+            display_time(start, end, function_name, show_time, domainTag);
+            //#pragma omp critical (addElecView)
+            {
+                int viewtag = gmsh::view::add("Electric field");
+                gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
+                //gmsh::view::write(viewtag, "results.msh");
+                //gmsh::option::setNumber("View[0].IntervalsType", 3);
+                //gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+                //gmsh::option::setNumber("View[0].TargetError", -0.0001);
+                std::string my_string = "View[" + std::to_string(nbViews) + "].Visible";
+                gmsh::option::setNumber(my_string, 0);
+                nbViews++;
+            }
         }
     }
     //visualisation by element barycenter
@@ -310,7 +358,7 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
         computeData(elementVector, tags, phi, integrationType, entities_tags_2d_domain_BEM,solution_type);
         end = std::chrono::system_clock::now();
         function_name = "computeData";
-        display_time(start, end, function_name, show_time);
+        display_time(start, end, function_name, show_time, domainTag);
 
         if(electric_field)
         {
@@ -319,14 +367,21 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
             electricField(nb2dElements,entities_tags_2d_domain_BEM,elementVector,tags,integrationType, data_Electric_field,solution_type);
             end = std::chrono::system_clock::now();
             function_name = "compute Electric Field";
-            display_time(start, end, function_name, show_time);
-            int viewtag = gmsh::view::add("Electric field");
-            gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
-            //gmsh::view::write(viewtag, "results.msh");
-            //gmsh::option::setNumber("View[0].IntervalsType", 3);
-            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].MaxRecursionLevel", 3);
-            gmsh::option::setNumber("View[" + std::to_string(nbViews) + "].TargetError", -0.0001);
-            nbViews++;
+            display_time(start, end, function_name, show_time, domainTag);
+            //#pragma omp critical (addElecView)
+            {
+                int viewtag = gmsh::view::add("Electric field");
+                gmsh::view::addModelData(viewtag, 0, names[0], "ElementData",tags, data_Electric_field);
+                //gmsh::view::write(viewtag, "results.msh");
+                //gmsh::option::setNumber("View[0].IntervalsType", 3);
+                //gmsh::option::setNumber("View[0].MaxRecursionLevel", 3);
+                //gmsh::option::setNumber("View[0].TargetError", -0.0001);
+                // empeche que tout se plot l'un sur l'autre
+                std::string my_string = "View[" + std::to_string(nbViews) + "].Visible";
+                gmsh::option::setNumber(my_string, 0);
+
+                nbViews++;
+            }
         }
 
         /*
@@ -339,18 +394,54 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::ma
         }
         
         //For ease of use, a function handles the code for the display.
-        displayData("phi", names[0], "results.msh", tags, phi);
-        nbViews++; // number of views generated (useful for FEM display of results)
+        //#pragma omp critical (addPhiView)
+        {
+            displayData("phi", names[0], "results.msh", tags, phi);
+            std::string my_string = "View[" + std::to_string(nbViews) + "].Visible";
+            gmsh::option::setNumber(my_string, 0);
+            nbViews++; // number of views generated (useful for FEM display of results)
+        }
+    }
+
+    // retrieving the dielectric permittivity of the particular BEM domain
+    std::vector<std::string> keys;
+    gmsh::onelab::getNames(keys, "(Materials).+");
+    std::string domainName = "BEM_domain_" + std::to_string(domainTag);
+    double epsilon = 0; // dielectric permittivity
+    for (auto &key : keys)
+    {
+        // get corresponding value
+        std::vector<double> value;
+        gmsh::onelab::getNumber(key, value);
+        // expected key structure is "type/group_name/field"
+        // => split the key string into components
+        std::stringstream ss(key);
+        std::vector<std::string> words;
+        std::string word;
+        while(std::getline(ss, word, '/')) // read string until '/'
+            words.push_back(word);
+        if(words.size()==3) 
+        {
+            if(words[2].compare("Epsilon") == 0 && words[1].compare(domainName) == 0){
+                epsilon = value[0];
+            }
+        }
+    }
+    //std::cout << "epsilon test: " << epsilon << "\n";
+    if(epsilon == 0) // quid si solveur n'est pas couplé ?
+    {
+        std::cout << "you forgot to set the dielectric permittivity in the .geo file. \n";
     }
 
     //Calculates the electrostatic pressure per element in order to provide these results to the FEM code that will handle the rest of the algorithm
-    double epsilon = 8.8541878128e-12;
+    //double epsilon = 8.8541878128e-12; // à tirer du .geo
     for(size_t i = 0; i < elementVector.size(); i++)
     {
+        //#pragma omp atomic write
         electrostaticPressure[elementVector[i].tag] = epsilon * pow(elementVector[i].bcValue[1], 2.0) / 2; // not forget factor 2
     }
 
     end_total = std::chrono::system_clock::now();
-    function_name = "total time of the code BEM";
-    display_time(start_total, end_total, function_name, show_time);
+    function_name = "total CPU time";
+    display_time(start_total, end_total, function_name, show_time, domainTag);
 }

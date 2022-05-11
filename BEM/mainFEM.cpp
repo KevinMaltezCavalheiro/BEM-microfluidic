@@ -15,6 +15,8 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    double start = omp_get_wtime();
+
     // If compiled with OpenMP support, gmsh::initialize 
     // also sets the number of threads to "General.NumThreads".
     int nthreads = omp_get_max_threads();
@@ -28,6 +30,8 @@ int main(int argc, char **argv)
 
     std::map<int, double> electrostaticPressure;
 
+    int nbViews = 0;
+
     if(nonLinearSolver)
     {
         std::map<int,std::pair<double,double>> boundaryDisplacementMap;
@@ -35,12 +39,16 @@ int main(int argc, char **argv)
         int viewTagU = gmsh::view::add("u"); // à modifier plus tard
         int viewTagF = gmsh::view::add("f");
 
-        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, 0, true, 1, viewTagU, viewTagF); //iteration randomly set to 1
+        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1, viewTagU, viewTagF, false); //iteration randomly set to 1
     }
     else
     {
-        solverFEM(electrostaticPressure, 0);
+        solverFEM(electrostaticPressure, nbViews);
     }
+
+    double total_time = omp_get_wtime() - start;
+    std::cout << "-----------------------------------------\n";
+    std::cout << "total execution time: " << total_time << " [s]. \n";
 
     gmsh::fltk::run();
     
