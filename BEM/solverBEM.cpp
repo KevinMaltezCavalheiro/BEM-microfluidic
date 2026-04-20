@@ -461,7 +461,7 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(N, N);
         Eigen::MatrixXd G = Eigen::MatrixXd::Zero(N, N);
 
-        #pragma omp parallel for collapse(2) schedule(guided)
+        //#pragma omp parallel for collapse(2) schedule(guided)
         for(std::size_t i = 0; i < N; i++)
         {
             for(std::size_t j = 0; j < N; j++)
@@ -589,7 +589,28 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
                 }
             }
         }
+        if(di == 1) {
+            double sumRow0 = 0;
+            for(std::size_t j = 0; j < N; j++) sumRow0 += H(0,j);
+            std::cout << "DOM2 sumH ligne 0 = " << sumRow0
+                      << " (attendu -0.5 car point de collocation sur la frontière)\n";
+        }
     } // fin boucle domaines
+    std::cout << "--- Matrix Layout Debug ---" << std::endl;
+    std::cout << "Total Rows: " << totalRows << " | Total Cols: " << totalCols << std::endl;
+    std::cout << "External Columns (Total): " << totalExtCols << std::endl;
+    for(size_t i=0; i < nDomains; ++i)
+        std::cout << "  Dom " << i << " (" << domains[i].name << ") starts at row " << rowOffsets[i] << " and extCol " << extColOffsets[i] << std::endl;
+
+    std::cout << "Interface Potentials start at: " << ifPotentialOffset << std::endl;
+    std::cout << "Interface Fluxes start at: " << ifFluxOffset << std::endl;
+    for(size_t k=0; k < nInterfaces; ++k)
+        std::cout << "  Interface " << k << " (" << interfaces[k].name << ") offset: " << ifColOffsets[k] << " (size: " << interfaces[k].nbElements() << ")" << std::endl;
+    Eigen::FullPivLU<Eigen::MatrixXd> lu(A_global);
+    if(!lu.isInvertible()) {
+        std::cerr << "WARNING: Global Matrix is nearly singular!" << std::endl;
+        std::cerr << "Determinant: " << A_global.determinant() << std::endl;
+    }
 }
 
 // ============================================================
@@ -670,10 +691,16 @@ void distributeGlobalSolution(std::vector<domainData> &domains,
             domains[idxA].elementVector[jA].bcValue[0] = u_if;
             domains[idxA].elementVector[jA].bcValue[1] = qn_if;   // q_A = +qn_if
 
-            // Côté B : q_B = -kRatio * qn_if  (normale opposée + saut de perméabilité)
+            // Côté B : On doit passer le flux réel du domaine B pour la reconstruction
             const std::size_t jB = iface.elemIndicesB[m];
             domains[idxB].elementVector[jB].bcValue[0] = u_if;
             domains[idxB].elementVector[jB].bcValue[1] = -iface.kRatio * qn_if;
+
+            std::cout << "Interface elem " << m << ": u_if=" << u_if
+                          << " qn_if=" << qn_if
+                          << " bcVal1_A=" << domains[idxA].elementVector[jA].bcValue[1]
+                          << " bcVal1_B=" << domains[idxB].elementVector[jB].bcValue[1] << "\n";
+
         }
     }
 }
@@ -754,6 +781,10 @@ void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
     // ---- Étape 4 : résolution ----
     start = omp_get_wtime();
     Eigen::MatrixXd X_global = A_global.partialPivLu().solve(b_global);
+    std::cout << std::endl;
+    std::cout << "X_global" << std::endl;
+    std::cout << X_global << std::endl;
+    std::cout << std::endl;
     end = omp_get_wtime();
     displayTime(start, end, "Solve global system", showTime);
 

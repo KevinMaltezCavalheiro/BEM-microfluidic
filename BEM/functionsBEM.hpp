@@ -23,6 +23,7 @@ struct elementStruct
     double      x1, y1, x2, y2;
     double      midX, midY;
     double      deltaX, deltaY;
+    double      nx, ny;
 
     // 'E' = external boundary, 'A' = interface primary side, 'B' = interface secondary side
     char        interfaceSide  = 'E';

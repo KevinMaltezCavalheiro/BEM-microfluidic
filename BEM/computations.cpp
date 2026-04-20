@@ -30,6 +30,7 @@ double computeAnalyticalH(const double x,
     }
     return alpha / (2*M_PI);
 }
+
 // Computes the 'g' element analytically. "x" and "y" are the coordinates at which 'g' should be computed. "element" is the
 // element 'j' while will helps to compute 'g'.
 double computeAnalyticalG(const double x,
@@ -63,15 +64,8 @@ double computeAnalyticalGradHx(const double x,
     double yj = element.y1;
     double yjp1 = element.y2;
     double Pi = M_PI;
-    //double sideSign = (element.interfaceSide == 'B') ? -1.0 : 1.0;
-    double sideSign = 1.0;
-    double dx = xjp1-xj;
-    double dy = yjp1-yj;
-    double nx = dy * sideSign;
-    double ny = -dx * sideSign;
-    double norm = sqrt(nx*nx+ny*ny);
-    nx = nx / norm;
-    ny = ny / norm;
+    double nx = element.nx;
+    double ny = element.ny;
 
 
     double gradHx_analytique = (lj*(nx*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) -
@@ -95,15 +89,8 @@ double computeAnalyticalGradHy(const double x,
     double yj = element.y1;
     double yjp1 = element.y2;
     double Pi = M_PI;
-    //double sideSign = (element.interfaceSide == 'B') ? -1.0 : 1.0;
-    double sideSign = 1.0;
-    double dx = xjp1-xj;
-    double dy = yjp1-yj;
-    double nx = dy * sideSign;
-    double ny = -dx * sideSign;
-    double norm = sqrt(nx*nx+ny*ny);
-    nx = nx / norm;
-    ny = ny / norm;
+    double nx = element.nx;
+    double ny = element.ny;
 
     double gradHy_analytique = -(lj*(ny*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) +
                                      nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
@@ -201,13 +188,8 @@ double computeNumericalGradHx(const double x,
     double yj = element.y1;
     double yjp1 = element.y2;
 
-    double dx = xjp1-xj;
-    double dy = yjp1-yj;
-    double nx = dy;
-    double ny = -dx;
-    double norm = sqrt(nx*nx+ny*ny);
-    nx = nx / norm;
-    ny = ny / norm;
+    double nx = element.nx;
+    double ny = element.ny;
 
     // Computation of the integration points (parametric) and weights.
     std::vector<double> localCoord;
@@ -248,13 +230,8 @@ double computeNumericalGradHy(const double x,
     double yj = element.y1;
     double yjp1 = element.y2;
 
-    double dx = xjp1-xj;
-    double dy = yjp1-yj;
-    double nx = dy;
-    double ny = -dx;
-    double norm = sqrt(nx*nx+ny*ny);
-    nx = nx / norm;
-    ny = ny / norm;
+    double nx = element.nx;
+    double ny = element.ny;
 
     // Computation of the integration points (parametric) and weights.
     std::vector<double> localCoord;

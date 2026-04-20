@@ -18,8 +18,13 @@ buildBIEVector(const std::vector<elementStruct> &elementVector)
     std::vector<elementStruct> out;
     out.reserve(elementVector.size());
     for(const auto &el : elementVector)
-        if(el.interfaceSide != 'B')
-            out.push_back(el);
+    {
+        // On accepte TOUT ce qui appartient au domaine local.
+        // 'E' (Extérieur), 'A' (Interface côté 1), 'B' (Interface côté 2)
+        // La distinction A/B ne sert plus à "exclure",
+        // mais juste à savoir d'où vient l'élément.
+        out.push_back(el);
+    }
     return out;
 }
 
@@ -128,49 +133,73 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
                         std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements,
                         const bool &solutionType)
 {
-    // Build BIE element list (excludes 'B' side if any still exist; currently all are 'A' or 'E').
     const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
 
-    // IMPORTANT: use the caller-supplied boundaryNodeToElements (built from the FULL
-    // elementVector) to test whether a node is a boundary node and should be skipped.
-    // Do NOT use bieNodeMap for this test: for domain 2 (the inclusion) all node tags
-    // appear in bieVec (the circle is its entire boundary), so bieNodeMap would classify
-    // every node as a boundary node and skip all of them, leaving phi = 0 everywhere.
-    // The caller's boundaryNodeToElements maps the SAME node tags, so the test is
-    // equivalent but correctly scoped to what gmsh reported as boundary nodes.
+        // --- PRINT DE CONTRÔLE AVANT LA BOUCLE ---
+        // On veut savoir si le Domaine 2 a bien reçu ses éléments d'interface
+        bool isDom2 = (bieVec.size() > 0 && bieVec[0].interfaceSide == 'B');
+        if(isDom2) {
+            std::cout << "\n[CHECK DOM2] Nombre d'éléments dans bieVec : " << bieVec.size() << std::endl;
+            for(size_t k=0; k < bieVec.size(); k++) {
+                std::cout << "  -> Elem " << k << " Tag: " << bieVec[k].tag
+                          << " Phi: " << bieVec[k].bcValue[0]
+                          << " Qn: " << bieVec[k].bcValue[1] << std::endl;
+            }
+        }
 
-    double x = 0, y = 0, phi = 0, h = 0, g = 0;
-    std::vector<double> internalNodalPhiTmp(domainNodeTags.size(), 0.0);
-
-    #pragma omp parallel for schedule(static) private(x, y, phi, h, g) \
-        shared(domainNodeTags, domainNodeCoords, bieVec, boundaryNodeToElements, solutionType)
     for(std::size_t i = 0; i < domainNodeTags.size(); i++)
     {
-        // Skip boundary nodes — their phi is already known from the BEM solve.
-        if(boundaryNodeToElements.count(domainNodeTags[i]))
-            continue;
+        if(boundaryNodeToElements.count(domainNodeTags[i])) continue;
 
-        x = domainNodeCoords[3 * domainNodeIndices[domainNodeTags[i]]];
-        y = domainNodeCoords[3 * domainNodeIndices[domainNodeTags[i]] + 1];
+        double x = domainNodeCoords[3 * domainNodeIndices[domainNodeTags[i]]];
+        double y = domainNodeCoords[3 * domainNodeIndices[domainNodeTags[i]] + 1];
 
-        phi = 0.0;
-        for(std::size_t j = 0; j < bieVec.size(); j++)
-        {
-            h = computeAnalyticalH(x, y, bieVec[j]);
-            if(!solutionType)
-                g = computeNumericalG(x, y, bieVec[j], integrationType);
-            else
-                g = computeAnalyticalG(x, y, bieVec[j]);
+        double termGq = 0.0;
+        double termHu = 0.0;
+        double sH = 0.0;
 
-            phi += h * bieVec[j].bcValue[0] - g * bieVec[j].bcValue[1];
+        // --- LE PRINT QUE TU DEMANDES ---
+        // On cible un point au centre de ton inclusion (x proche de 0, y proche de 0)
+        bool targetNode = (std::abs(x) < 0.05 && std::abs(y) < 0.05);
+        if(targetNode) {
+            std::cout << "\n--- ANALYSE CRITIQUE NOEUD " << domainNodeTags[i] << " (x=" << x << ", y=" << y << ") ---" << std::endl;
         }
-        internalNodalPhiTmp[i] = phi;
+
+        for(const auto& el : bieVec)
+        {
+            double h = computeAnalyticalH(x, y, el);
+            double g = solutionType ? computeAnalyticalG(x, y, el) : computeNumericalG(x, y, el, integrationType);
+
+            if(targetNode) {
+                std::cout << "  Elem " << el.tag
+                          << " | h: " << h
+                          << " | g: " << g
+                          << " | phi: " << el.bcValue[0]
+                          << " | qn: " << el.bcValue[1] << std::endl;
+            }
+
+            // Pour les éléments 'B', la normale stockée est inversée par rapport
+            // à la normale sortante du domaine courant → compenser le signe de H.
+            // G ne dépend pas de la normale → inchangé.
+            double sign = (el.interfaceSide == 'B') ? -1.0 : 1.0;
+            termHu += sign * h * el.bcValue[0];
+            termGq += sign * g * el.bcValue[1];
+
+            std::cout << "elTag: " << el.tag << std::endl;
+            std::cout << "bcValue[1]: " << el.bcValue[1] << std::endl;
+            std::cout << "g*bcValue[1]: " << g*el.bcValue[1] << std::endl;
+
+        }
+
+        if(targetNode) {
+            std::cout << "  TOTAL -> sumH: " << sH << " | sumHu: " << termHu << " | sumGq: " << termGq << std::endl;
+            std::cout << "  RESULTAT THEORIQUE (Hu-Gq): " << (termHu - termGq) << std::endl;
+            std::cout << "---------------------------------------------------\n" << std::endl;
+        }
+
+        internalNodalPhi[domainNodeTags[i]] = termHu - termGq;
     }
-
-    for(std::size_t i = 0; i < domainNodeTags.size(); i++)
-        internalNodalPhi[domainNodeTags[i]] = internalNodalPhiTmp[i];
 }
-
 // ============================================================
 //  phiInitialization  (unchanged from original)
 // ============================================================
@@ -183,7 +212,7 @@ void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>
     for(std::size_t i = 0; i < domainElementTypes.size(); i++)
     {
         phi[i].resize(domainElementTypes[i].size());
-        #pragma omp parallel for schedule(guided) \
+        //#pragma omp parallel for schedule(guided) \
             shared(phi, domainElementTypes, domainElementTags, position)
         for(std::size_t j = 0; j < domainElementTypes[i].size(); j++)
         {
@@ -198,7 +227,7 @@ void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>
             {
                 phi[i][j][k].resize(nbNodes, HUGE_VAL);
                 std::vector<std::size_t> pos = {i, j, k};
-                #pragma omp critical
+                //#pragma omp critical
                 position[domainElementTags[i][j][k]] = pos;
             }
         }
@@ -272,7 +301,7 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
     boundaryElementTags(domainBoundaryElTags, domainElementTypes, domainElementTags,
                         elementVector, domainPhysicalGroupTag);
 
-    #pragma omp parallel for schedule(guided)
+    //#pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < domainBoundaryElTags.size(); i++)
     {
         std::size_t elementTag  = domainBoundaryElTags[i];
@@ -340,7 +369,7 @@ void elementNodalPhiAssociation(std::vector<std::vector<std::vector<std::vector<
     for(std::size_t i = 0; i < domainElementTags.size(); i++)
         for(std::size_t j = 0; j < domainElementTags[i].size(); j++)
         {
-            #pragma omp parallel for schedule(guided)
+            //#pragma omp parallel for schedule(guided)
             for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
             {
                 std::vector<std::size_t> nodeTags =
@@ -389,7 +418,7 @@ void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>
             gmsh::model::mesh::getBarycenters(domainElementTypes[i][j], domainEntityTags[i],
                                               false, false, barycenters);
 
-            #pragma omp parallel for schedule(static)
+            //#pragma omp parallel for schedule(static)
             for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
             {
                 double x = barycenters[3*k];

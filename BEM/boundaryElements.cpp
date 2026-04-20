@@ -88,6 +88,16 @@ void computeGeometricParam(elementStruct &element,
     element.deltaX = element.x2 - element.x1;
     element.deltaY = element.y2 - element.y1;
     element.length = std::sqrt(element.deltaX*element.deltaX + element.deltaY*element.deltaY);
+
+    double dx = element.x2-element.x1;
+    double dy = element.y2-element.y1;
+    double nx = dy;
+    double ny = -dx;
+    double norm = sqrt(nx*nx+ny*ny);
+    nx = nx / norm;
+    ny = ny / norm;
+    element.nx = nx;
+    element.ny = ny;
 }
 
 // ============================================================
@@ -160,12 +170,12 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
                 for(std::size_t k = 0; k < nodeTags.size(); k++)
                     nodeIndices[nodeTags[k]] = k;
 
-                #pragma omp parallel shared(nbDirichletElements, elementTags, nodeTags, nodalDisplacements, nodeIndices, nodeCoords, bcType, bcValue)
+                //#pragma omp parallel shared(nbDirichletElements, elementTags, nodeTags, nodalDisplacements, nodeIndices, nodeCoords, bcType, bcValue)
                 {
                     std::vector<elementStruct> localDirichlet;
                     std::vector<elementStruct> localNeumann;
 
-                    #pragma omp for schedule(guided)
+                    //#pragma omp for schedule(guided)
                     for(std::size_t el = 0; el < elementTags.size(); el++)
                     {
                         elementStruct element;
@@ -186,7 +196,7 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
                         else       { element.bcValue[1] = bcValue; localNeumann.push_back(element);   }
                     }
 
-                    #pragma omp critical
+                    //#pragma omp critical
                     {
                         // Dirichlet elements go to the FRONT, Neumann to the BACK.
                         elementVector.insert(elementVector.begin(),
@@ -367,10 +377,35 @@ void addInterfaceElements(domainData &domainA,
                 // NOT via interfaceSide.  Marking as 'B' here would cause
                 // buildBIEVector (post-processing) to exclude all of domainB's
                 // interface elements and produce HUGE_VAL for every internal node.
+                // --- side B ---
                 elementStruct elB = base;
-                elB.interfaceSide = 'A';   // 'A' = "this element bounds THIS domain"
+                elB.interfaceSide = 'B';
+
+                // ON INVERSE L'ORDRE DES NOEUDS
+                // Cela inverse mathématiquement la normale et le signe de l'angle
+                // pour le domaine B sans changer computeAnalyticalH
+                elB.x1 = base.x2;
+                elB.y1 = base.y2;
+                elB.x2 = base.x1;
+                elB.y2 = base.y1;
+                elB.nodeTags[0] = base.nodeTags[1];
+                elB.nodeTags[1] = base.nodeTags[0];
+
+                // On recalcule les deltas et la normale basée sur ce nouvel ordre
+                elB.deltaX = elB.x2 - elB.x1;
+                elB.deltaY = elB.y2 - elB.y1;
+                elB.nx = -base.nx; // La normale est maintenant cohérente avec le sens P1->P2
+                elB.ny = -base.ny;
+
                 iface.elemIndicesB.push_back(domainB.elementVector.size());
                 domainB.elementVector.push_back(elB);
+                // Pour le premier élément de l'interface par exemple
+                if(el == 0) {
+                    std::cout << "Interface Debug Element 0:" << std::endl;
+                    std::cout << "  Nodes: " << base.nodeTags[0] << " -> " << base.nodeTags[1] << std::endl;
+                    std::cout << "  Coords: (" << base.x1 << "," << base.y1 << ") to (" << base.x2 << "," << base.y2 << ")" << std::endl;
+                    std::cout << "  Midpoint: " << base.midX << "," << base.midY << std::endl;
+                }
             }
         }
     }
@@ -411,7 +446,7 @@ void fillSystem(Eigen::MatrixXd &A,
 
     double h, g;
 
-    #pragma omp parallel for collapse(2) schedule(guided) \
+    //#pragma omp parallel for collapse(2) schedule(guided) \
         shared(elementVector, A, B, c) private(h, g)
     for(std::size_t i = 0; i < elementVector.size(); i++)
     {
@@ -482,7 +517,7 @@ void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
 {
     double epsilon = getEpsilon(domainName);
 
-    #pragma omp parallel for schedule(guided)
+    //#pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < elementVector.size(); i++)
     {
         if(elementVector[i].interfaceSide == 'E')
@@ -497,7 +532,7 @@ void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
 
         double pressure = epsilon * elementVector[i].bcValue[1] * elementVector[i].bcValue[1] / 2.0;
 
-        #pragma omp critical
+        //#pragma omp critical
         electrostaticPressure[elementVector[i].tag] = pressure;
     }
 }

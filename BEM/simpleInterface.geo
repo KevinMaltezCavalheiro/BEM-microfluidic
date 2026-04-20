@@ -11,7 +11,7 @@ epsilon_r_OIL  = 5.8;
 // ---- Paramètres simples ----
 L = 1.0 * scale; // Côté du carré
 R = 0.2 * scale;  // Rayon du cercle central
-lc = 0.1 * scale;  // Taille des mailles
+lc = 0.5 * scale;  // Taille des mailles
 
 // ---- Points Carré Extérieur (Domaine 1) ----
 Point(1) = {-L/2, -L/2, 0, lc};
