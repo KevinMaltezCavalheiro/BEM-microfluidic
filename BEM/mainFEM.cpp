@@ -4,11 +4,10 @@
 #include <iostream>
 #include <omp.h>
 
+// this program implements a FEM solver, either linear or non-linear (by taking large displacements into account)
+// to choose the linear solver, please add: SetNumber("Non_linear_solver",0); in the .geo file.
 int main(int argc, char **argv)
 {
-
-    bool nonLinearSolver = true; // use non-linear solver or not
-
     if (argc < 2)
     {
         std::cout << "Usage: " << argv[0] << " <geo_file>\n";
@@ -28,18 +27,22 @@ int main(int argc, char **argv)
 
     Eigen::initParallel();
 
+    // determine if non linear solver must be set
+    bool nonLinearSolver = getNonLinearParameter(); 
+
+    // maps the elementTags to a corresponding electrostaticPressure (only useful for coupled solver)
     std::map<int, double> electrostaticPressure;
 
-    int nbViews = 0;
+    int nbViews = 0; // number of views passed to the BEM solver (only useful for coupled solver)
 
     if(nonLinearSolver)
     {
-        std::map<int,std::pair<double,double>> boundaryDisplacementMap;
+        std::map<int,std::pair<double,double>> boundaryDisplacementMap; //(only useful for coupled solver)
 
-        int viewTagU = gmsh::view::add("u"); // à modifier plus tard
-        int viewTagF = gmsh::view::add("f");
+        int viewTagU = gmsh::view::add("u"); //viewtag of the displacement view
+        int viewTagF = gmsh::view::add("f"); //viewtag of the nodal forces view
 
-        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1, viewTagU, viewTagF, false); //iteration randomly set to 1
+        solverFEMnonLinear(electrostaticPressure, boundaryDisplacementMap, nbViews, true, 1, viewTagU, viewTagF, false);
     }
     else
     {

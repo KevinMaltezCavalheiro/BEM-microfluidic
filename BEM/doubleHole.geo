@@ -1,8 +1,8 @@
 // Outside
 Lx_out = 2.0;
 Ly_out = 1.5;
-nx_out = 40;
-ny_out = 30;
+nx_out = 160;
+ny_out = 120;
 phi_out = 100.;
 
 // Hole 1
@@ -10,8 +10,8 @@ Lx1 = 1.0;
 Ly1 = 0.1;
 cx1 = 0.0;
 cy1 = 0.2;
-nx1 = 20;
-ny1 = 8;
+nx1 = 80;
+ny1 = 32;
 phi1 = 250.;
 
 // Hole 2
@@ -19,8 +19,8 @@ Lx2 = 1.0;
 Ly2 = 0.1;
 cx2 = 0.0;
 cy2 = -0.2;
-nx2 = 20;
-ny2 = 8;
+nx2 = 80;
+ny2 = 32;
 phi2 = 210.;
 
 // Outside

@@ -9,7 +9,7 @@ Lx_diaph = 2*scale;
 nx = 20;
 ny = 50;
 
-// monter à 500+ steps en FEM non linéaire car converge très très lentement
+// THIS .geo FILE is mentioned once IN THE REPORT, in section 5.3.
 
 Point(1) = {0, 0, 0, 2};
 Point(2) = {Lx_foot, 0, 0, 2};
@@ -48,14 +48,14 @@ Plane Surface(1) = {1};
 Curve Loop(2) = {2, 9, 10, 11, 4, 3};
 Plane Surface(2) = {2};
 
-Transfinite Curve{7} = 15*nx+1 Using Progression 1;
-Transfinite Curve{1, 5} = 2*nx+1 Using Progression 1;
-Transfinite Curve{8, 6} = 3*ny+1 Using Progression 1;
+Transfinite Curve{7} = 10*nx+1 Using Progression 1;
+Transfinite Curve{1, 5} = nx+1 Using Progression 1;
+Transfinite Curve{8, 6} = ny+1 Using Progression 1;
 Transfinite Curve{10, 3} = 6*nx+1 Using Progression 1;
 Transfinite Curve{2, 4} = 2*ny+1 Using Progression 1;
 Transfinite Curve{9, 11} = nx+1 Using Progression 1;
 
-Recombine Surface {1,2};
+Recombine Surface {1};
 
 Mesh.ElementOrder = 1;
 
@@ -90,7 +90,7 @@ SetNumber("Materials/FEM_domain/Young", 210e3);
 SetNumber("Materials/FEM_domain/Poisson", 0.3);
 SetNumber("Materials/FEM_domain/rho",7800);
 
-SetNumber("Boundary Conditions/top_edge/tx", 0.); // ALWAYS NEED TO IMPOSE BOTH tx AND ty ON A GIVEN EDGE (realiste, OK) !
+SetNumber("Boundary Conditions/top_edge/tx", 0.);
 SetNumber("Boundary Conditions/top_edge/ty", 0.);
 SetNumber("Volumic Forces/FEM_domain/bx",0.);
 SetNumber("Volumic Forces/FEM_domain/by",0.);
@@ -104,3 +104,4 @@ phi_top = 100;
 SetNumber("Boundary Conditions/mass/BEM_domain_1/dirichlet", 0);
 SetNumber("Boundary Conditions/dirichlet/BEM_domain_1/dirichlet", phi_top);
 SetNumber("Boundary Conditions/rest_of_outside/BEM_domain_1/neumann", 0);
+SetNumber("Materials/BEM_domain_1/Epsilon", 8.8541878128e-12); // dielectric permittivity

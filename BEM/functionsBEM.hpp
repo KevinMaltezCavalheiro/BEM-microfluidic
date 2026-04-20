@@ -1,51 +1,280 @@
+#pragma once
+
 #include <gmsh.h>
 #include <iostream>
-#include <map>
 #include <sstream>
+#include <map>
+#include <set>
+#include <vector>
+#include <string>
 #include <Eigen/Dense>
-#include <cmath>
-#include <iomanip>
-#include <stdio.h>
-#include <chrono>
 #include <omp.h>
 
-// Each element has all its information gathered as in this structure.
-struct elementStruct{
-    int tag;            // tag of the element
-    std::string bcType; // "dirichlet" or "neumann" (at the end, should replace this by an int or boolean)
-    double bcValue [2]; // values of [u, u_n]
-    size_t nodeTags [2];   // tags of the [first, second] nodes of the element
-    size_t midNodeTags;
-    double length;
-    double x1, y1, x2, y2;
-    double midX, midY;
-    double deltaX, deltaY;
+// ============================================================
+//  ELEMENT STRUCT
+// ============================================================
+struct elementStruct
+{
+    std::size_t tag;
+    double      bcValue[2];     // [phi, phi_n]
+    std::size_t nodeTags[2];
+    std::size_t midNodeTag;
+    double      length;
+    double      x1, y1, x2, y2;
+    double      midX, midY;
+    double      deltaX, deltaY;
+
+    // 'E' = external boundary, 'A' = interface primary side, 'B' = interface secondary side
+    char        interfaceSide  = 'E';
+    std::string interfaceName  = "";
+    int         interfaceIndex = -1;
+    int         globalIndex    = -1;
 };
 
+// ============================================================
+//  INTERFACE STRUCT
+// ============================================================
+struct interfaceStruct
+{
+    std::string name;
+    std::string domainA;
+    std::string domainB;
+    double      kRatio = 1.0;           // epsilon_A / epsilon_B
 
-void solverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration, bool untangleMesh);
-void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure, std::map<int,std::pair<double,double>> & boundaryDisplacementMap, int & nbViews, bool postProcessing, const int iteration, const int domainTag);
-void dispNodeCoordFun(const std::vector<size_t> &allNodeTags, const std::vector<double> &allCoord);
-void dispMatricesFun(const Eigen::MatrixXd &A, const Eigen::MatrixXd &B, const Eigen::MatrixXd &c, const Eigen::MatrixXd &b, const Eigen::MatrixXd &x);
-void dispValuesFun(const std::vector<elementStruct> &elementVector);
-void getBC(std::map<size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::vector<elementStruct> &elementVector, int &dirichletCount, const bool dispHierarchy, std::vector<size_t> &NodeTags2d_domain, std::vector<double> &NodeCoord2d_domain, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<std::vector<size_t>> &elnodeTags2d_domain_BEM, int &entities_tags_for_physical_group_domain_BEM, std::vector<int> &entities_tags_2d_domain_BEM, std::map<int, std::pair<double, double>> &boundaryDisplacementMap, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary, const int domainTag);
-void computeGeometricParam(elementStruct &element, std::map<std::size_t, int> &allNodeIndex, const std::vector<double> &allCoord, std::pair<double, double> &nodalDisp1, std::pair<double, double> &nodalDisp2);
-double computeH(const double &x, const double &y, const elementStruct &element);
-double computeG(const double &x, const double &y, const elementStruct &element, const std::string &integrationType);
-void computeData(const std::vector<elementStruct> &elementVector, std::vector<size_t> &tags, std::vector<std::vector<double>> &data, const std::string integrationType, std::vector<int> &entities_tags_2d_domain_BEM, bool &solution_type);
-void displayData(const std::string viewName, const std::string modelName, const std::string fileName, const std::vector<size_t> &tags, const std::vector<std::vector<double>> &data);
-void compute_internal_phi(std::vector<double> &allCoord, std::vector<size_t> &NodeTags2d_domain, std::map<size_t, int> &allNodeIndex, std::vector<elementStruct> &elementVector, std::map<int,double> &nodeMapDomain, const std::string integrationType, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary, bool &solution_type);
-void element_node_data(std::vector<std::vector<std::vector<double>>> &data, std::vector<std::vector<size_t>> &elementTags2d_domain_BEM, std::vector<int> &elementTypes2d_domain_BEM, std::vector<std::vector<size_t>> &nodeTags2d_domain_BEM, std::vector<elementStruct> &elementVector, std::map<int, double> &nodeMapDomain, bool &show_element_node_data, int &entities_tags_for_physical_group_domain_BEM, std::map<std::size_t, std::pair<bool,bool>> &nodeOnBoundary);
-void disp_element_node_data(std::vector<int> &nodes_commun_tag, std::vector<int> &elements_commun_tag);
-void display_time(std::chrono::time_point<std::chrono::system_clock> &start, std::chrono::time_point<std::chrono::system_clock> &end, std::string &function_name, bool &show_time, const int domainTag);
-void convergenceFun(std::vector<int> &entities_tags_2d_domain_BEM, std::vector<size_t> &tags, std::vector<std::vector<double>> &phi);
-double computeGradHx(const double &x, const double &y, const elementStruct &element, const std::string &integrationType);
-double computeGradHy(const double &x, const double &y, const elementStruct &element, const std::string &integrationType);
-double computeGradGx(const double &x, const double &y, const elementStruct &element, const std::string &integrationType);
-double computeGradGy(const double &x, const double &y, const elementStruct &element, const std::string &integrationType);
-double computeGradHx_analytique(const double &x, const double &y, const elementStruct &element);
-double computeGradHy_analytique(const double &x, const double &y, const elementStruct &element);
-double computeGradGx_analytique(const double &x, const double &y, const elementStruct &element);
-double computeGradGy_analytique(const double &x, const double &y, const elementStruct &element);
-double computeG_analytique(const double &x, const double &y, const elementStruct &element);
-void electricField(int &nb2dElements, std::vector<int> &entities_tags_2d_domain_BEM, const std::vector<elementStruct> &elementVector, std::vector<size_t> &tags, const std::string &integrationType, std::vector<std::vector<double>> &data_Electric_field, bool &solution_type);
+    std::vector<std::size_t> elemIndicesA;
+    std::vector<std::size_t> elemIndicesB;
+
+    std::size_t nbElements() const { return elemIndicesA.size(); }
+};
+
+// ============================================================
+//  PER-DOMAIN DATA
+// ============================================================
+struct domainData
+{
+    std::string name;
+    int    physicalGroupDim = -1;
+    int    physicalGroupTag = -1;
+    double epsilon          = 8.8541878128e-12;
+
+    std::vector<elementStruct> elementVector;
+
+    std::size_t nbDirichletElements = 0;
+    std::size_t nbExternalElements  = 0;
+    std::size_t rowOffset           = 0;
+
+    std::size_t nbRows() const { return elementVector.size(); }
+};
+
+// ============================================================
+//  SOLVER ENTRY POINTS
+// ============================================================
+
+void solverBEM(std::map<int, double> &electrostaticPressure,
+               int &nbViews,
+               std::map<int, std::pair<double,double>> &nodalDisplacements,
+               const bool postProcessing,
+               const int iteration,
+               const bool untangleMesh);
+
+void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure,
+                           const int nbViews,
+                           std::map<int, std::pair<double,double>> &nodalDisplacements,
+                           const bool postProcessing,
+                           const int iteration,
+                           const std::string domainName,
+                           const int phiViewTag,
+                           const int electricFieldViewTag,
+                           const bool computePhi,
+                           const bool computeElectricField);
+
+void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
+                          int &nbViews,
+                          std::map<int, std::pair<double,double>> &nodalDisplacements,
+                          const bool postProcessing,
+                          const int iteration,
+                          std::vector<domainData> &domains,
+                          std::vector<interfaceStruct> &interfaces,
+                          const int phiViewTag,
+                          const int electricFieldViewTag,
+                          const bool computePhi,
+                          const bool computeElectricField);
+
+// ============================================================
+//  INTERFACE DETECTION
+// ============================================================
+
+void detectInterfaces(std::vector<interfaceStruct> &interfaces,
+                      const std::vector<std::string> &domainNames);
+
+// ============================================================
+//  BOUNDARY ELEMENT CONSTRUCTION
+// ============================================================
+
+void getBC(std::map<std::string, std::pair<bool, double>> &boundaryConditions,
+           const std::string domainName);
+
+double getEpsilon(const std::string domainName);
+
+std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
+                              int &domainPhysicalGroupDim,
+                              int &domainPhysicalGroupTag,
+                              std::map<int, std::pair<double,double>> &nodalDisplacements,
+                              const std::string domainName);
+
+void addInterfaceElements(domainData &domainA,
+                          domainData &domainB,
+                          interfaceStruct &iface,
+                          std::map<int, std::pair<double,double>> &nodalDisplacements);
+
+void computeGeometricParam(elementStruct &element,
+                           std::map<std::size_t, std::size_t> &nodeIndices,
+                           const std::vector<double> &nodeCoords,
+                           const std::pair<double,double> &nodalDisp1,
+                           const std::pair<double,double> &nodalDisp2);
+
+// ============================================================
+//  SYSTEM ASSEMBLY
+// ============================================================
+
+void fillSystem(Eigen::MatrixXd &A,
+                Eigen::MatrixXd &B,
+                Eigen::MatrixXd &c,
+                const std::vector<elementStruct> &elementVector,
+                const std::size_t nbDirichletElements,
+                const std::string integrationType,
+                const bool solutionType);
+
+void assembleGlobalSystem(Eigen::MatrixXd &A_global,
+                          Eigen::MatrixXd &b_global,
+                          const std::vector<domainData> &domains,
+                          const std::vector<interfaceStruct> &interfaces,
+                          const std::string integrationType,
+                          const bool solutionType,
+                          std::size_t &ifPotentialOffset,
+                          std::size_t &ifFluxOffset);
+
+void distributeGlobalSolution(std::vector<domainData> &domains,
+                              const std::vector<interfaceStruct> &interfaces,
+                              const Eigen::MatrixXd &X_global,
+                              const std::size_t ifPotentialOffset,
+                              const std::size_t ifFluxOffset);
+
+// ============================================================
+//  ELECTROSTATIC PRESSURE
+// ============================================================
+
+void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
+                                  std::vector<elementStruct> &elementVector,
+                                  const Eigen::MatrixXd &x,
+                                  const std::size_t nbDirichletElements,
+                                  const std::string domainName);
+
+// ============================================================
+//  POST-PROCESSING
+// ============================================================
+
+void getModel(std::vector<std::size_t> &domainNodeTags,
+              std::map<std::size_t, std::size_t> &domainNodeIndices,
+              std::vector<double> &domainNodeCoords,
+              std::vector<int> &domainEntityTags,
+              std::vector<std::vector<int>> &domainElementTypes,
+              std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
+              std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
+              const int domainPhysicalGroupDim,
+              const int domainPhysicalGroupTag);
+
+void computeNodeToElements(std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements,
+                           const std::vector<elementStruct> &elementVector);
+
+// NOTE: all post-processing functions take the FULL elementVector.
+// The BIE filtering ('E'+'A' only, no 'B') is handled internally.
+void computeInternalPhi(std::map<int, double> &internalNodalPhi,
+                        const std::vector<double> &domainNodeCoords,
+                        const std::vector<std::size_t> &domainNodeTags,
+                        std::map<std::size_t, std::size_t> &domainNodeIndices,
+                        const std::vector<elementStruct> &elementVector,
+                        const std::string integrationType,
+                        std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements,
+                        const bool &solutionType);
+
+void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
+                     const std::vector<std::vector<std::vector<size_t>>> &domainElementTags,
+                     const std::vector<std::vector<int>> &domainElementTypes,
+                     std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
+                     const std::vector<elementStruct> &elementVector,
+                     std::map<int, double> &internalNodalPhi,
+                     const int domainPhysicalGroupTag,
+                     std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements);
+
+void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
+                       std::map<std::size_t, std::vector<std::size_t>> &position,
+                       const std::vector<std::vector<int>> &domainElementTypes,
+                       const std::vector<std::vector<std::vector<size_t>>> &domainElementTags);
+
+void boundaryElementTags(std::vector<std::size_t> &domainBoundaryElementTags,
+                         const std::vector<std::vector<int>> &domainElementTypes,
+                         const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
+                         const std::vector<elementStruct> &elementVector,
+                         const int domainPhysicalGroupTag);
+
+void elementNodalPhiAssociation(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
+                                const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
+                                std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
+                                std::map<int, double> &internalNodalPhi);
+
+void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
+                        std::vector<std::vector<std::vector<std::vector<double>>>> &electricField,
+                        const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
+                        const std::vector<std::vector<int>> &domainElementTypes,
+                        const std::vector<int> &domainEntityTags,
+                        const std::vector<elementStruct> &elementVector,
+                        const bool solutionType,
+                        const std::string integrationType,
+                        const bool computePhi,
+                        const bool computeElectricField);
+
+void displayData(const int viewTag,
+                 const std::string modelName,
+                 const std::string fileName,
+                 const std::string dataType,
+                 const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
+                 const std::vector<std::vector<std::vector<std::vector<double>>>> &data,
+                 const int viewIndex);
+
+// ============================================================
+//  UTILITY
+// ============================================================
+
+void displayTime(const double start,
+                 const double end,
+                 std::string functionName,
+                 const bool showTime);
+
+void convergenceFun(const std::vector<int> &domainEntityTags,
+                    const std::vector<std::vector<int>> &domainElementTypes,
+                    const std::vector<std::vector<std::vector<size_t>>> &domainElementTags,
+                    const std::vector<std::vector<std::vector<std::vector<double>>>> &elementalPhi,
+                    const std::vector<std::vector<std::vector<std::vector<double>>>> &elementalElectricField);
+
+// ============================================================
+//  KERNEL COMPUTATIONS
+// ============================================================
+
+double computeAnalyticalH(const double x, const double y, const elementStruct &element);
+double computeAnalyticalG(const double x, const double y, const elementStruct &element);
+double computeAnalyticalGradHx(const double x, const double y, const elementStruct &element);
+double computeAnalyticalGradHy(const double x, const double y, const elementStruct &element);
+double computeAnalyticalGradGx(const double x, const double y, const elementStruct &element);
+double computeAnalyticalGradGy(const double x, const double y, const elementStruct &element);
+
+double computeNumericalG(const double x, const double y, const elementStruct &element,
+                         const std::string integrationType);
+double computeNumericalGradHx(const double x, const double y, const elementStruct &element,
+                               const std::string integrationType);
+double computeNumericalGradHy(const double x, const double y, const elementStruct &element,
+                               const std::string integrationType);
+double computeNumericalGradGx(const double x, const double y, const elementStruct &element,
+                               const std::string integrationType);
+double computeNumericalGradGy(const double x, const double y, const elementStruct &element,
+                               const std::string integrationType);

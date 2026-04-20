@@ -7,11 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0A194E6528181C8C00A3BEF4 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A194E6428181C8C00A3BEF4 /* main.cpp */; };
-		0A591E5527F9D06200B1D4E1 /* functionsBEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A591E5027F9D06200B1D4E1 /* functionsBEM.cpp */; };
-		0A7EE32627FF351C00DEE3F2 /* solverBEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A7EE32527FF351B00DEE3F2 /* solverBEM.cpp */; };
-		0A7EE32D27FF372B00DEE3F2 /* functionsFEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A7EE32A27FF372A00DEE3F2 /* functionsFEM.cpp */; };
-		0A7EE32F27FF379200DEE3F2 /* solverFEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A7EE32E27FF379200DEE3F2 /* solverFEM.cpp */; };
+		0A4A491728354C5A0073EDCC /* solverFEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A490D28354C590073EDCC /* solverFEM.cpp */; };
+		0A4A491828354C5A0073EDCC /* postProcessing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A490E28354C590073EDCC /* postProcessing.cpp */; };
+		0A4A491928354C5A0073EDCC /* functionsFEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A490F28354C590073EDCC /* functionsFEM.cpp */; };
+		0A4A491A28354C5A0073EDCC /* solverBEM.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A491028354C590073EDCC /* solverBEM.cpp */; };
+		0A4A491B28354C5A0073EDCC /* boundaryElements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A491328354C5A0073EDCC /* boundaryElements.cpp */; };
+		0A4A491E28354C5A0073EDCC /* computations.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A491628354C5A0073EDCC /* computations.cpp */; };
+		0A512ABC28EDD92E00D8479F /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A512ABB28EDD92E00D8479F /* main.cpp */; };
+		0A97042A2F7ABFB200165948 /* verification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A9704292F7ABFB200165948 /* verification.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -27,32 +30,21 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0A194E6428181C8C00A3BEF4 /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
-		0A194E67281DCB2A00A3BEF4 /* hybrid_geo.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = hybrid_geo.geo; sourceTree = "<group>"; };
-		0A194E68281DCB2A00A3BEF4 /* self_weight.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = self_weight.geo; sourceTree = "<group>"; };
-		0A194E69281DCB2A00A3BEF4 /* BEM_convergence.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = BEM_convergence.geo; sourceTree = "<group>"; };
-		0A194E6A281DCB2A00A3BEF4 /* rectangle.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = rectangle.geo; sourceTree = "<group>"; };
-		0A194E6B281DCB2A00A3BEF4 /* my_geo.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = my_geo.geo; sourceTree = "<group>"; };
-		0A194E6C281DCB2A00A3BEF4 /* simple_tension.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simple_tension.geo; sourceTree = "<group>"; };
-		0A194E6D281DCB2A00A3BEF4 /* MEMS.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = MEMS.geo; sourceTree = "<group>"; };
-		0A194E6E281DCB2A00A3BEF4 /* hole.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = hole.geo; sourceTree = "<group>"; };
-		0A194E6F281DCB2A00A3BEF4 /* complex_validation.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = complex_validation.geo; sourceTree = "<group>"; };
-		0A194E70281DCB2A00A3BEF4 /* hybrid_complex.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = hybrid_complex.geo; sourceTree = "<group>"; };
-		0A194E71281DCB2A00A3BEF4 /* two_BEM_test.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = two_BEM_test.geo; sourceTree = "<group>"; };
-		0A194E72281DCB2A00A3BEF4 /* uniform_charge.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = uniform_charge.geo; sourceTree = "<group>"; };
-		0A194E73281DCB2A00A3BEF4 /* doubleHole.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = doubleHole.geo; sourceTree = "<group>"; };
-		0A194E74281DCB2A00A3BEF4 /* l_shape.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = l_shape.geo; sourceTree = "<group>"; };
-		0A194E75281DCB2A00A3BEF4 /* squeeze.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = squeeze.geo; sourceTree = "<group>"; };
+		0A4A490D28354C590073EDCC /* solverFEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = solverFEM.cpp; sourceTree = "<group>"; };
+		0A4A490E28354C590073EDCC /* postProcessing.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = postProcessing.cpp; sourceTree = "<group>"; };
+		0A4A490F28354C590073EDCC /* functionsFEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functionsFEM.cpp; sourceTree = "<group>"; };
+		0A4A491028354C590073EDCC /* solverBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = solverBEM.cpp; sourceTree = "<group>"; };
+		0A4A491128354C590073EDCC /* functionsFEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsFEM.hpp; sourceTree = "<group>"; };
+		0A4A491228354C5A0073EDCC /* functionsBEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsBEM.hpp; sourceTree = "<group>"; };
+		0A4A491328354C5A0073EDCC /* boundaryElements.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = boundaryElements.cpp; sourceTree = "<group>"; };
+		0A4A491628354C5A0073EDCC /* computations.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = computations.cpp; sourceTree = "<group>"; };
+		0A512ABB28EDD92E00D8479F /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		0A591E4527F9CE1700B1D4E1 /* BEM */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = BEM; sourceTree = BUILT_PRODUCTS_DIR; };
-		0A591E5027F9D06200B1D4E1 /* functionsBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functionsBEM.cpp; sourceTree = "<group>"; };
-		0A591E5127F9D06200B1D4E1 /* functionsBEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsBEM.hpp; sourceTree = "<group>"; };
-		0A62F479282A91D000989F1C /* large_rotation_validation.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = large_rotation_validation.geo; sourceTree = "<group>"; };
-		0A7EE32527FF351B00DEE3F2 /* solverBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 4; lastKnownFileType = sourcecode.cpp.cpp; path = solverBEM.cpp; sourceTree = "<group>"; tabWidth = 4; };
-		0A7EE32A27FF372A00DEE3F2 /* functionsFEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = functionsFEM.cpp; sourceTree = "<group>"; };
-		0A7EE32B27FF372B00DEE3F2 /* functionsFEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsFEM.hpp; sourceTree = "<group>"; };
-		0A7EE32E27FF379200DEE3F2 /* solverFEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = solverFEM.cpp; sourceTree = "<group>"; };
-		0AD877C428215DB0009EFF67 /* longitudinal_comb.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = longitudinal_comb.geo; sourceTree = "<group>"; };
-		0AD877C528215DB9009EFF67 /* transverse_comb.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = transverse_comb.geo; sourceTree = "<group>"; };
+		0A74F6E52E533E40000A1371 /* LaChoseDuStagiaire.geo */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LaChoseDuStagiaire.geo; sourceTree = "<group>"; };
+		0A9704262F7AB5FC00165948 /* LaChoseDuStagiaireNoModified.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = LaChoseDuStagiaireNoModified.geo; sourceTree = "<group>"; };
+		0A9704272F7AB62400165948 /* simpleInterface.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterface.geo; sourceTree = "<group>"; };
+		0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterfaceDirichlet.geo; sourceTree = "<group>"; };
+		0A9704292F7ABFB200165948 /* verification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = verification.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,31 +77,20 @@
 		0A591E4727F9CE1700B1D4E1 /* BEM */ = {
 			isa = PBXGroup;
 			children = (
-				0A194E6428181C8C00A3BEF4 /* main.cpp */,
-				0A7EE32527FF351B00DEE3F2 /* solverBEM.cpp */,
-				0A591E5027F9D06200B1D4E1 /* functionsBEM.cpp */,
-				0A591E5127F9D06200B1D4E1 /* functionsBEM.hpp */,
-				0A7EE32E27FF379200DEE3F2 /* solverFEM.cpp */,
-				0A7EE32A27FF372A00DEE3F2 /* functionsFEM.cpp */,
-				0A7EE32B27FF372B00DEE3F2 /* functionsFEM.hpp */,
-				0A194E69281DCB2A00A3BEF4 /* BEM_convergence.geo */,
-				0A194E6F281DCB2A00A3BEF4 /* complex_validation.geo */,
-				0A194E73281DCB2A00A3BEF4 /* doubleHole.geo */,
-				0A194E6E281DCB2A00A3BEF4 /* hole.geo */,
-				0A194E67281DCB2A00A3BEF4 /* hybrid_geo.geo */,
-				0A194E74281DCB2A00A3BEF4 /* l_shape.geo */,
-				0A194E6D281DCB2A00A3BEF4 /* MEMS.geo */,
-				0A194E6B281DCB2A00A3BEF4 /* my_geo.geo */,
-				0A194E6A281DCB2A00A3BEF4 /* rectangle.geo */,
-				0A194E68281DCB2A00A3BEF4 /* self_weight.geo */,
-				0A194E6C281DCB2A00A3BEF4 /* simple_tension.geo */,
-				0A194E75281DCB2A00A3BEF4 /* squeeze.geo */,
-				0A194E71281DCB2A00A3BEF4 /* two_BEM_test.geo */,
-				0A194E70281DCB2A00A3BEF4 /* hybrid_complex.geo */,
-				0A194E72281DCB2A00A3BEF4 /* uniform_charge.geo */,
-				0AD877C428215DB0009EFF67 /* longitudinal_comb.geo */,
-				0AD877C528215DB9009EFF67 /* transverse_comb.geo */,
-				0A62F479282A91D000989F1C /* large_rotation_validation.geo */,
+				0A512ABB28EDD92E00D8479F /* main.cpp */,
+				0A4A491028354C590073EDCC /* solverBEM.cpp */,
+				0A4A491328354C5A0073EDCC /* boundaryElements.cpp */,
+				0A4A491628354C5A0073EDCC /* computations.cpp */,
+				0A4A490E28354C590073EDCC /* postProcessing.cpp */,
+				0A4A490D28354C590073EDCC /* solverFEM.cpp */,
+				0A4A490F28354C590073EDCC /* functionsFEM.cpp */,
+				0A9704292F7ABFB200165948 /* verification.cpp */,
+				0A4A491228354C5A0073EDCC /* functionsBEM.hpp */,
+				0A4A491128354C590073EDCC /* functionsFEM.hpp */,
+				0A74F6E52E533E40000A1371 /* LaChoseDuStagiaire.geo */,
+				0A9704262F7AB5FC00165948 /* LaChoseDuStagiaireNoModified.geo */,
+				0A9704272F7AB62400165948 /* simpleInterface.geo */,
+				0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */,
 			);
 			path = BEM;
 			sourceTree = "<group>";
@@ -171,11 +152,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0A7EE32D27FF372B00DEE3F2 /* functionsFEM.cpp in Sources */,
-				0A7EE32F27FF379200DEE3F2 /* solverFEM.cpp in Sources */,
-				0A7EE32627FF351C00DEE3F2 /* solverBEM.cpp in Sources */,
-				0A194E6528181C8C00A3BEF4 /* main.cpp in Sources */,
-				0A591E5527F9D06200B1D4E1 /* functionsBEM.cpp in Sources */,
+				0A4A491828354C5A0073EDCC /* postProcessing.cpp in Sources */,
+				0A4A491A28354C5A0073EDCC /* solverBEM.cpp in Sources */,
+				0A4A491728354C5A0073EDCC /* solverFEM.cpp in Sources */,
+				0A4A491928354C5A0073EDCC /* functionsFEM.cpp in Sources */,
+				0A97042A2F7ABFB200165948 /* verification.cpp in Sources */,
+				0A4A491B28354C5A0073EDCC /* boundaryElements.cpp in Sources */,
+				0A512ABC28EDD92E00D8479F /* main.cpp in Sources */,
+				0A4A491E28354C5A0073EDCC /* computations.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
