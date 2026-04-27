@@ -147,6 +147,15 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
             }
         }
 
+    std::cout << "--- DEBUG DOMAINE ---" << std::endl;
+    int countE = 0, countA = 0, countB = 0;
+    for(const auto& el : elementVector) {
+        if(el.interfaceSide == 'E') countE++;
+        if(el.interfaceSide == 'A') countA++;
+        if(el.interfaceSide == 'B') countB++;
+    }
+    std::cout << "E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
+
     for(std::size_t i = 0; i < domainNodeTags.size(); i++)
     {
         if(boundaryNodeToElements.count(domainNodeTags[i])) continue;
@@ -185,11 +194,6 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
             }
             termHu += h * el.bcValue[0];
             termGq += g * el.bcValue[1];
-
-            std::cout << "elTag: " << el.tag << std::endl;
-            std::cout << "bcValue[1]: " << el.bcValue[1] << std::endl;
-            std::cout << "g*bcValue[1]: " << g*el.bcValue[1] << std::endl;
-
         }
 
         if(targetNode) {

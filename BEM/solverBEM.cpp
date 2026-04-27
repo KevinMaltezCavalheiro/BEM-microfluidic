@@ -590,12 +590,6 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
                 }
             }
         }
-        if(di == 1) {
-            double sumRow0 = 0;
-            for(std::size_t j = 0; j < N; j++) sumRow0 += H(0,j);
-            std::cout << "DOM2 sumH ligne 0 = " << sumRow0
-                      << " (attendu -0.5 car point de collocation sur la frontière)\n";
-        }
     } // fin boucle domaines
     std::cout << "--- Matrix Layout Debug ---" << std::endl;
     std::cout << "Total Rows: " << totalRows << " | Total Cols: " << totalCols << std::endl;
@@ -707,12 +701,6 @@ void distributeGlobalSolution(std::vector<domainData> &domains,
             // Donc pour la reconstruction (BIE de B avec ccw=false) :
             domains[idxB].elementVector[jB].bcValue[0] = u_if;
             domains[idxB].elementVector[jB].bcValue[1] = -qn_if;
-
-            std::cout << "Interface elem " << m << ": u_if=" << u_if
-                          << " qn_if=" << qn_if
-                          << " bcVal1_A=" << domains[idxA].elementVector[jA].bcValue[1]
-                          << " bcVal1_B=" << domains[idxB].elementVector[jB].bcValue[1] << "\n";
-
         }
     }
 }
