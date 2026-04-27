@@ -476,7 +476,8 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
                 {
                     H(i,j) = computeAnalyticalH(dom.elementVector[i].midX,
                                                 dom.elementVector[i].midY,
-                                                dom.elementVector[j]);
+                                                dom.elementVector[j],
+                                                dom.elementVector[j].interfaceSide != 'B');
                     if(solutionType)
                         G(i,j) = computeAnalyticalG(dom.elementVector[i].midX,
                                                     dom.elementVector[i].midY,
@@ -688,13 +689,24 @@ void distributeGlobalSolution(std::vector<domainData> &domains,
 
             // Côté A
             const std::size_t jA = iface.elemIndicesA[m];
-            domains[idxA].elementVector[jA].bcValue[0] = u_if;
-            domains[idxA].elementVector[jA].bcValue[1] = qn_if;   // q_A = +qn_if
+//            domains[idxA].elementVector[jA].bcValue[0] = u_if;
+//            domains[idxA].elementVector[jA].bcValue[1] = qn_if;   // q_A = +qn_if
 
             // Côté B : On doit passer le flux réel du domaine B pour la reconstruction
             const std::size_t jB = iface.elemIndicesB[m];
+//            domains[idxB].elementVector[jB].bcValue[0] = u_if;
+//            //domains[idxB].elementVector[jB].bcValue[1] = -iface.kRatio * qn_if;
+//            domains[idxB].elementVector[jB].bcValue[1] = iface.kRatio * qn_if;
+
+            // Côté A
+            domains[idxA].elementVector[jA].bcValue[0] = u_if;
+            domains[idxA].elementVector[jA].bcValue[1] = qn_if;
+
+            // Côté B : même normale de référence (sortante de A) → même qn_if
+            // Le kRatio est déjà dans les colonnes de A_global (côté B : -G*kRatio)
+            // Donc pour la reconstruction (BIE de B avec ccw=false) :
             domains[idxB].elementVector[jB].bcValue[0] = u_if;
-            domains[idxB].elementVector[jB].bcValue[1] = -iface.kRatio * qn_if;
+            domains[idxB].elementVector[jB].bcValue[1] = -qn_if;
 
             std::cout << "Interface elem " << m << ": u_if=" << u_if
                           << " qn_if=" << qn_if

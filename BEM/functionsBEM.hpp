@@ -262,7 +262,7 @@ void convergenceFun(const std::vector<int> &domainEntityTags,
 //  KERNEL COMPUTATIONS
 // ============================================================
 
-double computeAnalyticalH(const double x, const double y, const elementStruct &element);
+double computeAnalyticalH(const double x, const double y, const elementStruct &element, const bool ccw = true);
 double computeAnalyticalG(const double x, const double y, const elementStruct &element);
 double computeAnalyticalGradHx(const double x, const double y, const elementStruct &element);
 double computeAnalyticalGradHy(const double x, const double y, const elementStruct &element);

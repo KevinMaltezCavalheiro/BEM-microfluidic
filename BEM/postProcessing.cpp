@@ -167,7 +167,13 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
 
         for(const auto& el : bieVec)
         {
-            double h = computeAnalyticalH(x, y, el);
+            // Pour les éléments 'B', la normale stockée est inversée par rapport
+            // à la normale sortante du domaine courant → compenser le signe de H.
+            // G ne dépend pas de la normale → inchangé.
+//            double sign = (el.interfaceSide == 'B') ? -1.0 : 1.0;
+//            termHu += sign * h * el.bcValue[0];
+//            termGq += sign * g * el.bcValue[1];
+            double h = computeAnalyticalH(x, y, el, el.interfaceSide != 'B');
             double g = solutionType ? computeAnalyticalG(x, y, el) : computeNumericalG(x, y, el, integrationType);
 
             if(targetNode) {
@@ -177,13 +183,8 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
                           << " | phi: " << el.bcValue[0]
                           << " | qn: " << el.bcValue[1] << std::endl;
             }
-
-            // Pour les éléments 'B', la normale stockée est inversée par rapport
-            // à la normale sortante du domaine courant → compenser le signe de H.
-            // G ne dépend pas de la normale → inchangé.
-            double sign = (el.interfaceSide == 'B') ? -1.0 : 1.0;
-            termHu += sign * h * el.bcValue[0];
-            termGq += sign * g * el.bcValue[1];
+            termHu += h * el.bcValue[0];
+            termGq += g * el.bcValue[1];
 
             std::cout << "elTag: " << el.tag << std::endl;
             std::cout << "bcValue[1]: " << el.bcValue[1] << std::endl;
@@ -431,7 +432,7 @@ void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>
                 {
                     if(computePhi)
                     {
-                        h = computeAnalyticalH(x, y, bieVec[el]);
+                        h = computeAnalyticalH(x, y, bieVec[el], bieVec[el].interfaceSide != 'B');
                         g = solutionType ?
                             computeAnalyticalG(x, y, bieVec[el]) :
                             computeNumericalG(x, y, bieVec[el], integrationType);

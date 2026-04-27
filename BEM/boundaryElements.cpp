@@ -371,32 +371,8 @@ void addInterfaceElements(domainData &domainA,
                 domainA.elementVector.push_back(elA);
 
                 // --- side B ---
-                // From domainB's perspective this IS its own boundary, so it is
-                // marked 'A' (not 'B').  The assembler distinguishes the two sides
-                // via iface.elemIndicesA / elemIndicesB + isDomainA/isDomainB,
-                // NOT via interfaceSide.  Marking as 'B' here would cause
-                // buildBIEVector (post-processing) to exclude all of domainB's
-                // interface elements and produce HUGE_VAL for every internal node.
-                // --- side B ---
                 elementStruct elB = base;
                 elB.interfaceSide = 'B';
-
-                // ON INVERSE L'ORDRE DES NOEUDS
-                // Cela inverse mathématiquement la normale et le signe de l'angle
-                // pour le domaine B sans changer computeAnalyticalH
-                elB.x1 = base.x2;
-                elB.y1 = base.y2;
-                elB.x2 = base.x1;
-                elB.y2 = base.y1;
-                elB.nodeTags[0] = base.nodeTags[1];
-                elB.nodeTags[1] = base.nodeTags[0];
-
-                // On recalcule les deltas et la normale basée sur ce nouvel ordre
-                elB.deltaX = elB.x2 - elB.x1;
-                elB.deltaY = elB.y2 - elB.y1;
-                elB.nx = -base.nx; // La normale est maintenant cohérente avec le sens P1->P2
-                elB.ny = -base.ny;
-
                 iface.elemIndicesB.push_back(domainB.elementVector.size());
                 domainB.elementVector.push_back(elB);
                 // Pour le premier élément de l'interface par exemple
@@ -461,7 +437,7 @@ void fillSystem(Eigen::MatrixXd &A,
             }
             else
             {
-                h = computeAnalyticalH(elementVector[i].midX, elementVector[i].midY, elementVector[j]);
+                h = computeAnalyticalH(elementVector[i].midX, elementVector[i].midY, elementVector[j], elementVector[j].interfaceSide != 'B');
                 if(!solutionType)
                     g = computeNumericalG(elementVector[i].midX, elementVector[i].midY,
                                           elementVector[j], integrationType);
