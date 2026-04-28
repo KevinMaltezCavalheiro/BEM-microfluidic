@@ -269,117 +269,6 @@ void singleDomainSolverBEM(std::map<int, double> &electrostaticPressure,
 
 // ============================================================
 //  assembleGlobalSystem
-//
-//  FORMULATION CORRECTE — suivant Katsikadelis éqs. (4.37)-(4.39)
-//
-//  La BIE pour chaque domaine di s'écrit, pour chaque collocation i :
-//
-//    Σ_j H(i,j)*u_j  =  Σ_j G(i,j)*q_j       (eq. de base)
-//
-//  avec H(i,i) = -0.5 (terme diagonal c_i).
-//
-//  Inconnues globales X :
-//    [ qn_D1 | phi_N1 | qn_D2 | phi_N2 | ... | u_if0 | u_if1 | ... | qn_if0 | qn_if1 | ... ]
-//     ← ext. unknowns domain 1 →  ← ext. unknowns domain 2 →   ← interface potentials → ← interface fluxes →
-//
-//  Pour chaque domaine di et chaque collocation point (ligne) i :
-//
-//  1) Éléments externes Dirichlet (phi_j connu, qn_j inconnu) :
-//       côté droit  :  G(i,j) * qn_j  → colonne X de qn_j
-//       côté gauche :  H(i,j) * phi_j → va dans b
-//
-//  2) Éléments externes Neumann (qn_j connu, phi_j inconnu) :
-//       côté droit  :  -H(i,j) * phi_j → colonne X de phi_j (signe - car on déplace de l'autre côté)
-//       côté gauche :  G(i,j) * qn_j  → va dans b (avec signe -)
-//       Attention : la BIE est H*u = G*q, donc phi_j inconnu va à droite avec coeff -H(i,j)
-//       et G(i,j)*qn_j va dans b (mais c'est +G*q_known → b += G*qn_j)
-//       En pratique :  A(i, col_phi_j) = -H(i,j)   et   b(i) += G(i,j)*qn_j
-//       (On réécrit H*u = G*q comme A*x = b : G*qn_j - H*phi_j = 0
-//        → -H*phi_j gauche, G*qn_j droite... mais tout dépend de la convention.)
-//
-//       Convention utilisée ici (identique au solveur single-domain) :
-//         Dirichlet j :  A(i,j) = G(i,j),  b(i) += H(i,j)*phi_j
-//         Neumann j   :  A(i,j) = -H(i,j), b(i) += -G(i,j)*phi_n_j  NON
-//
-//       Attenttion : relire le solveur single domain.  Dans fillSystem :
-//         Dirichlet j :  A(i,j) = g,  B(i,j) = h,  c(j) = phi_j
-//         Neumann j   :  A(i,j) = -h, B(i,j) = -g, c(j) = phi_n_j
-//       Puis le système résolu est :  A*x = B*c
-//       Donc :  G*qn = H*phi (Dirichlet)  et  H*phi = G*qn (Neumann) → cohérent.
-//
-//  3) Éléments d'interface (u_if inconnu, qn_if inconnu) :
-//       u_if  → colonne potColBase+m,  coefficient H(i,j)
-//       qn_if → colonne fluxColBase+m, coefficient -G(i,j) (côté A) ou +G(i,j)*kRatio (côté B)
-//
-//       Côté B : l'outward normal est opposée, donc q_B = -kRatio*q_A
-//       La BIE pour B : Σ H(i,j)*u_j = Σ G(i,j)*q_j
-//       Avec u_if partagé et q_j^B = -kRatio*qn_if :
-//         H(i,j)*u_if → colonne potColBase+m, coeff +H(i,j)  (u_if est l'inconnu, on le met à droite)
-//         G(i,j)*q_j^B = G(i,j)*(-kRatio*qn_if) → colonne fluxColBase+m, coeff -G(i,j)*kRatio
-//         mais on déplace tout à gauche :
-//           A(i, potColBase+m)  -= H(i,j)      (u_if inconnu à gauche → signe -)
-//           A(i, fluxColBase+m) += G(i,j)*kRatio (G*q inconnu à gauche → signe +... non)
-//
-//  ATTENTION : la convention "A*x = b" doit être rigoureuse.
-//  La BIE brute est :   Σ_j H(i,j)*u_j = Σ_j G(i,j)*q_j
-//  On sépare connu/inconnu :
-//    Σ_{j inconnu} [coeff_A * x_j] = b_i   avec b_i = Σ_{j connu} [coeff_b * val_j]
-//
-//  Pour chaque terme :
-//    - u_j inconnu (Neumann ext, ou interface) : H(i,j)*u_j passe à droite → A(i, col_u_j) = H(i,j)...
-//      non : si on met les inconnus à gauche : -H(i,j)*u_j + ... = ... → A = -H
-//
-//  La convention correcte est la suivante (identique au solveur original) :
-//
-//    Σ_{j: phi_n inconnu} G(i,j)*phi_n_j  +  Σ_{j: phi inconnu} (-H(i,j))*phi_j
-//    +  Σ_{interface} H(i,j)*u_if  +  Σ_{interface} (-G(i,j))*qn_if  [côté A]
-//    =  Σ_{j: phi connu} H(i,j)*phi_j  +  Σ_{j: phi_n connu} (-G(i,j))*phi_n_j
-//
-//  Ce qui donne pour A et b :
-//    Dirichlet ext :  A(i, col_qn) =  G(i,j),   b += H(i,j)*phi_j
-//    Neumann ext   :  A(i, col_phi) = -H(i,j),  b -= G(i,j)*qn_j  (attention signe : b += -G*qn)
-//
-//    Interface, u_if inconnu :
-//      côté A et côté B : A(i, col_u) = -H(i,j)   (u_if passe à gauche avec coeff -H)
-//      Attention : le terme H*u_if dans la BIE doit passer à GAUCHE → coeff dans A est -H si on veut A*x=b
-//      Non : si la BIE est H*u = G*q, alors H(i,j)*u_j est à DROITE de la BIE.
-//      Pour mettre les inconnus à gauche : -H(i,j)*u_j + ... = ... → A(i,col) = -H(i,j) ?
-//      NON. Relire le cas Neumann : phi inconnu, G*q_n (connu) à droite.
-//      H(i,j)*phi_j (inconnu) est à gauche dans la BIE (H*u = G*q) → on le garde à gauche.
-//      Mais alors les termes connus (Dirichlet phi) sont à droite avec H → b += H*phi.
-//
-//      RÉSUMÉ DÉFINITIF (cohérent avec fillSystem original) :
-//
-//      BIE : Σ_j H(i,j)*u_j = Σ_j G(i,j)*q_j
-//
-//      Dirichlet j (phi_j connu, q_j inconnu) :
-//        G(i,j)*q_j  → INCONNU à gauche : A(i, col_q) = G(i,j)  ← q est l'inconnu dans A*x=b
-//        H(i,j)*phi_j → CONNU à droite : b(i) += H(i,j)*phi_j
-//
-//      Neumann j (q_j connu, phi_j inconnu) :
-//        H(i,j)*phi_j → INCONNU mais il est à gauche de la BIE... on le met à gauche de A*x=b :
-//          → A(i, col_phi) = H(i,j)  et  b(i) += G(i,j)*q_j ?
-//        NON. Dans le solveur original : A(i,j)=-h, B(i,j)=-g, c(j)=q_j → b=-g*q_j
-//        Donc la BIE utilisée est : G*q_n - H*phi = 0, avec les DIRICHLET à gauche et NEUMANN à droite ?
-//
-//      En lisant fillSystem ligne par ligne :
-//        Dirichlet j : A(i,j) = g,  B(i,j) = h  → résolu : g*q_n = h*phi → G*q = H*phi ✓
-//        Neumann j :   A(i,j) = -h, B(i,j) = -g → résolu : -h*phi = -g*q → h*phi = g*q ✓ (idem)
-//
-//      Donc dans les deux cas le système est G*qn - H*u = 0 mis sous forme A*x = b :
-//        Dirichlet : A(i,col_qn) = G(i,j),  b(i) += H(i,j)*phi_j
-//        Neumann   : A(i,col_u)  = -H(i,j), b(i) += -G(i,j)*qn_j  [avec signe - des deux côtés]
-//
-//      Interface u_if inconnu : H(i,j)*u_if est un terme CONNU dans le sens où c'est un inconnu
-//        qui reste à gauche. L'équation devient :
-//          G*q_ext + (-H)*phi_ext + (-H)*u_if + G*qn_if = b_known
-//        → A(i, col_u_if)  = -H(i,j)   (u_if inconnu → côté gauche avec signe de -H)
-//
-//      Interface qn_if inconnu côté A : G(i,j)*qn_if → inconnu à gauche :
-//        → A(i, col_qn_if) = G(i,j)
-//
-//      Interface qn_if inconnu côté B : q_B = -kRatio*qn_if → G(i,j)*q_B = -G(i,j)*kRatio*qn_if
-//        → A(i, col_qn_if) = -G(i,j)*kRatio
 // ============================================================
 void assembleGlobalSystem(Eigen::MatrixXd &A_global,
                           Eigen::MatrixXd &b_global,
@@ -453,11 +342,6 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
         const std::size_t   rOff = rowOffsets[di];             // première ligne dans A_global
         const std::size_t   cOff = extColOffsets[di];          // première colonne externe dans A_global
 
-        // --- Calcul des matrices H et G locales (N×N) ---
-        // H(i,j) = intégrale de la dérivée normale du noyau de Green évaluée au point de collocation i
-        //          (midpoint de l'élément i) sur l'élément j.
-        // G(i,j) = intégrale du noyau de Green évalué au point de collocation i sur l'élément j.
-        // Convention diagonale : H(i,i) = -0.5 (saut du terme libre c_i).
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(N, N);
         Eigen::MatrixXd G = Eigen::MatrixXd::Zero(N, N);
 
@@ -477,7 +361,7 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
                     H(i,j) = computeAnalyticalH(dom.elementVector[i].midX,
                                                 dom.elementVector[i].midY,
                                                 dom.elementVector[j],
-                                                dom.elementVector[j].interfaceSide != 'B');
+                                                dom.elementVector[j].normalOutward);
                     if(solutionType)
                         G(i,j) = computeAnalyticalG(dom.elementVector[i].midX,
                                                     dom.elementVector[i].midY,
@@ -492,25 +376,6 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
 
         // =====================================================================
         // COLONNE EXTERNE : éléments j = 0 .. nE-1  (Dirichlet puis Neumann)
-        //
-        // Convention (identique au solveur single-domain) :
-        //   G * qn - H * phi = 0  ← BIE réécrite
-        //
-        //   Dirichlet j (phi_j connu, qn_j inconnu) :
-        //     A_global(i, cOff+j) += G(i,j)        [colonne de qn_j]
-        //     b_global(i)         += H(i,j)*phi_j   [phi_j connu → dans b]
-        //
-        //   Neumann j (qn_j connu, phi_j inconnu) :
-        //     A_global(i, cOff+j) += -H(i,j)        [colonne de phi_j]
-        //     b_global(i)         += -G(i,j)*qn_j   [qn_j connu → dans b avec signe -(−H)=+H... non]
-        //     Attention : la BIE est G*q - H*u = 0.
-        //     Pour phi inconnu à gauche : -H*phi_j + G*qn_j = 0 → A=-H, b=G*qn_j... non.
-        //     On réécrit : G*qn_j = H*phi_j → si phi_j inconnu, il reste à droite :
-        //       A*x = b  avec  A(i,col_phi) = H(i,j),  b(i) += G(i,j)*qn_j ?
-        //     NON, relire fillSystem :
-        //       Neumann j : A(i,j)=-h, B(i,j)=-g, c(j)=qn_j → A*x = B*c → -h*phi = -g*qn → h*phi=g*qn ✓
-        //       Donc A(i,col_phi) = -H(i,j) et b(i) += -G(i,j)*qn_j  (car B*c = -g*qn_j)
-        //     C'est bien A=-H et b += -G*qn.
         // =====================================================================
         for(std::size_t i = 0; i < N; i++)
         {
@@ -533,25 +398,6 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
 
         // =====================================================================
         // COLONNES D'INTERFACE : u_if et qn_if
-        //
-        // Pour chaque interface k à laquelle participe le domaine di :
-        //
-        //   Terme H(i,j)*u_if dans la BIE :
-        //     u_if est INCONNU → il reste à GAUCHE de A*x = b avec le signe tel que le terme
-        //     H(i,j)*u_if soit du côté DROIT de la BIE  G*q - H*u = 0.
-        //     Raisonnement : G*q = H*u → H*u_if est à droite → quand on le passe à gauche :
-        //       A(i, col_u_if) = -H(i,j)   [note le signe MOINS]
-        //     mais b n'est pas modifié car u_if est inconnu.
-        //
-        //   Terme G(i,j)*qn_if dans la BIE :
-        //     qn_if est INCONNU → à gauche de A*x = b.
-        //     G*q = H*u → G*qn_if est à gauche directement :
-        //       A(i, col_qn_if) = G(i,j)    [côté A]
-        //
-        //   Côté B : la normale est opposée, donc q_B = -kRatio*qn_if
-        //     G(i,j)*q_B = G(i,j)*(-kRatio*qn_if)
-        //     À gauche de A*x=b :
-        //       A(i, col_qn_if) = -G(i,j)*kRatio   [côté B]
         // =====================================================================
         for(std::size_t k = 0; k < nInterfaces; k++)
         {
@@ -563,7 +409,6 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
             const bool isDomainB = (di == idxB);
             if(!isDomainA && !isDomainB) continue;
 
-            // Indices des éléments d'interface dans elementVector de ce domaine
             const std::vector<std::size_t> &ifElemIdx = isDomainA ?
                                                          iface.elemIndicesA :
                                                          iface.elemIndicesB;
@@ -577,15 +422,11 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
                 {
                     const std::size_t j = ifElemIdx[m];
 
-                    // u_if inconnu : coefficient -H(i,j) dans A_global
                     A_global(rOff + i, potColBase + m) += -H(i, j);
 
-                    // qn_if inconnu :
                     if(isDomainA)
-                        // Côté A : normale sortante de A → q_A = +qn_if
                         A_global(rOff + i, fluxColBase + m) += G(i, j);
                     else
-                        // Côté B : normale sortante de B = -normale de A → q_B = -kRatio*qn_if
                         A_global(rOff + i, fluxColBase + m) += -G(i, j) * iface.kRatio;
                 }
             }
@@ -610,14 +451,6 @@ void assembleGlobalSystem(Eigen::MatrixXd &A_global,
 
 // ============================================================
 //  distributeGlobalSolution
-//
-//  Après résolution de A_global * X = b_global, redistribue X dans
-//  les elementVector de chaque domaine.
-//
-//  Layout de X :
-//    [qn_D1 | phi_N1 | qn_D2 | phi_N2 | ... | u_if0 | ... | qn_if0 | ...]
-//
-//  Attention : bcValue[0] = phi, bcValue[1] = phi_n (= qn).
 // ============================================================
 void distributeGlobalSolution(std::vector<domainData> &domains,
                               const std::vector<interfaceStruct> &interfaces,
@@ -675,33 +508,29 @@ void distributeGlobalSolution(std::vector<domainData> &domains,
         const std::size_t idxB = domIdx(iface.domainB);
 
         for(std::size_t m = 0; m < nIf; m++)
-        {
-            // u_if : potentiel partagé (le même des deux côtés)
-            const double u_if  = X_global(potBase  + m);
-            // qn_if : flux sortant du domaine A (positif = sortant de A, entrant dans B)
-            const double qn_if = X_global(fluxBase + m);
+                {
+                    const double u_if  = X_global(potBase  + m);
+                    const double qn_if = X_global(fluxBase + m);
 
-            // Côté A
-            const std::size_t jA = iface.elemIndicesA[m];
-//            domains[idxA].elementVector[jA].bcValue[0] = u_if;
-//            domains[idxA].elementVector[jA].bcValue[1] = qn_if;   // q_A = +qn_if
+                    const std::size_t jA = iface.elemIndicesA[m];
+                    const std::size_t jB = iface.elemIndicesB[m];
 
-            // Côté B : On doit passer le flux réel du domaine B pour la reconstruction
-            const std::size_t jB = iface.elemIndicesB[m];
-//            domains[idxB].elementVector[jB].bcValue[0] = u_if;
-//            //domains[idxB].elementVector[jB].bcValue[1] = -iface.kRatio * qn_if;
-//            domains[idxB].elementVector[jB].bcValue[1] = iface.kRatio * qn_if;
+                    domains[idxA].elementVector[jA].bcValue[0] = u_if;
+                    domains[idxA].elementVector[jA].bcValue[1] = qn_if;
 
-            // Côté A
-            domains[idxA].elementVector[jA].bcValue[0] = u_if;
-            domains[idxA].elementVector[jA].bcValue[1] = qn_if;
+                    domains[idxB].elementVector[jB].bcValue[0] = u_if;
+                    domains[idxB].elementVector[jB].bcValue[1] = -qn_if;
 
-            // Côté B : même normale de référence (sortante de A) → même qn_if
-            // Le kRatio est déjà dans les colonnes de A_global (côté B : -G*kRatio)
-            // Donc pour la reconstruction (BIE de B avec ccw=false) :
-            domains[idxB].elementVector[jB].bcValue[0] = u_if;
-            domains[idxB].elementVector[jB].bcValue[1] = -qn_if;
-        }
+                    // --- AJOUT DEBUG ---
+                    if(m == 0) { // On n'affiche que le premier élément pour ne pas flood
+                        std::cout << "[DEBUG DISTRIBUTE] Interface: " << iface.name << " Elem index local interface: " << m << "\n"
+                                  << "  -> X_global (u, qn): " << u_if << ", " << qn_if << "\n"
+                                  << "  -> Dom A [" << domains[idxA].name << "] El " << jA << " reçoit bcValue: "
+                                  << domains[idxA].elementVector[jA].bcValue[0] << ", " << domains[idxA].elementVector[jA].bcValue[1] << "\n"
+                                  << "  -> Dom B [" << domains[idxB].name << "] El " << jB << " reçoit bcValue: "
+                                  << domains[idxB].elementVector[jB].bcValue[0] << ", " << domains[idxB].elementVector[jB].bcValue[1] << std::endl;
+                    }
+                }
     }
 }
 
@@ -831,8 +660,7 @@ void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
                 double qnA  = domains[idxA].elementVector[iface.elemIndicesA[m]].bcValue[1];
                 double qnB  = domains[idxB].elementVector[iface.elemIndicesB[m]].bcValue[1];
                 maxDeltaPhi = std::max(maxDeltaPhi, std::abs(phiA - phiB));
-                // Flux continuity: eps_A * qn_A + eps_B * qn_B = 0
-                maxFluxErr  = std::max(maxFluxErr, std::abs(domains[idxA].epsilon * qnA + domains[idxB].epsilon * qnB));
+                maxFluxErr  = std::max(maxFluxErr, std::abs(qnA + qnB));
             }
             std::cout << "Interface '" << iface.name << "':\n";
             std::cout << "  max |phi_A - phi_B|               = " << maxDeltaPhi << "  (expected ~0)\n";
@@ -848,7 +676,7 @@ void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
         for(auto &el : dom.elementVector)
         {
             const double pressure = eps * el.bcValue[1] * el.bcValue[1] / 2.0;
-            #pragma omp critical
+            //#pragma omp critical
             electrostaticPressure[el.tag] = pressure;
         }
     }

@@ -24,6 +24,7 @@ struct elementStruct
     double      midX, midY;
     double      deltaX, deltaY;
     double      nx, ny;
+    bool normalOutward;
 
     // 'E' = external boundary, 'A' = interface primary side, 'B' = interface secondary side
     char        interfaceSide  = 'E';
@@ -279,3 +280,5 @@ double computeNumericalGradGx(const double x, const double y, const elementStruc
                                const std::string integrationType);
 double computeNumericalGradGy(const double x, const double y, const elementStruct &element,
                                const std::string integrationType);
+void computeNormalOrientation(std::vector<elementStruct> &elementVector,
+                               const int domainPhysicalGroupTag);

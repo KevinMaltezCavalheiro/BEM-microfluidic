@@ -127,19 +127,15 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
         std::string physicalGroupName;
         gmsh::model::getPhysicalName(physicalGroupDim, physicalGroupTag, physicalGroupName);
 
-        // Remember the domain's own physical group.
         if(physicalGroupName.compare(domainName) == 0)
         {
             domainPhysicalGroupDim = physicalGroupDim;
             domainPhysicalGroupTag = physicalGroupTag;
         }
 
-        // Skip if no BC defined for this physical curve in this domain.
         if(boundaryConditions.find(physicalGroupName) == boundaryConditions.end())
             continue;
 
-        // Skip interface curves (they are treated in addInterfaceElements).
-        // An interface curve starts with "BEM_interface_".
         if(physicalGroupName.substr(0, 14) == "BEM_interface_")
             continue;
 
@@ -158,11 +154,11 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
 
                 std::vector<std::size_t> elementTags;
                 std::vector<std::size_t> elementNodeTags;
-                gmsh::model::mesh::getElementsByType(elementTypes[j], elementTags, elementNodeTags, entityTags[m]);
+                gmsh::model::mesh::getElementsByType(elementTypes[j], elementTags,
+                                                     elementNodeTags, entityTags[m]);
 
                 std::vector<std::size_t> nodeTags;
-                std::vector<double> nodeCoords;
-                std::vector<double> parametricNodeCoords;
+                std::vector<double> nodeCoords, parametricNodeCoords;
                 gmsh::model::mesh::getNodesByElementType(elementTypes[j], nodeTags, nodeCoords,
                                                          parametricNodeCoords, entityTags[m], false);
 
@@ -170,49 +166,45 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
                 for(std::size_t k = 0; k < nodeTags.size(); k++)
                     nodeIndices[nodeTags[k]] = k;
 
-                //#pragma omp parallel shared(nbDirichletElements, elementTags, nodeTags, nodalDisplacements, nodeIndices, nodeCoords, bcType, bcValue)
+                std::vector<elementStruct> localDirichlet;
+                std::vector<elementStruct> localNeumann;
+
+
+                for(std::size_t el = 0; el < elementTags.size(); el++)
                 {
-                    std::vector<elementStruct> localDirichlet;
-                    std::vector<elementStruct> localNeumann;
+                    elementStruct element;
+                    element.tag         = elementTags[el];
+                    element.nodeTags[0] = nodeTags[nbNodesPerElement*el];
+                    element.nodeTags[1] = nodeTags[nbNodesPerElement*el + 1];
+                    element.midNodeTag  = (nbNodesPerElement == 3)
+                                          ? nodeTags[nbNodesPerElement*el + 2] : 0;
+                    element.interfaceSide  = 'E';
+                    element.interfaceName  = "";
+                    element.interfaceIndex = -1;
 
-                    //#pragma omp for schedule(guided)
-                    for(std::size_t el = 0; el < elementTags.size(); el++)
-                    {
-                        elementStruct element;
-                        element.tag         = elementTags[el];
-                        element.nodeTags[0] = nodeTags[nbNodesPerElement*el];
-                        element.nodeTags[1] = nodeTags[nbNodesPerElement*el + 1];
-                        element.midNodeTag  = (nbNodesPerElement == 3) ? nodeTags[nbNodesPerElement*el + 2] : 0;
-                        element.interfaceSide  = 'E';
-                        element.interfaceName  = "";
-                        element.interfaceIndex = -1;
+                    std::pair<double,double> d1 = {0.0,0.0}, d2 = {0.0,0.0};
+                    if(nodalDisplacements.count(element.nodeTags[0]))
+                        d1 = nodalDisplacements[element.nodeTags[0]];
+                    if(nodalDisplacements.count(element.nodeTags[1]))
+                        d2 = nodalDisplacements[element.nodeTags[1]];
+                    computeGeometricParam(element, nodeIndices, nodeCoords, d1, d2);
 
-                        std::pair<double,double> d1 = {0.0, 0.0}, d2 = {0.0, 0.0};
-                        if(nodalDisplacements.count(element.nodeTags[0])) d1 = nodalDisplacements[element.nodeTags[0]];
-                        if(nodalDisplacements.count(element.nodeTags[1])) d2 = nodalDisplacements[element.nodeTags[1]];
-                        computeGeometricParam(element, nodeIndices, nodeCoords, d1, d2);
-
-                        if(bcType) { element.bcValue[0] = bcValue; localDirichlet.push_back(element); }
-                        else       { element.bcValue[1] = bcValue; localNeumann.push_back(element);   }
-                    }
-
-                    //#pragma omp critical
-                    {
-                        // Dirichlet elements go to the FRONT, Neumann to the BACK.
-                        elementVector.insert(elementVector.begin(),
-                                             localDirichlet.begin(), localDirichlet.end());
-                        elementVector.insert(elementVector.end(),
-                                             localNeumann.begin(), localNeumann.end());
-                        nbDirichletElements += localDirichlet.size();
-                    }
+                    if(bcType) { element.bcValue[0] = bcValue; localDirichlet.push_back(element); }
+                    else       { element.bcValue[1] = bcValue; localNeumann.push_back(element);   }
                 }
+
+                elementVector.insert(elementVector.begin(),
+                                     localDirichlet.begin(), localDirichlet.end());
+                elementVector.insert(elementVector.end(),
+                                     localNeumann.begin(), localNeumann.end());
+                nbDirichletElements += localDirichlet.size();
             }
         }
     }
-
+    computeNormalOrientation(elementVector, domainPhysicalGroupTag);
+    
     return nbDirichletElements;
 }
-
 // ============================================================
 //  detectInterfaces
 //  Scans all Physical Curves for the pattern "BEM_interface_<A>_<B>".
@@ -292,7 +284,6 @@ void addInterfaceElements(domainData &domainA,
                           interfaceStruct &iface,
                           std::map<int, std::pair<double,double>> &nodalDisplacements)
 {
-    // Find the Physical Curve corresponding to this interface.
     gmsh::vectorpair physicalGroupsDimTags;
     gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
@@ -301,28 +292,16 @@ void addInterfaceElements(domainData &domainA,
     {
         std::string name;
         gmsh::model::getPhysicalName(dimTag.first, dimTag.second, name);
-        if(name == iface.name)
-        {
-            ifaceDim = dimTag.first;
-            ifaceTag = dimTag.second;
-            break;
-        }
+        if(name == iface.name) { ifaceDim = dimTag.first; ifaceTag = dimTag.second; break; }
     }
     if(ifaceDim < 0)
     {
-        std::cerr << "Error: Cannot find Physical Curve '" << iface.name << "' in the mesh.\n";
+        std::cerr << "Error: Cannot find Physical Curve '" << iface.name << "'.\n";
         return;
     }
 
     std::vector<int> entityTags;
     gmsh::model::getEntitiesForPhysicalGroup(ifaceDim, ifaceTag, entityTags);
-
-    // Determine the current interface index (position in the interfaces vector).
-    // It is stored in each element so the assembler can look it up.
-    // We do not have it here directly, but iface already has it via the caller.
-    // We use a small helper: the caller (multiDomainSolverBEM) sets
-    // iface.elemIndicesA/B *after* we push elements, so we just record the
-    // indices that will be pushed now.
 
     std::vector<int> elementTypes = {1, 8};
     for(auto entityTag : entityTags)
@@ -337,8 +316,8 @@ void addInterfaceElements(domainData &domainA,
 
             std::vector<std::size_t> nodeTags;
             std::vector<double> nodeCoords, parametric;
-            gmsh::model::mesh::getNodesByElementType(elType, nodeTags, nodeCoords, parametric,
-                                                     entityTag, false);
+            gmsh::model::mesh::getNodesByElementType(elType, nodeTags, nodeCoords,
+                                                      parametric, entityTag, false);
 
             std::map<std::size_t, std::size_t> nodeIndices;
             for(std::size_t k = 0; k < nodeTags.size(); k++)
@@ -346,44 +325,39 @@ void addInterfaceElements(domainData &domainA,
 
             for(std::size_t el = 0; el < elTags.size(); el++)
             {
-                // --- build the element once ---
                 elementStruct base;
                 base.tag         = elTags[el];
                 base.nodeTags[0] = elNodeTags[nbNPE*el];
                 base.nodeTags[1] = elNodeTags[nbNPE*el + 1];
                 base.midNodeTag  = (nbNPE == 3) ? elNodeTags[nbNPE*el + 2] : 0;
-                base.bcValue[0]  = 0.0; // unknown potential
-                base.bcValue[1]  = 0.0; // unknown flux
+                base.bcValue[0]  = 0.0;
+                base.bcValue[1]  = 0.0;
+                base.interfaceName = iface.name;
 
                 std::pair<double,double> d1 = {0.0,0.0}, d2 = {0.0,0.0};
-                if(nodalDisplacements.count(base.nodeTags[0])) d1 = nodalDisplacements[base.nodeTags[0]];
-                if(nodalDisplacements.count(base.nodeTags[1])) d2 = nodalDisplacements[base.nodeTags[1]];
+                if(nodalDisplacements.count(base.nodeTags[0]))
+                    d1 = nodalDisplacements[base.nodeTags[0]];
+                if(nodalDisplacements.count(base.nodeTags[1]))
+                    d2 = nodalDisplacements[base.nodeTags[1]];
                 computeGeometricParam(base, nodeIndices, nodeCoords, d1, d2);
 
-                base.interfaceName = iface.name;
-                // interfaceIndex is set by the caller after this function returns
-                // (because the index in the global interfaces vector is known there).
-
-                // --- side A ---
+                // --- Côté A : tester si la normale pointe vers l'intérieur de domainA ---
                 elementStruct elA = base;
                 elA.interfaceSide = 'A';
                 iface.elemIndicesA.push_back(domainA.elementVector.size());
                 domainA.elementVector.push_back(elA);
 
-                // --- side B ---
+                // --- Côté B : même normale géométrique mais testée pour domainB ---
+                // → résultat opposé à elA par construction (les deux domaines sont de
+                //   part et d'autre de l'interface)
                 elementStruct elB = base;
                 elB.interfaceSide = 'B';
                 iface.elemIndicesB.push_back(domainB.elementVector.size());
                 domainB.elementVector.push_back(elB);
-                // Pour le premier élément de l'interface par exemple
-                if(el == 0) {
-                    std::cout << "Interface Debug Element 0:" << std::endl;
-                    std::cout << "  Nodes: " << base.nodeTags[0] << " -> " << base.nodeTags[1] << std::endl;
-                    std::cout << "  Coords: (" << base.x1 << "," << base.y1 << ") to (" << base.x2 << "," << base.y2 << ")" << std::endl;
-                    std::cout << "  Midpoint: " << base.midX << "," << base.midY << std::endl;
-                }
             }
         }
+        computeNormalOrientation(domainA.elementVector, domainA.physicalGroupTag);
+        computeNormalOrientation(domainB.elementVector, domainB.physicalGroupTag);
     }
 
     std::cout << "  Interface '" << iface.name << "': added "
@@ -437,7 +411,7 @@ void fillSystem(Eigen::MatrixXd &A,
             }
             else
             {
-                h = computeAnalyticalH(elementVector[i].midX, elementVector[i].midY, elementVector[j], elementVector[j].interfaceSide != 'B');
+                h = computeAnalyticalH(elementVector[i].midX, elementVector[i].midY, elementVector[j], elementVector[j].normalOutward);
                 if(!solutionType)
                     g = computeNumericalG(elementVector[i].midX, elementVector[i].midY,
                                           elementVector[j], integrationType);
@@ -510,5 +484,32 @@ void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
 
         //#pragma omp critical
         electrostaticPressure[elementVector[i].tag] = pressure;
+    }
+}
+
+// ============================================================
+//  computeNormalOrientation
+//  Pour chaque élément de la frontière, détermine si sa normale
+//  (nx,ny) pointe vers l'extérieur du domaine en vérifiant si
+//  un point légèrement décalé dans cette direction appartient
+//  au physical group du domaine.
+// ============================================================
+void computeNormalOrientation(std::vector<elementStruct> &elementVector,
+                               const int domainPhysicalGroupTag)
+{
+    for(auto &element : elementVector)
+    {
+        if(element.interfaceSide == 'A')
+        {
+            element.normalOutward = 0;
+        }
+        else if(element.interfaceSide == 'B')
+        {
+            element.normalOutward = 1;
+        }
+        else
+        {
+            element.normalOutward = 1;
+        }
     }
 }

@@ -6,12 +6,12 @@
 scale = 1;
 epsilon_0 = 8.8541878128e-12;
 epsilon_r_PDMS = 2.8;
-epsilon_r_OIL  = 5.8;
+epsilon_r_OIL  = 80;
 
 // ---- Paramètres simples ----
 L = 1.0 * scale; // Côté du carré
 R = 0.2 * scale;  // Rayon du cercle central
-lc = 0.05 * scale;  // Taille des mailles
+lc = 0.01 * scale;  // Taille des mailles
 
 // ---- Points Carré Extérieur (Domaine 1) ----
 Point(1) = {-L/2, -L/2, 0, lc};
@@ -71,7 +71,7 @@ SetNumber("Materials/BEM_domain_2/Epsilon", epsilon_r_OIL);
 
 // ---- Nouvelles BCs pour tester le gradient ----
 
-// Bord Gauche : 1.0 Volt
+// Bord Gauche : 10.0 Volt
 SetNumber("Boundary Conditions/Left/BEM_domain_1/dirichlet", 1.0);
 
 // Bord Droit : 0.0 Volt

@@ -1,63 +1,82 @@
 // ============================================================
-//  Debug_BEM_NoInterface.geo – Carré avec Trou Circulaire (Dirichlet)
-//  But : Tester le Domaine 1 seul, sans couplage d'interface.
+//  Minimal_BEM_1Domain_Hole.geo
+//  Carré (PDMS) avec trou circulaire interne
+//  Orientation naturelle — le flip est géré par le code via getBoundary
 // ============================================================
 
-scale = 1e-6;
+scale = 1;
 epsilon_0 = 8.8541878128e-12;
 epsilon_r_PDMS = 2.8;
 
 // ---- Paramètres ----
-L = 1000.0 * scale;
-R = 200.0 * scale;
-lc = 25.0 * scale;
+L = 1.0 * scale;
+R = 0.2 * scale;
+lc = 0.1 * scale;
 
-// ---- Points Carré Extérieur ----
+// ============================================================
+// Géométrie
+// ============================================================
+
+// ---- Points carré extérieur ----
 Point(1) = {-L/2, -L/2, 0, lc};
 Point(2) = { L/2, -L/2, 0, lc};
 Point(3) = { L/2,  L/2, 0, lc};
 Point(4) = {-L/2,  L/2, 0, lc};
 
-// ---- Points Cercle Intérieur (Le trou) ----
-Point(5) = {0,  0, 0, lc}; // Centre
-Point(6) = {R,  0, 0, lc};
-Point(7) = {0,  R, 0, lc};
-Point(8) = {-R, 0, 0, lc};
-Point(9) = {0, -R, 0, lc};
+// ---- Points cercle (CCW naturel) ----
+Point(5) = { 0,  0, 0, lc}; // Centre
+Point(6) = { R,  0, 0, lc}; // Droite
+Point(7) = { 0,  R, 0, lc}; // Haut
+Point(8) = {-R,  0, 0, lc}; // Gauche
+Point(9) = { 0, -R, 0, lc}; // Bas
 
-// ---- Lignes ----
+// ============================================================
+// Lignes
+// ============================================================
+
 Line(1) = {1, 2};
 Line(2) = {2, 3};
 Line(3) = {3, 4};
 Line(4) = {4, 1};
 
+// Cercle CCW : 6 → 7 → 8 → 9 → 6
 Circle(5) = {6, 5, 7};
 Circle(6) = {7, 5, 8};
 Circle(7) = {8, 5, 9};
 Circle(8) = {9, 5, 6};
 
-// ---- Loops & Surfaces ----
-Curve Loop(1) = {1, 2, 3, 4}; // Extérieur
-Curve Loop(2) = {5, 6, 7, 8}; // Le trou
+// ============================================================
+// Surfaces
+// ============================================================
 
-// Surface 1 : On ne définit QUE le domaine 1 (le PDMS)
-// Le cercle est soustrait (trou) car il est listé dans les boucles de la surface
+Curve Loop(1) = {1, 2, 3, 4};
+
+// Trou : on inverse le signe pour que GMSH sache que c'est un trou
+// getBoundary retournera des tags négatifs → ccw=false → flip dans le code
+Curve Loop(2) = {-5, -6, -7, -8};
+
 Plane Surface(1) = {1, 2};
 
-// ---- Groupes Physiques ----
+// ============================================================
+// Groupes physiques
+// ============================================================
 
-// Un seul domaine BEM ici
+Physical Curve("Left", 101)      = {4};
+Physical Curve("Right", 102)     = {2};
+Physical Curve("TopBottom", 103) = {1, 3};
+Physical Curve("Hole", 104)      = {5, 6, 7, 8};
+
 Physical Surface("BEM_domain_1", 9) = {1};
 
-// Bord extérieur
-Physical Curve("outside", 5) = {1, 2, 3, 4};
+// ============================================================
+// Propriétés matériau & Conditions aux limites
+// ============================================================
 
-// Le cercle n'est plus une "BEM_interface", c'est maintenant un simple "hole"
-Physical Curve("hole1", 8) = {5, 6, 7, 8};
+SetNumber("Materials/BEM_domain_1/Epsilon", epsilon_r_PDMS);
 
-// ---- Propriétés et BCs ----
-SetNumber("Materials/BEM_domain_1/Epsilon", epsilon_r_PDMS * epsilon_0);
+SetNumber("Boundary Conditions/Left/BEM_domain_1/dirichlet",     1.0);
+SetNumber("Boundary Conditions/Right/BEM_domain_1/dirichlet",    0.0);
+SetNumber("Boundary Conditions/TopBottom/BEM_domain_1/neumann",  0);
+SetNumber("Boundary Conditions/Hole/BEM_domain_1/dirichlet",     0.5);
 
-// On impose une différence de potentiel pour voir si le champ se calcule bien
-SetNumber("Boundary Conditions/outside/BEM_domain_1/dirichlet", 1000.0);
-SetNumber("Boundary Conditions/hole1/BEM_domain_1/dirichlet", 0.0);
+Mesh.Algorithm = 6;

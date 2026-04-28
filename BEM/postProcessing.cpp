@@ -135,74 +135,75 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
 {
     const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
 
-        // --- PRINT DE CONTRÔLE AVANT LA BOUCLE ---
-        // On veut savoir si le Domaine 2 a bien reçu ses éléments d'interface
-        bool isDom2 = (bieVec.size() > 0 && bieVec[0].interfaceSide == 'B');
-        if(isDom2) {
-            std::cout << "\n[CHECK DOM2] Nombre d'éléments dans bieVec : " << bieVec.size() << std::endl;
-            for(size_t k=0; k < bieVec.size(); k++) {
-                std::cout << "  -> Elem " << k << " Tag: " << bieVec[k].tag
-                          << " Phi: " << bieVec[k].bcValue[0]
-                          << " Qn: " << bieVec[k].bcValue[1] << std::endl;
-            }
-        }
-
-    std::cout << "--- DEBUG DOMAINE ---" << std::endl;
-    int countE = 0, countA = 0, countB = 0;
+    std::cout << "\n--- DIAGNOSTIC DOMAINE ---" << std::endl;
+    int countA = 0, countB = 0, countE = 0;
     for(const auto& el : elementVector) {
-        if(el.interfaceSide == 'E') countE++;
         if(el.interfaceSide == 'A') countA++;
-        if(el.interfaceSide == 'B') countB++;
+        else if(el.interfaceSide == 'B') countB++;
+        else countE++;
     }
-    std::cout << "E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
+    std::cout << "Total elements: " << elementVector.size()
+              << " | E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
 
     for(std::size_t i = 0; i < domainNodeTags.size(); i++)
     {
-        if(boundaryNodeToElements.count(domainNodeTags[i])) continue;
+        std::size_t nodeTag = domainNodeTags[i];
 
-        double x = domainNodeCoords[3 * domainNodeIndices[domainNodeTags[i]]];
-        double y = domainNodeCoords[3 * domainNodeIndices[domainNodeTags[i]] + 1];
+        if(boundaryNodeToElements.count(nodeTag)) continue;
+
+        double x = domainNodeCoords[3 * domainNodeIndices[nodeTag]];
+        double y = domainNodeCoords[3 * domainNodeIndices[nodeTag] + 1];
+
+//        std::cout << "\n==============================" << std::endl;
+//        std::cout << "NODE " << nodeTag << " | x=" << x << " y=" << y << std::endl;
+//        std::cout << "==============================" << std::endl;
 
         double termGq = 0.0;
         double termHu = 0.0;
-        double sH = 0.0;
 
-        // --- LE PRINT QUE TU DEMANDES ---
-        // On cible un point au centre de ton inclusion (x proche de 0, y proche de 0)
-        bool targetNode = (std::abs(x) < 0.05 && std::abs(y) < 0.05);
-        if(targetNode) {
-            std::cout << "\n--- ANALYSE CRITIQUE NOEUD " << domainNodeTags[i] << " (x=" << x << ", y=" << y << ") ---" << std::endl;
-        }
+        int elemCounter = 0;
 
         for(const auto& el : bieVec)
         {
-            // Pour les éléments 'B', la normale stockée est inversée par rapport
-            // à la normale sortante du domaine courant → compenser le signe de H.
-            // G ne dépend pas de la normale → inchangé.
-//            double sign = (el.interfaceSide == 'B') ? -1.0 : 1.0;
-//            termHu += sign * h * el.bcValue[0];
-//            termGq += sign * g * el.bcValue[1];
-            double h = computeAnalyticalH(x, y, el, el.interfaceSide != 'B');
-            double g = solutionType ? computeAnalyticalG(x, y, el) : computeNumericalG(x, y, el, integrationType);
+            double g = solutionType ? computeAnalyticalG(x, y, el)
+                                    : computeNumericalG(x, y, el, integrationType);
 
-            if(targetNode) {
-                std::cout << "  Elem " << el.tag
-                          << " | h: " << h
-                          << " | g: " << g
-                          << " | phi: " << el.bcValue[0]
-                          << " | qn: " << el.bcValue[1] << std::endl;
-            }
-            termHu += h * el.bcValue[0];
-            termGq += g * el.bcValue[1];
+            double h = computeAnalyticalH(x, y, el, el.normalOutward);
+
+
+            double hu = h * el.bcValue[0];
+            double gq = g * el.bcValue[1];
+
+//            std::cout << "\n  Element #" << elemCounter++
+//                      << " | Tag: " << el.tag
+//                      << " | Side: " << el.interfaceSide
+//                      << " | Nodes: [" << el.nodeTags[0] << ", " << el.nodeTags[1] << "]"
+//                      << std::endl;
+//
+//            std::cout << "    Geometry: (" << el.x1 << "," << el.y1 << ") -> ("
+//                                          << el.x2 << "," << el.y2 << ")"
+//                      << " | length=" << el.length << std::endl;
+//
+//            std::cout << "    BC: phi=" << el.bcValue[0]
+//                      << " | qn=" << el.bcValue[1] << std::endl;
+//
+//            std::cout << "    h=" << h << " | g=" << g << std::endl;
+//            std::cout << "    h*phi=" << hu << " | g*qn=" << gq << std::endl;
+
+            termHu += hu;
+            termGq += gq;
         }
 
-        if(targetNode) {
-            std::cout << "  TOTAL -> sumH: " << sH << " | sumHu: " << termHu << " | sumGq: " << termGq << std::endl;
-            std::cout << "  RESULTAT THEORIQUE (Hu-Gq): " << (termHu - termGq) << std::endl;
-            std::cout << "---------------------------------------------------\n" << std::endl;
-        }
+//        std::cout << "\n---- SUM ----" << std::endl;
+//        std::cout << "Sum h*u = " << termHu << std::endl;
+//        std::cout << "Sum g*q = " << termGq << std::endl;
+//        std::cout << "Phi(x) = h*u + g*q = " << (termHu - termGq) << std::endl;
 
-        internalNodalPhi[domainNodeTags[i]] = termHu - termGq;
+        internalNodalPhi[nodeTag] = termHu - termGq;
+
+        if (nodeTag == 67) { // ou un noeud qui tombe à 0
+            std::cout << "Node 67 - termHu: " << termHu << " termGq: " << termGq << " Final: " << termHu - termGq << std::endl;
+        }
     }
 }
 // ============================================================
@@ -436,7 +437,7 @@ void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>
                 {
                     if(computePhi)
                     {
-                        h = computeAnalyticalH(x, y, bieVec[el], bieVec[el].interfaceSide != 'B');
+                        h = computeAnalyticalH(x, y, bieVec[el], bieVec[el].normalOutward);
                         g = solutionType ?
                             computeAnalyticalG(x, y, bieVec[el]) :
                             computeNumericalG(x, y, bieVec[el], integrationType);

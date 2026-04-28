@@ -2,15 +2,14 @@
 
 // Computes the 'h' element analytically. "x" and "y" are the coordinates at which 'h' should be computed. "element" is the
 // element 'j' while will helps to compute 'h'.
-double computeAnalyticalH(const double x,
-                          const double y,
-                          const elementStruct &element,
-                          const bool ccw)   // true = sens anti-horaire (convention standard)
+double computeAnalyticalH(const double x, const double y,
+                           const elementStruct &element, const bool ccw)
 {
     double deltaX1 = element.x1 - x;
     double deltaX2 = element.x2 - x;
     double deltaY1 = element.y1 - y;
     double deltaY2 = element.y2 - y;
+
     double cosAlpha = (deltaX1*deltaX2 + deltaY1*deltaY2) /
                       (sqrt((pow(deltaX1,2.0) + pow(deltaY1,2.0)) *
                              (pow(deltaX2,2.0) + pow(deltaY2,2.0))));
@@ -19,10 +18,8 @@ double computeAnalyticalH(const double x,
 
     double alpha = acos(cosAlpha);
     double crossProduct = deltaX1*deltaY2 - deltaY1*deltaX2;
-
     if(crossProduct < 0) alpha = -alpha;
 
-    // Si sens horaire, la normale standard est l'opposée → inverser le signe de l'angle
     if(!ccw) alpha = -alpha;
 
     return alpha / (2*M_PI);
