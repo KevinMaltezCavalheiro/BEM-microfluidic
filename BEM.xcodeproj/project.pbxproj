@@ -41,6 +41,7 @@
 		0A512ABB28EDD92E00D8479F /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		0A591E4527F9CE1700B1D4E1 /* BEM */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = BEM; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A66D9A62F9FE36300031D45 /* rectangle.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = rectangle.geo; sourceTree = "<group>"; };
+		0A66D9A82FA0FA3F00031D45 /* complexInterface.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = complexInterface.geo; sourceTree = "<group>"; };
 		0A74F6E52E533E40000A1371 /* LaChoseDuStagiaire.geo */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LaChoseDuStagiaire.geo; sourceTree = "<group>"; };
 		0A9704262F7AB5FC00165948 /* LaChoseDuStagiaireNoModified.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = LaChoseDuStagiaireNoModified.geo; sourceTree = "<group>"; };
 		0A9704272F7AB62400165948 /* simpleInterface.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterface.geo; sourceTree = "<group>"; };
@@ -90,9 +91,10 @@
 				0A4A491128354C590073EDCC /* functionsFEM.hpp */,
 				0A74F6E52E533E40000A1371 /* LaChoseDuStagiaire.geo */,
 				0A9704262F7AB5FC00165948 /* LaChoseDuStagiaireNoModified.geo */,
-				0A9704272F7AB62400165948 /* simpleInterface.geo */,
-				0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */,
 				0A66D9A62F9FE36300031D45 /* rectangle.geo */,
+				0A9704272F7AB62400165948 /* simpleInterface.geo */,
+				0A66D9A82FA0FA3F00031D45 /* complexInterface.geo */,
+				0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */,
 			);
 			path = BEM;
 			sourceTree = "<group>";

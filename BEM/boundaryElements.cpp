@@ -139,6 +139,11 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
         if(physicalGroupName.substr(0, 14) == "BEM_interface_")
             continue;
 
+        // --- DÉTECTION DU TROU ---
+        // On vérifie si le nom du groupe physique contient "Hole" ou "hole"
+        bool isHole = (physicalGroupName.find("Hole") != std::string::npos ||
+                       physicalGroupName.find("hole") != std::string::npos);
+
         bool   bcType  = boundaryConditions[physicalGroupName].first;
         double bcValue = boundaryConditions[physicalGroupName].second;
 
@@ -169,7 +174,6 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
                 std::vector<elementStruct> localDirichlet;
                 std::vector<elementStruct> localNeumann;
 
-
                 for(std::size_t el = 0; el < elementTags.size(); el++)
                 {
                     elementStruct element;
@@ -178,8 +182,11 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
                     element.nodeTags[1] = nodeTags[nbNodesPerElement*el + 1];
                     element.midNodeTag  = (nbNodesPerElement == 3)
                                           ? nodeTags[nbNodesPerElement*el + 2] : 0;
-                    element.interfaceSide  = 'E';
-                    element.interfaceName  = "";
+
+                    // Si c'est un trou, on lui donne le flag 'H' pour computeNormalOrientation
+                    element.interfaceSide  = isHole ? 'H' : 'E';
+
+                    element.interfaceName  = physicalGroupName; // On stocke le nom pour debug
                     element.interfaceIndex = -1;
 
                     std::pair<double,double> d1 = {0.0,0.0}, d2 = {0.0,0.0};
@@ -187,6 +194,7 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
                         d1 = nodalDisplacements[element.nodeTags[0]];
                     if(nodalDisplacements.count(element.nodeTags[1]))
                         d2 = nodalDisplacements[element.nodeTags[1]];
+
                     computeGeometricParam(element, nodeIndices, nodeCoords, d1, d2);
 
                     if(bcType) { element.bcValue[0] = bcValue; localDirichlet.push_back(element); }
@@ -201,8 +209,10 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
             }
         }
     }
+
+    // On appelle la fonction d'orientation qui va maintenant reconnaître les 'H'
     computeNormalOrientation(elementVector, domainPhysicalGroupTag);
-    
+
     return nbDirichletElements;
 }
 // ============================================================
@@ -392,7 +402,7 @@ void fillSystem(Eigen::MatrixXd &A,
     // nbExternalElements: all elements with interfaceSide == 'E'
     std::size_t nbExternalElements = 0;
     for(auto &e : elementVector)
-        if(e.interfaceSide == 'E') nbExternalElements++;
+        if(e.interfaceSide == 'E' || e.interfaceSide == 'H') nbExternalElements++;
 
     double h, g;
 
@@ -426,7 +436,7 @@ void fillSystem(Eigen::MatrixXd &A,
             //   here we simply store the RAW (h, g) in B(i,j) and A(i,j) respectively
             //   using the Neumann convention so the values can be extracted later.
 
-            if(elementVector[j].interfaceSide == 'E')
+            if(elementVector[j].interfaceSide == 'E' || elementVector[j].interfaceSide == 'H')
             {
                 if(j < nbDirichletElements)
                 {
@@ -470,7 +480,7 @@ void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
     //#pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < elementVector.size(); i++)
     {
-        if(elementVector[i].interfaceSide == 'E')
+        if(elementVector[i].interfaceSide == 'E' || elementVector[i].interfaceSide == 'H')
         {
             if(i < nbDirichletElements)
                 elementVector[i].bcValue[1] = x(i);
@@ -499,17 +509,41 @@ void computeNormalOrientation(std::vector<elementStruct> &elementVector,
 {
     for(auto &element : elementVector)
     {
+//        if(element.interfaceSide == 'A')
+//        {
+//            element.normalOutward = 0;
+//        }
+//        else if(element.interfaceSide == 'B')
+//        {
+//            element.normalOutward = 1;
+//        }
+//        else
+//        {
+//            element.normalOutward = 1;
+//        }
         if(element.interfaceSide == 'A')
         {
-            element.normalOutward = 0;
+            // 'A' : Interface côté primaire (inversé pour couplage)
+            // 'H' : Hole (inversé pour que la normale sorte du domaine vers le centre du trou)
+            element.normalOutward = false;
         }
         else if(element.interfaceSide == 'B')
         {
-            element.normalOutward = 1;
+            // 'B' : Interface côté secondaire
+            // 'E' : Frontière externe (Carré)
+            element.normalOutward = true;
         }
-        else
+        else if(element.interfaceSide == 'E')
         {
-            element.normalOutward = 1;
+            // 'A' : Interface côté primaire (inversé pour couplage)
+            // 'H' : Hole (inversé pour que la normale sorte du domaine vers le centre du trou)
+            element.normalOutward = true;
+        }
+        else if(element.interfaceSide == 'H')
+        {
+            // 'B' : Interface côté secondaire
+            // 'E' : Frontière externe (Carré)
+            element.normalOutward = false;
         }
     }
 }
