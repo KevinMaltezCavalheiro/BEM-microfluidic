@@ -127,15 +127,17 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
     // On construit le vecteur BIE une seule fois avant la boucle parallèle
     const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
 
-    //    std::cout << "\n--- DIAGNOSTIC DOMAINE ---" << std::endl;
-    //    int countA = 0, countB = 0, countE = 0;
-    //    for(const auto& el : elementVector) {
-    //        if(el.interfaceSide == 'A') countA++;
-    //        else if(el.interfaceSide == 'B') countB++;
-    //        else countE++;
-    //    }
-    //    std::cout << "Total elements: " << elementVector.size()
-    //              << " | E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
+        std::cout << "\n--- DIAGNOSTIC DOMAINE ---" << std::endl;
+        int countA = 0, countB = 0, countE = 0;
+        for(const auto& el : elementVector) {
+            if(el.interfaceSide == 'A') countA++;
+            else if(el.interfaceSide == 'B') countB++;
+            else countE++;
+        }
+        std::cout << "Total elements: " << elementVector.size()
+                  << " | E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
+
+    std::cout << "Total nodes domain: " << domainNodeTags.size() << std::endl;
 
     // Vecteur temporaire pour éviter les conflits d'écriture dans la map
     // On l'initialise à 0.
