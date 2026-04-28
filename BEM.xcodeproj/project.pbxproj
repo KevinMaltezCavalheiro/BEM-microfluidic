@@ -14,6 +14,7 @@
 		0A4A491B28354C5A0073EDCC /* boundaryElements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A491328354C5A0073EDCC /* boundaryElements.cpp */; };
 		0A4A491E28354C5A0073EDCC /* computations.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A4A491628354C5A0073EDCC /* computations.cpp */; };
 		0A512ABC28EDD92E00D8479F /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A512ABB28EDD92E00D8479F /* main.cpp */; };
+		0A66D9AB2FA1340300031D45 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A66D9AA2FA1340300031D45 /* Accelerate.framework */; };
 		0A97042A2F7ABFB200165948 /* verification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0A9704292F7ABFB200165948 /* verification.cpp */; };
 /* End PBXBuildFile section */
 
@@ -42,6 +43,7 @@
 		0A591E4527F9CE1700B1D4E1 /* BEM */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = BEM; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A66D9A62F9FE36300031D45 /* rectangle.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = rectangle.geo; sourceTree = "<group>"; };
 		0A66D9A82FA0FA3F00031D45 /* complexInterface.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = complexInterface.geo; sourceTree = "<group>"; };
+		0A66D9AA2FA1340300031D45 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		0A74F6E52E533E40000A1371 /* LaChoseDuStagiaire.geo */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LaChoseDuStagiaire.geo; sourceTree = "<group>"; };
 		0A9704262F7AB5FC00165948 /* LaChoseDuStagiaireNoModified.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = LaChoseDuStagiaireNoModified.geo; sourceTree = "<group>"; };
 		0A9704272F7AB62400165948 /* simpleInterface.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterface.geo; sourceTree = "<group>"; };
@@ -54,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A66D9AB2FA1340300031D45 /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +68,7 @@
 			children = (
 				0A591E4727F9CE1700B1D4E1 /* BEM */,
 				0A591E4627F9CE1700B1D4E1 /* Products */,
+				0A66D9A92FA1340300031D45 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -97,6 +101,14 @@
 				0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */,
 			);
 			path = BEM;
+			sourceTree = "<group>";
+		};
+		0A66D9A92FA1340300031D45 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0A66D9AA2FA1340300031D45 /* Accelerate.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -283,6 +295,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				GCC_OPTIMIZATION_LEVEL = 3;
 				HEADER_SEARCH_PATHS = (
 					"/usr/local/include/gmsh-4.9.5-MacOSX-sdk/include",
 					/usr/local/eigen/3.4.0_1/include/eigen3/,
@@ -296,6 +309,7 @@
 				OTHER_CFLAGS = (
 					"-Xpreprocessor",
 					"-fopenmp",
+					"-ffast-math",
 				);
 				OTHER_LDFLAGS = (
 					"-Xclang",
@@ -305,6 +319,8 @@
 					"-lgmsh",
 					"-DNDEBUG",
 					"-lomp",
+					"-framework",
+					Accelerate,
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
@@ -314,6 +330,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				GCC_OPTIMIZATION_LEVEL = 3;
 				HEADER_SEARCH_PATHS = (
 					"/usr/local/include/gmsh-4.9.5-MacOSX-sdk/include",
 					/usr/local/eigen/3.4.0_1/include/eigen3/,
@@ -327,6 +344,7 @@
 				OTHER_CFLAGS = (
 					"-Xpreprocessor",
 					"-fopenmp",
+					"-ffast-math",
 				);
 				OTHER_LDFLAGS = (
 					"-Xclang",
@@ -336,6 +354,8 @@
 					"-lgmsh",
 					"-DNDEBUG",
 					"-lomp",
+					"-framework",
+					Accelerate,
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};

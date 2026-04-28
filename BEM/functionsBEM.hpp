@@ -271,14 +271,24 @@ double computeAnalyticalGradGx(const double x, const double y, const elementStru
 double computeAnalyticalGradGy(const double x, const double y, const elementStruct &element);
 
 double computeNumericalG(const double x, const double y, const elementStruct &element,
-                         const std::string integrationType);
+                         const std::string integrationType,
+                         const std::vector<double> &localCoord,
+                         const std::vector<double> &weights);
 double computeNumericalGradHx(const double x, const double y, const elementStruct &element,
-                               const std::string integrationType);
+                               const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights);
 double computeNumericalGradHy(const double x, const double y, const elementStruct &element,
-                               const std::string integrationType);
+                               const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights);
 double computeNumericalGradGx(const double x, const double y, const elementStruct &element,
-                               const std::string integrationType);
+                               const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights);
 double computeNumericalGradGy(const double x, const double y, const elementStruct &element,
-                               const std::string integrationType);
+                               const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights);
 void computeNormalOrientation(std::vector<elementStruct> &elementVector,
                                const int domainPhysicalGroupTag);

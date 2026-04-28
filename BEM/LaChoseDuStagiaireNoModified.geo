@@ -8,7 +8,7 @@ epsilon_r_OIL = 9.62;
 eps0 = 8.8541878128e-12;
 
 Lout_x = 1000*scale; Lout_y = 200*scale;
-lc = 5*scale;
+lc = 3*scale;
 
 // ---- Géométrie : Tout en CCW naturel ----
 

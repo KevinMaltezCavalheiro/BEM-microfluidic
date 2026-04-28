@@ -15,19 +15,10 @@
 static std::vector<elementStruct>
 buildBIEVector(const std::vector<elementStruct> &elementVector)
 {
-    std::vector<elementStruct> out;
-    out.reserve(elementVector.size());
-    for(const auto &el : elementVector)
-    {
-        // On accepte TOUT ce qui appartient au domaine local.
-        // 'E' (Extérieur), 'A' (Interface côté 1), 'B' (Interface côté 2)
-        // La distinction A/B ne sert plus à "exclure",
-        // mais juste à savoir d'où vient l'élément.
-        out.push_back(el);
-    }
-    return out;
+    // Plus besoin de boucle ou d'OpenMP ici :
+    // Le constructeur par copie est extrêmement rapide.
+    return elementVector;
 }
-
 // Build a node→element map restricted to the BIE element list.
 static std::map<std::size_t, std::vector<std::size_t>>
 buildBIENodeToElements(const std::vector<elementStruct> &bieVec)
@@ -122,8 +113,8 @@ void computeNodeToElements(std::map<std::size_t, std::vector<std::size_t>> &boun
 
 // ============================================================
 //  computeInternalPhi
-//  BIE fix: only use 'E' and 'A' elements in the integral sum.
 // ============================================================
+
 void computeInternalPhi(std::map<int, double> &internalNodalPhi,
                         const std::vector<double> &domainNodeCoords,
                         const std::vector<std::size_t> &domainNodeTags,
@@ -133,76 +124,66 @@ void computeInternalPhi(std::map<int, double> &internalNodalPhi,
                         std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements,
                         const bool &solutionType)
 {
+    // On construit le vecteur BIE une seule fois avant la boucle parallèle
     const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
 
-    std::cout << "\n--- DIAGNOSTIC DOMAINE ---" << std::endl;
-    int countA = 0, countB = 0, countE = 0;
-    for(const auto& el : elementVector) {
-        if(el.interfaceSide == 'A') countA++;
-        else if(el.interfaceSide == 'B') countB++;
-        else countE++;
-    }
-    std::cout << "Total elements: " << elementVector.size()
-              << " | E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
+    //    std::cout << "\n--- DIAGNOSTIC DOMAINE ---" << std::endl;
+    //    int countA = 0, countB = 0, countE = 0;
+    //    for(const auto& el : elementVector) {
+    //        if(el.interfaceSide == 'A') countA++;
+    //        else if(el.interfaceSide == 'B') countB++;
+    //        else countE++;
+    //    }
+    //    std::cout << "Total elements: " << elementVector.size()
+    //              << " | E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
 
+    // Vecteur temporaire pour éviter les conflits d'écriture dans la map
+    // On l'initialise à 0.
+    std::vector<double> internalNodalPhiTmp(domainNodeTags.size(), 0.0);
+
+    std::vector<double> localCoord, weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+
+    // Parallélisation sur les nœuds du domaine
+    #pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < domainNodeTags.size(); i++)
     {
         std::size_t nodeTag = domainNodeTags[i];
 
+        // On ignore les nœuds qui sont sur la frontière
         if(boundaryNodeToElements.count(nodeTag)) continue;
 
+        // Récupération des coordonnées (Lecture seule : OK)
         double x = domainNodeCoords[3 * domainNodeIndices[nodeTag]];
         double y = domainNodeCoords[3 * domainNodeIndices[nodeTag] + 1];
-
-//        std::cout << "\n==============================" << std::endl;
-//        std::cout << "NODE " << nodeTag << " | x=" << x << " y=" << y << std::endl;
-//        std::cout << "==============================" << std::endl;
 
         double termGq = 0.0;
         double termHu = 0.0;
 
-        int elemCounter = 0;
-
+        // Boucle interne sur les éléments (Lecture seule sur bieVec : OK)
         for(const auto& el : bieVec)
         {
             double g = solutionType ? computeAnalyticalG(x, y, el)
-                                    : computeNumericalG(x, y, el, integrationType);
+                                    : computeNumericalG(x, y, el, integrationType, localCoord, weights);
 
+            // Attention : computeAnalyticalH prend maintenant la normale en argument
             double h = computeAnalyticalH(x, y, el, el.normalOutward);
 
-
-            double hu = h * el.bcValue[0];
-            double gq = g * el.bcValue[1];
-
-//            std::cout << "\n  Element #" << elemCounter++
-//                      << " | Tag: " << el.tag
-//                      << " | Side: " << el.interfaceSide
-//                      << " | Nodes: [" << el.nodeTags[0] << ", " << el.nodeTags[1] << "]"
-//                      << std::endl;
-//
-//            std::cout << "    Geometry: (" << el.x1 << "," << el.y1 << ") -> ("
-//                                          << el.x2 << "," << el.y2 << ")"
-//                      << " | length=" << el.length << std::endl;
-//
-//            std::cout << "    BC: phi=" << el.bcValue[0]
-//                      << " | qn=" << el.bcValue[1] << std::endl;
-//
-//            std::cout << "    h=" << h << " | g=" << g << std::endl;
-//            std::cout << "    h*phi=" << hu << " | g*qn=" << gq << std::endl;
-
-            termHu += hu;
-            termGq += gq;
+            termHu += h * el.bcValue[0];
+            termGq += g * el.bcValue[1];
         }
 
-//        std::cout << "\n---- SUM ----" << std::endl;
-//        std::cout << "Sum h*u = " << termHu << std::endl;
-//        std::cout << "Sum g*q = " << termGq << std::endl;
-//        std::cout << "Phi(x) = h*u + g*q = " << (termHu - termGq) << std::endl;
+        // Stockage dans le vecteur temporaire à l'indice i (propre à chaque thread)
+        internalNodalPhiTmp[i] = termHu - termGq;
+    }
 
-        internalNodalPhi[nodeTag] = termHu - termGq;
-
-        if (nodeTag == 67) { // ou un noeud qui tombe à 0
-            std::cout << "Node 67 - termHu: " << termHu << " termGq: " << termGq << " Final: " << termHu - termGq << std::endl;
+    // Phase finale séquentielle : remplissage de la map
+    for(std::size_t i = 0; i < domainNodeTags.size(); i++)
+    {
+        // On ne remplit la map que si le nœud n'était pas sur la frontière
+        if(!boundaryNodeToElements.count(domainNodeTags[i]))
+        {
+            internalNodalPhi[domainNodeTags[i]] = internalNodalPhiTmp[i];
         }
     }
 }
@@ -214,32 +195,45 @@ void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>
                        const std::vector<std::vector<int>> &domainElementTypes,
                        const std::vector<std::vector<std::vector<size_t>>> &domainElementTags)
 {
+    // Première dimension : tags d'entités (souvent petit, on ne parallélise pas ici)
     phi.resize(domainElementTypes.size());
     for(std::size_t i = 0; i < domainElementTypes.size(); i++)
     {
+        // Deuxième dimension : types d'éléments
         phi[i].resize(domainElementTypes[i].size());
-        //#pragma omp parallel for schedule(guided) \
-            shared(phi, domainElementTypes, domainElementTags, position)
+
+        // Parallélisation sur les types d'éléments au sein d'une entité
+        #pragma omp parallel for schedule(guided) shared(phi, position)
         for(std::size_t j = 0; j < domainElementTypes[i].size(); j++)
         {
             std::string elementName;
             int dim, order, nbNodes, nbPrimaryNodes;
             std::vector<double> localNodeCoord;
+
+            // L'API Gmsh est généralement thread-safe pour les getters de propriétés
             gmsh::model::mesh::getElementProperties(domainElementTypes[i][j], elementName,
                                                     dim, order, nbNodes, localNodeCoord,
                                                     nbPrimaryNodes);
+
+            // Allocation de la troisième dimension (tags d'éléments)
             phi[i][j].resize(domainElementTags[i][j].size());
+
             for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
             {
+                // Allocation de la quatrième dimension (potentiel aux nœuds)
                 phi[i][j][k].resize(nbNodes, HUGE_VAL);
+
                 std::vector<std::size_t> pos = {i, j, k};
-                //#pragma omp critical
-                position[domainElementTags[i][j][k]] = pos;
+
+                // Section critique car std::map::operator[] modifie la structure interne
+                #pragma omp critical(position_map_update)
+                {
+                    position[domainElementTags[i][j][k]] = pos;
+                }
             }
         }
     }
 }
-
 // ============================================================
 //  boundaryElementTags
 //  BIE fix: only walk over 'E' and 'A' elements when searching for
@@ -252,31 +246,58 @@ void boundaryElementTags(std::vector<std::size_t> &domainBoundaryElementTags,
                          const int domainPhysicalGroupTag)
 {
     const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
+    std::vector<std::size_t> globalLocalTags; // Vecteur pour stocker les résultats de tous les threads
 
-    std::vector<std::size_t> localElementTags;
-
-    for(std::size_t i = 0; i < bieVec.size(); i++)
+    // On ouvre une région parallèle
+    #pragma omp parallel
     {
-        std::vector<size_t> elementTags;
-        gmsh::model::mesh::getElementsByCoordinates(bieVec[i].x1, bieVec[i].y1, 0,
-                                                    elementTags, 2);
-        for(std::size_t j = 0; j < elementTags.size(); j++)
+        // Chaque thread crée son propre conteneur local pour éviter les "critical" fréquents
+        std::vector<std::size_t> threadPrivateTags;
+
+        #pragma omp for schedule(guided)
+        for(std::size_t i = 0; i < bieVec.size(); i++)
         {
-            int elementType;
-            std::vector<size_t> nodeTags;
-            int entityDim, entityTag;
-            std::vector<int> physicalTags;
-            gmsh::model::mesh::getElement(elementTags[j], elementType, nodeTags,
-                                          entityDim, entityTag);
-            gmsh::model::getPhysicalGroupsForEntity(entityDim, entityTag, physicalTags);
-            for(std::size_t k = 0; k < physicalTags.size(); k++)
-                if(physicalTags[k] == domainPhysicalGroupTag)
-                    localElementTags.push_back(elementTags[j]);
+            std::vector<size_t> elementTags;
+            // Appel Gmsh (Lecture seule sur le mesh : généralement thread-safe)
+            gmsh::model::mesh::getElementsByCoordinates(bieVec[i].x1, bieVec[i].y1, 0,
+                                                        elementTags, 2);
+
+            for(std::size_t j = 0; j < elementTags.size(); j++)
+            {
+                int elementType;
+                std::vector<size_t> nodeTags;
+                int entityDim, entityTag;
+                std::vector<int> physicalTags;
+
+                // On récupère les infos de l'élément
+                gmsh::model::mesh::getElement(elementTags[j], elementType, nodeTags,
+                                              entityDim, entityTag);
+                gmsh::model::getPhysicalGroupsForEntity(entityDim, entityTag, physicalTags);
+
+                for(std::size_t k = 0; k < physicalTags.size(); k++)
+                {
+                    if(physicalTags[k] == domainPhysicalGroupTag)
+                    {
+                        // On ajoute au vecteur privé du thread
+                        threadPrivateTags.push_back(elementTags[j]);
+                    }
+                }
+            }
+        }
+
+        // Une fois la boucle terminée, on fusionne les vecteurs privés dans le vecteur global
+        // On n'entre ici qu'une seule fois par thread (très peu coûteux)
+        #pragma omp critical
+        {
+            globalLocalTags.insert(globalLocalTags.end(), threadPrivateTags.begin(), threadPrivateTags.end());
         }
     }
 
+    // Transfert final vers l'argument de sortie
     domainBoundaryElementTags.insert(domainBoundaryElementTags.end(),
-                                     localElementTags.begin(), localElementTags.end());
+                                     globalLocalTags.begin(), globalLocalTags.end());
+
+    // Nettoyage des doublons (Séquentiel, car std::unique nécessite un tri)
     std::sort(domainBoundaryElementTags.begin(), domainBoundaryElementTags.end());
     domainBoundaryElementTags.erase(
         std::unique(domainBoundaryElementTags.begin(), domainBoundaryElementTags.end()),
@@ -307,19 +328,27 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
     boundaryElementTags(domainBoundaryElTags, domainElementTypes, domainElementTags,
                         elementVector, domainPhysicalGroupTag);
 
-    //#pragma omp parallel for schedule(guided)
+    // --- DÉBUT DE LA ZONE PARALLÈLE ---
+    #pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < domainBoundaryElTags.size(); i++)
     {
         std::size_t elementTag  = domainBoundaryElTags[i];
-        int entityTagIndex      = position[elementTag][0];
-        int elementTypeIndex    = position[elementTag][1];
-        int elementTagIndex     = position[elementTag][2];
-        int nbNodes             = phi[entityTagIndex][elementTypeIndex][elementTagIndex].size();
-        std::vector<std::size_t> nodeTags = domainElementNodeTags[elementTag];
+
+        // Utilisation de .at() pour la thread-safety en lecture sur la map 'position'
+        const std::vector<std::size_t> &pos = position[elementTag];
+        int entityTagIndex   = pos[0];
+        int elementTypeIndex = pos[1];
+        int elementTagIndex  = pos[2];
+
+        // Accès aux tags des nœuds de l'élément (lecture seule)
+        const std::vector<std::size_t> &nodeTags = domainElementNodeTags[elementTag];
+        int nbNodes = phi[entityTagIndex][elementTypeIndex][elementTagIndex].size();
 
         for(int j = 0; j < nbNodes; j++)
         {
             std::size_t elementNodeTag = nodeTags[j];
+
+            // Vérification si le nœud est sur la frontière BIE
             if(!bieNodeMap.count(elementNodeTag))
                 continue;
 
@@ -338,6 +367,8 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
                 int adjIdx0 = commonIndices[0];
                 std::size_t adjNode0 = bieVec[adjIdx0].nodeTags[0];
                 if(adjNode0 == elementNodeTag) adjNode0 = bieVec[adjIdx0].nodeTags[1];
+
+                // Recherche dans le vecteur local nodeTags
                 if(std::count(nodeTags.begin(), nodeTags.end(), adjNode0)) count++;
                 currentPhi += bieVec[adjIdx0].bcValue[0];
 
@@ -356,14 +387,15 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
                     currentPhi /= 2.0;
                 }
 
+                // Écriture dans le tenseur phi (OK car (i, j) unique par thread)
                 phi[entityTagIndex][elementTypeIndex][elementTagIndex][j] = currentPhi;
             }
         }
     }
 
+    // Association finale (souvent rapide, peut rester séquentielle ou être parallélisée en interne)
     elementNodalPhiAssociation(phi, domainElementTags, domainElementNodeTags, internalNodalPhi);
 }
-
 // ============================================================
 //  elementNodalPhiAssociation  (unchanged from original)
 // ============================================================
@@ -372,22 +404,34 @@ void elementNodalPhiAssociation(std::vector<std::vector<std::vector<std::vector<
                                 std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
                                 std::map<int, double> &internalNodalPhi)
 {
+    // On boucle sur les entités et les types d'éléments
     for(std::size_t i = 0; i < domainElementTags.size(); i++)
+    {
         for(std::size_t j = 0; j < domainElementTags[i].size(); j++)
         {
-            //#pragma omp parallel for schedule(guided)
+            // Parallélisation au niveau des éléments (k)
+            // schedule(guided) est idéal car le nombre de noeuds (l) peut varier selon l'élément
+            #pragma omp parallel for schedule(guided)
             for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
             {
-                std::vector<std::size_t> nodeTags =
-                    domainElementNodeTags[domainElementTags[i][j][k]];
+                // Utilisation de .at() pour garantir un accès thread-safe en lecture seule
+                const std::vector<std::size_t> &nodeTags = domainElementNodeTags[domainElementTags[i][j][k]];
+
                 for(std::size_t l = 0; l < nodeTags.size(); l++)
                 {
                     std::size_t nodeTag = nodeTags[l];
+
+                    // On vérifie si la valeur est encore à l'état initial (HUGE_VAL)
+                    // et si le potentiel nodal interne est disponible.
+                    // .count() et .at() sur internalNodalPhi sont thread-safe en lecture seule.
                     if(phi[i][j][k][l] == HUGE_VAL && internalNodalPhi.count(nodeTag))
+                    {
                         phi[i][j][k][l] = internalNodalPhi[nodeTag];
+                    }
                 }
             }
         }
+    }
 }
 
 // ============================================================
@@ -405,9 +449,12 @@ void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>
                         const bool computePhi,
                         const bool computeElectricField)
 {
+    // Construction du vecteur BIE une seule fois
     const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
 
-    std::vector<double> barycenters;
+    std::vector<double> localCoord, weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+
     phi.resize(domainEntityTags.size());
     electricField.resize(domainEntityTags.size());
 
@@ -421,36 +468,42 @@ void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>
             phi[i][j].resize(domainElementTags[i][j].size());
             electricField[i][j].resize(domainElementTags[i][j].size());
 
+            // Récupération des barycentres pour le groupe actuel
+            std::vector<double> barycenters;
             gmsh::model::mesh::getBarycenters(domainElementTypes[i][j], domainEntityTags[i],
                                               false, false, barycenters);
 
-            //#pragma omp parallel for schedule(static)
+            // Parallélisation sur les éléments du domaine (k)
+            #pragma omp parallel for schedule(guided)
             for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
             {
                 double x = barycenters[3*k];
                 double y = barycenters[3*k + 1];
 
                 double currentPhi = 0.0, gradPhiX = 0.0, gradPhiY = 0.0;
-                double h, hX, hY, g, gX, gY;
 
+                // Boucle interne sur les éléments de frontière (bieVec)
                 for(std::size_t el = 0; el < bieVec.size(); el++)
                 {
                     if(computePhi)
                     {
-                        h = computeAnalyticalH(x, y, bieVec[el], bieVec[el].normalOutward);
-                        g = solutionType ?
+                        double h = computeAnalyticalH(x, y, bieVec[el], bieVec[el].normalOutward);
+                        double g = solutionType ?
                             computeAnalyticalG(x, y, bieVec[el]) :
-                            computeNumericalG(x, y, bieVec[el], integrationType);
+                            computeNumericalG(x, y, bieVec[el], integrationType, localCoord, weights);
+
                         currentPhi += h * bieVec[el].bcValue[0] - g * bieVec[el].bcValue[1];
                     }
+
                     if(computeElectricField)
                     {
+                        double hX, gX, hY, gY;
                         if(!solutionType)
                         {
-                            hX = computeNumericalGradHx(x, y, bieVec[el], integrationType);
-                            gX = computeNumericalGradGx(x, y, bieVec[el], integrationType);
-                            hY = computeNumericalGradHy(x, y, bieVec[el], integrationType);
-                            gY = computeNumericalGradGy(x, y, bieVec[el], integrationType);
+                            hX = computeNumericalGradHx(x, y, bieVec[el], integrationType, localCoord, weights);
+                            gX = computeNumericalGradGx(x, y, bieVec[el], integrationType, localCoord, weights);
+                            hY = computeNumericalGradHy(x, y, bieVec[el], integrationType, localCoord, weights);
+                            gY = computeNumericalGradGy(x, y, bieVec[el], integrationType, localCoord, weights);
                         }
                         else
                         {
@@ -464,6 +517,7 @@ void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>
                     }
                 }
 
+                // Écriture des résultats (chaque k est unique, donc pas de conflit)
                 phi[i][j][k].resize(1, currentPhi);
                 electricField[i][j][k].resize(3);
                 electricField[i][j][k][0] = -gradPhiX;

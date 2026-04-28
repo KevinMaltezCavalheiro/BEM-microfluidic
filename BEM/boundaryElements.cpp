@@ -140,7 +140,6 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
             continue;
 
         // --- DÉTECTION DU TROU ---
-        // On vérifie si le nom du groupe physique contient "Hole" ou "hole"
         bool isHole = (physicalGroupName.find("Hole") != std::string::npos ||
                        physicalGroupName.find("hole") != std::string::npos);
 
@@ -171,46 +170,65 @@ std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
                 for(std::size_t k = 0; k < nodeTags.size(); k++)
                     nodeIndices[nodeTags[k]] = k;
 
-                std::vector<elementStruct> localDirichlet;
-                std::vector<elementStruct> localNeumann;
-
-                for(std::size_t el = 0; el < elementTags.size(); el++)
+                // --- DÉBUT DE LA RÉGION PARALLÈLE ---
+                #pragma omp parallel
                 {
-                    elementStruct element;
-                    element.tag         = elementTags[el];
-                    element.nodeTags[0] = nodeTags[nbNodesPerElement*el];
-                    element.nodeTags[1] = nodeTags[nbNodesPerElement*el + 1];
-                    element.midNodeTag  = (nbNodesPerElement == 3)
-                                          ? nodeTags[nbNodesPerElement*el + 2] : 0;
+                    std::vector<elementStruct> localDirichlet;
+                    std::vector<elementStruct> localNeumann;
 
-                    // Si c'est un trou, on lui donne le flag 'H' pour computeNormalOrientation
-                    element.interfaceSide  = isHole ? 'H' : 'E';
+                    #pragma omp for schedule(guided)
+                    for(std::size_t el = 0; el < elementTags.size(); el++)
+                    {
+                        elementStruct element;
+                        element.tag         = elementTags[el];
+                        element.nodeTags[0] = nodeTags[nbNodesPerElement*el];
+                        element.nodeTags[1] = nodeTags[nbNodesPerElement*el + 1];
+                        element.midNodeTag  = (nbNodesPerElement == 3)
+                                              ? nodeTags[nbNodesPerElement*el + 2] : 0;
 
-                    element.interfaceName  = physicalGroupName; // On stocke le nom pour debug
-                    element.interfaceIndex = -1;
+                        // On applique les nouveaux flags
+                        element.interfaceSide  = isHole ? 'H' : 'E';
+                        element.interfaceName  = physicalGroupName;
+                        element.interfaceIndex = -1;
 
-                    std::pair<double,double> d1 = {0.0,0.0}, d2 = {0.0,0.0};
-                    if(nodalDisplacements.count(element.nodeTags[0]))
-                        d1 = nodalDisplacements[element.nodeTags[0]];
-                    if(nodalDisplacements.count(element.nodeTags[1]))
-                        d2 = nodalDisplacements[element.nodeTags[1]];
+                        std::pair<double,double> d1 = {0.0,0.0}, d2 = {0.0,0.0};
 
-                    computeGeometricParam(element, nodeIndices, nodeCoords, d1, d2);
+                        // Note: Les maps std::map ne sont pas thread-safe en écriture,
+                        // mais en lecture seule (count/find), c'est généralement OK ici.
+                        if(nodalDisplacements.count(element.nodeTags[0]))
+                            d1 = nodalDisplacements[element.nodeTags[0]];
+                        if(nodalDisplacements.count(element.nodeTags[1]))
+                            d2 = nodalDisplacements[element.nodeTags[1]];
 
-                    if(bcType) { element.bcValue[0] = bcValue; localDirichlet.push_back(element); }
-                    else       { element.bcValue[1] = bcValue; localNeumann.push_back(element);   }
-                }
+                        computeGeometricParam(element, nodeIndices, nodeCoords, d1, d2);
 
-                elementVector.insert(elementVector.begin(),
-                                     localDirichlet.begin(), localDirichlet.end());
-                elementVector.insert(elementVector.end(),
-                                     localNeumann.begin(), localNeumann.end());
-                nbDirichletElements += localDirichlet.size();
+                        if(bcType) {
+                            element.bcValue[0] = bcValue;
+                            localDirichlet.push_back(element);
+                        }
+                        else {
+                            element.bcValue[1] = bcValue;
+                            localNeumann.push_back(element);
+                        }
+                    }
+
+                    // Fusion des résultats locaux dans le vecteur global
+                    #pragma omp critical
+                    {
+                        if (!localDirichlet.empty()) {
+                            elementVector.insert(elementVector.begin(), localDirichlet.begin(), localDirichlet.end());
+                            nbDirichletElements += localDirichlet.size();
+                        }
+                        if (!localNeumann.empty()) {
+                            elementVector.insert(elementVector.end(), localNeumann.begin(), localNeumann.end());
+                        }
+                    }
+                } // --- FIN DE LA RÉGION PARALLÈLE ---
             }
         }
     }
 
-    // On appelle la fonction d'orientation qui va maintenant reconnaître les 'H'
+    // On garde l'orientation hors parallélisation (souvent séquentiel par nature)
     computeNormalOrientation(elementVector, domainPhysicalGroupTag);
 
     return nbDirichletElements;
@@ -399,20 +417,28 @@ void fillSystem(Eigen::MatrixXd &A,
                 const std::string integrationType,
                 const bool solutionType)
 {
-    // nbExternalElements: all elements with interfaceSide == 'E'
+    // nbExternalElements: all elements with interfaceSide == 'E' ou 'H'
+    // Ce calcul reste séquentiel car très rapide.
     std::size_t nbExternalElements = 0;
     for(auto &e : elementVector)
         if(e.interfaceSide == 'E' || e.interfaceSide == 'H') nbExternalElements++;
 
-    double h, g;
+    // On récupère la taille pour la lisibilité
+    const std::size_t N = elementVector.size();
+    std::vector<double> localCoord, weights;
+    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
 
-    //#pragma omp parallel for collapse(2) schedule(guided) \
-        shared(elementVector, A, B, c) private(h, g)
-    for(std::size_t i = 0; i < elementVector.size(); i++)
+    // Début de la parallélisation
+    // collapse(2) permet de fusionner les deux boucles pour que les threads
+    // se partagent les N*N itérations au lieu de seulement les N de la première boucle.
+    #pragma omp parallel for collapse(2) schedule(guided) shared(elementVector, A, B, c)
+    for(std::size_t i = 0; i < N; i++)
     {
-        for(std::size_t j = 0; j < elementVector.size(); j++)
+        for(std::size_t j = 0; j < N; j++)
         {
-            h = 0.0; g = 0.0;
+            // h et g sont déclarés à l'intérieur pour être privés à chaque itération
+            double h = 0.0;
+            double g = 0.0;
 
             if(i == j)
             {
@@ -421,33 +447,34 @@ void fillSystem(Eigen::MatrixXd &A,
             }
             else
             {
-                h = computeAnalyticalH(elementVector[i].midX, elementVector[i].midY, elementVector[j], elementVector[j].normalOutward);
+                // Note : computeAnalyticalH prend maintenant 4 arguments
+                h = computeAnalyticalH(elementVector[i].midX, elementVector[i].midY,
+                                       elementVector[j], elementVector[j].normalOutward);
+
                 if(!solutionType)
                     g = computeNumericalG(elementVector[i].midX, elementVector[i].midY,
-                                          elementVector[j], integrationType);
+                                          elementVector[j], integrationType, localCoord, weights);
                 else
-                    g = computeAnalyticalG(elementVector[i].midX, elementVector[i].midY, elementVector[j]);
+                    g = computeAnalyticalG(elementVector[i].midX, elementVector[i].midY,
+                                           elementVector[j]);
             }
 
-            // ---- placement in A and B ----
-            // External Dirichlet column j  → unknown is phi_n  → A gets g, B gets h, c gets phi
-            // External Neumann   column j  → unknown is phi    → A gets -h, B gets -g, c gets phi_n
-            // Interface element  column j  → handled in assembleGlobalSystem;
-            //   here we simply store the RAW (h, g) in B(i,j) and A(i,j) respectively
-            //   using the Neumann convention so the values can be extracted later.
+            // ---- Remplissage des matrices A, B et du vecteur c ----
+            // Les opérations d'écriture dans les matrices Eigen sont sûres ici
+            // car chaque paire (i, j) est unique par thread.
 
             if(elementVector[j].interfaceSide == 'E' || elementVector[j].interfaceSide == 'H')
             {
                 if(j < nbDirichletElements)
                 {
-                    // Dirichlet: phi known → solve for phi_n
                     A(i,j) =  g;
                     B(i,j) =  h;
+                    // Note: c(j) est écrit plusieurs fois (pour chaque i), mais c'est
+                    // la même valeur, donc pas de race condition problématique.
                     c(j)   = elementVector[j].bcValue[0];
                 }
                 else
                 {
-                    // Neumann: phi_n known → solve for phi
                     A(i,j) = -h;
                     B(i,j) = -g;
                     c(j)   = elementVector[j].bcValue[1];
@@ -455,12 +482,9 @@ void fillSystem(Eigen::MatrixXd &A,
             }
             else
             {
-                // Interface element: store raw values; assembleGlobalSystem will
-                // pick them up and place them in the right global columns.
-                // We use A for g and B for h (consistent with the Neumann convention).
-                A(i,j) = -h;   // raw H coefficient for this interface element
-                B(i,j) = -g;   // raw G coefficient for this interface element
-                c(j)   = 0.0;  // no local prescribed value
+                A(i,j) = -h;
+                B(i,j) = -g;
+                c(j)   = 0.0;
             }
         }
     }
@@ -477,9 +501,12 @@ void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
 {
     double epsilon = getEpsilon(domainName);
 
-    //#pragma omp parallel for schedule(guided)
+    // Parallélisation de la boucle sur les éléments
+    #pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < elementVector.size(); i++)
     {
+        // On ne met à jour les bcValue que pour les éléments externes ou les trous
+        // Les éléments d'interface sont déjà gérés par distributeGlobalSolution().
         if(elementVector[i].interfaceSide == 'E' || elementVector[i].interfaceSide == 'H')
         {
             if(i < nbDirichletElements)
@@ -487,13 +514,16 @@ void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
             else
                 elementVector[i].bcValue[0] = x(i);
         }
-        // Interface elements already have bcValue[0] and bcValue[1] set by
-        // distributeGlobalSolution().
 
+        // Calcul de la pression électrostatique
         double pressure = epsilon * elementVector[i].bcValue[1] * elementVector[i].bcValue[1] / 2.0;
 
-        //#pragma omp critical
-        electrostaticPressure[elementVector[i].tag] = pressure;
+        // L'insertion dans une std::map n'est PAS thread-safe.
+        // On utilise critical pour éviter que deux threads n'écrivent en même temps.
+        #pragma omp critical
+        {
+            electrostaticPressure[elementVector[i].tag] = pressure;
+        }
     }
 }
 

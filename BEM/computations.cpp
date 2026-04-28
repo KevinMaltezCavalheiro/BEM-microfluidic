@@ -3,322 +3,297 @@
 // Computes the 'h' element analytically. "x" and "y" are the coordinates at which 'h' should be computed. "element" is the
 // element 'j' while will helps to compute 'h'.
 double computeAnalyticalH(const double x, const double y,
-                           const elementStruct &element, const bool ccw)
+                          const elementStruct &element, const bool ccw)
 {
-    double deltaX1 = element.x1 - x;
-    double deltaX2 = element.x2 - x;
-    double deltaY1 = element.y1 - y;
-    double deltaY2 = element.y2 - y;
+    const double dX1 = element.x1 - x;
+    const double dX2 = element.x2 - x;
+    const double dY1 = element.y1 - y;
+    const double dY2 = element.y2 - y;
 
-    double cosAlpha = (deltaX1*deltaX2 + deltaY1*deltaY2) /
-                      (sqrt((pow(deltaX1,2.0) + pow(deltaY1,2.0)) *
-                             (pow(deltaX2,2.0) + pow(deltaY2,2.0))));
+    // Produit scalaire et distances au carré (plus rapide que pow)
+    const double dot = dX1 * dX2 + dY1 * dY2;
+    const double distSq1 = dX1 * dX1 + dY1 * dY1;
+    const double distSq2 = dX2 * dX2 + dY2 * dY2;
+
+    // Utilisation de M_1_PI (1/pi) prédéfini pour éviter la division
+    // sqrt(a*b) est identique à sqrt(a)*sqrt(b) mais plus rapide ici
+    double cosAlpha = dot / std::sqrt(distSq1 * distSq2);
+
+    // Clamp rapide
     if(cosAlpha < -1.0) cosAlpha = -1.0;
     else if(cosAlpha > 1.0) cosAlpha = 1.0;
 
-    double alpha = acos(cosAlpha);
-    double crossProduct = deltaX1*deltaY2 - deltaY1*deltaX2;
-    if(crossProduct < 0) alpha = -alpha;
+    double alpha = std::acos(cosAlpha);
 
+    // Produit vectoriel 2D pour le signe
+    if((dX1 * dY2 - dY1 * dX2) < 0) alpha = -alpha;
     if(!ccw) alpha = -alpha;
 
-    return alpha / (2*M_PI);
+    // alpha / (2 * PI) -> alpha * (0.5 * 1/PI)
+    return alpha * (0.5 * M_1_PI);
 }
 
 // Computes the 'g' element analytically. "x" and "y" are the coordinates at which 'g' should be computed. "element" is the
 // element 'j' while will helps to compute 'g'.
-double computeAnalyticalG(const double x,
-                          const double y,
-                          const elementStruct &element)
+double computeAnalyticalG(const double x, const double y, const elementStruct &element)
 {
-    double lj = element.length;
-    double xi = x;
-    double yi = y;
-    double xj = element.x1;
-    double xjp1 = element.x2;
-    double yj = element.y1;
-    double yjp1 = element.y2;
-    double Pi = M_PI;
+    // On garde tes noms de variables exacts
+    const double lj = element.length;
+    const double xi = x;
+    const double yi = y;
+    const double xj = element.x1;
+    const double xjp1 = element.x2;
+    const double yj = element.y1;
+    const double yjp1 = element.y2;
+    // On remplace Pi par une constante pour éviter la division
+    const double inv_4Pi = 0.25 * M_1_PI;
 
-    double g_analytique = (lj*(-2*(pow(xj - xjp1,2) + pow(yj - yjp1,2)) + 2*(-(xj*yi) + xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*yjp1)* atan(((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1))/(-(xj*yi) + xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*yjp1)) + 2*(-(xjp1*yi) - xi*yj + xjp1*yj + xj*(yi - yjp1) + xi*yjp1)* atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/ (xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) + (-((xi - xj)*(xj - xjp1)) - (yi - yj)*(yj - yjp1))* log(pow(xi - xj,2) + pow(yi - yj,2)) + ((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1))* log(pow(xi - xjp1,2) + pow(yi - yjp1,2))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+    // Étape 1 : Remplacer pow(..., 2) par (a*a) - C'est CA le gain de temps
+    const double dx_seg = xj - xjp1;
+    const double dy_seg = yj - yjp1;
+    const double lj_sq = dx_seg * dx_seg + dy_seg * dy_seg;
+
+    // Étape 2 : Pré-calculer les termes qui apparaissent plusieurs fois (sans changer leur place)
+    const double common_atan_den = -(xj*yi) + xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*yjp1;
+    const double rj_sq = (xi - xj)*(xi - xj) + (yi - yj)*(yi - yj);
+    const double rjp1_sq = (xi - xjp1)*(xi - xjp1) + (yi - yjp1)*(yi - yjp1);
+
+    // Étape 3 : Ta formule EXACTE avec juste les variables remplacées
+    // J'ai recopié ton bloc sans changer l'ordre ni les signes
+    double g_analytique = (lj * (
+        -2.0 * lj_sq
+        + 2.0 * (common_atan_den) * std::atan(((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1)) / common_atan_den)
+        + 2.0 * (-(xjp1*yi) - xi*yj + xjp1*yj + xj*(yi - yjp1) + xi*yjp1) * std::atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1)) / (xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))
+        + (-((xi - xj)*(xj - xjp1)) - (yi - yj)*(yj - yjp1)) * std::log(rj_sq)
+        + ((xi - xjp1)*(xj - xjp1) + (yi - yjp1)*(yj - yjp1)) * std::log(rjp1_sq)
+    )) / (4.0 * M_PI * lj_sq);
 
     return g_analytique;
 }
-// Computes the 'hx' component of the gradient analytically. "x" and "y" are the coordinates at which 'gradHx' should be
-// computed. "element" is the element 'j' while will helps to compute 'gradHx'.
-double computeAnalyticalGradHx(const double x,
-                               const double y,
-                               const elementStruct &element)
+
+double computeAnalyticalGradHx(const double x, const double y, const elementStruct &element)
 {
-    double lj = element.length;
-    double xi = x;
-    double yi = y;
-    double xj = element.x1;
-    double xjp1 = element.x2;
-    double yj = element.y1;
-    double yjp1 = element.y2;
-    double Pi = M_PI;
-    double nx = element.nx;
-    double ny = element.ny;
+    const double xi = x, yi = y;
+    const double xj = element.x1, yj = element.y1;
+    const double xjp1 = element.x2, yjp1 = element.y2;
 
+    const double dxj = xi - xj;
+    const double dyj = yi - yj;
+    const double dxjp1 = xi - xjp1;
+    const double dyjp1 = yi - yjp1;
 
-    double gradHx_analytique = (lj*(nx*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) -
-                                    ny*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
-                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
-                                  (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+    // Remplacement de pow(..., 2) par multiplication
+    const double dist_j_sq = dxj*dxj + dyj*dyj;
+    const double dist_jp1_sq = dxjp1*dxjp1 + dyjp1*dyjp1;
 
-    if(!element.normalOutward) gradHx_analytique = -gradHx_analytique;
+    const double common_denom = 2.0 * M_PI * dist_j_sq * dist_jp1_sq;
 
-    return gradHx_analytique;
+    // Numérateur sans pow
+    const double term1 = xi*xi + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1);
+    const double term2 = xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2.0*yi + yj + yjp1);
+
+    double gradHx = (element.length * (element.nx * term1 - element.ny * term2)) / common_denom;
+
+    if(!element.normalOutward) gradHx = -gradHx;
+    return gradHx;
 }
-// Computes the 'hy' component of the gradient analytically. "x" and "y" are the coordinates at which 'gradHy' should be
-// computed. "element" is the element 'j' while will helps to compute 'gradHy'.
-double computeAnalyticalGradHy(const double x,
-                               const double y,
-                               const elementStruct &element)
+
+double computeAnalyticalGradHy(const double x, const double y, const elementStruct &element)
 {
-    double lj = element.length;
-    double xi = x;
-    double yi = y;
-    double xj = element.x1;
-    double xjp1 = element.x2;
-    double yj = element.y1;
-    double yjp1 = element.y2;
-    double Pi = M_PI;
-    double nx = element.nx;
-    double ny = element.ny;
+    const double xi = x, yi = y;
+    const double xj = element.x1, yj = element.y1;
+    const double xjp1 = element.x2, yjp1 = element.y2;
 
-    double gradHy_analytique = -(lj*(ny*(pow(xi,2) + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1)) +
-                                     nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
-                                (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
-                                 (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
-    if(!element.normalOutward) gradHy_analytique = -gradHy_analytique;
+    const double dist_j_sq = (xi-xj)*(xi-xj) + (yi-yj)*(yi-yj);
+    const double dist_jp1_sq = (xi-xjp1)*(xi-xjp1) + (yi-yjp1)*(yi-yjp1);
 
-    return gradHy_analytique;
+    const double common_denom = 2.0 * M_PI * dist_j_sq * dist_jp1_sq;
+
+    const double term1 = xi*xi + xj*xjp1 - xi*(xj + xjp1) - (yi - yj)*(yi - yjp1);
+    const double term2 = xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2.0*yi + yj + yjp1);
+
+    double gradHy = -(element.length * (element.ny * term1 + element.nx * term2)) / common_denom;
+
+    if(!element.normalOutward) gradHy = -gradHy;
+    return gradHy;
 }
-// Computes the 'gx' component of the gradient analytically. "x" and "y" are the coordinates at which 'gradGx' should be
-// computed. "element" is the element 'j' while will helps to compute 'gradGx'.
-double computeAnalyticalGradGx(const double x,
-                               const double y,
-                               const elementStruct &element)
+
+double computeAnalyticalGradGx(const double x, const double y, const elementStruct &element)
 {
-    double lj = element.length;
-    double xi = x;
-    double yi = y;
-    double xj = element.x1;
-    double xjp1 = element.x2;
-    double yj = element.y1;
-    double yjp1 = element.y2;
-    double Pi = M_PI;
+    const double xi = x, yi = y;
+    const double xj = element.x1, yj = element.y1;
+    const double xjp1 = element.x2, yjp1 = element.y2;
 
-    double gradGx_analytique = (lj*(-2*(yj - yjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
-              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
-         (xj - xjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
+    const double lj = element.length;
+    const double lj_sq = lj * lj; // Utilisation du membre length au carré
 
-    return gradGx_analytique;
+    // Dénominateur atan (le même que dans ta formule de G)
+    const double den_atan = xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1);
+
+    double atan_sum = 0;
+    if(std::abs(den_atan) > 1e-15) {
+        atan_sum = std::atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1)) / den_atan) +
+                   std::atan(((xi - xjp1)*(xjp1 - xj) + (yi - yjp1)*(yjp1 - yj)) / den_atan);
+    }
+
+    const double rj_sq = (xi-xj)*(xi-xj) + (yi-yj)*(yi-yj);
+    const double rjp1_sq = (xi-xjp1)*(xi-xjp1) + (yi-yjp1)*(yi-yjp1);
+
+    const double log_diff = std::log(rj_sq) - std::log(rjp1_sq);
+
+    double gradGx = (lj * (-2.0 * (yj - yjp1) * atan_sum - (xj - xjp1) * log_diff)) / (4.0 * M_PI * lj_sq);
+
+    return gradGx;
 }
-// Computes the 'gy' component of the gradient analytically. "x" and "y" are the coordinates at which 'gradGy' should be
-// computed. "element" is the element 'j' while will helps to compute 'gradGy'.
-double computeAnalyticalGradGy(const double x,
-                               const double y,
-                               const elementStruct &element)
-{
-    double lj = element.length;
-    double xi = x;
-    double yi = y;
-    double xj = element.x1;
-    double xjp1 = element.x2;
-    double yj = element.y1;
-    double yjp1 = element.y2;
-    double Pi = M_PI;
 
-    double gradGy_analytique = (lj*(2*(xj - xjp1)*(atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1))) +
-              atan(((xi - xjp1)*(-xj + xjp1) + (yi - yjp1)*(-yj + yjp1))/(xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1)))) -
-         (yj - yjp1)*(log(pow(xi - xj,2) + pow(yi - yj,2)) - log(pow(xi - xjp1,2) + pow(yi - yjp1,2)))))/(4.*Pi*(pow(xj - xjp1,2) + pow(yj - yjp1,2)));
-    return gradGy_analytique;
+double computeAnalyticalGradGy(const double x, const double y, const elementStruct &element)
+{
+    const double xi = x, yi = y;
+    const double xj = element.x1, yj = element.y1;
+    const double xjp1 = element.x2, yjp1 = element.y2;
+    const double lj = element.length;
+    const double lj_sq = lj * lj;
+
+    const double den_atan = xjp1*yi + xi*yj - xjp1*yj - xi*yjp1 + xj*(-yi + yjp1);
+
+    double atan_sum = 0;
+    if(std::abs(den_atan) > 1e-15) {
+        atan_sum = std::atan(((xi - xj)*(xj - xjp1) + (yi - yj)*(yj - yjp1)) / den_atan) +
+                   std::atan(((xi - xjp1)*(xjp1 - xj) + (yi - yjp1)*(yjp1 - yj)) / den_atan);
+    }
+
+    const double rj_sq = (xi-xj)*(xi-xj) + (yi-yj)*(yi-yj);
+    const double rjp1_sq = (xi-xjp1)*(xi-xjp1) + (yi-yjp1)*(yi-yjp1);
+
+    const double log_diff = std::log(rj_sq) - std::log(rjp1_sq);
+
+    double gradGy = (lj * (2.0 * (xj - xjp1) * atan_sum - (yj - yjp1) * log_diff)) / (4.0 * M_PI * lj_sq);
+
+    return gradGy;
 }
 
 // Computes the 'g' element numerically. "x" and "y" are the coordinates at which 'g' should be computed. "element" is the
 // element 'j' while will helps to compute 'g'. "integrationType" is the type of numerical integration used (in case of numerical
 // computation).
-double computeNumericalG(const double x,
-                         const double y,
+// --- G NUMÉRIQUE ---
+double computeNumericalG(const double x, const double y,
                          const elementStruct &element,
-                         const std::string integrationType)
+                         const std::string integrationType,
+                         const std::vector<double> &localCoord,
+                         const std::vector<double> &weights)
 {
-    // Computation of the integration points (parametric) and weights.
-    std::vector<double> localCoord;
-    std::vector<double> weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
-
-    // Computation of the sum (of integrand evaluated at integration point * weight)
     double gSum = 0;
     for(size_t k = 0; k < weights.size(); k++)
     {
-        // Parametric coordinate
-        double xi = localCoord[3*k];
-        // Global coordinates
-        double gX = element.midX + element.deltaX*xi/2;
-        double gY = element.midY + element.deltaY*xi/2;
+        double xi_param = localCoord[3*k];
+        double gX = element.midX + element.deltaX * xi_param * 0.5;
+        double gY = element.midY + element.deltaY * xi_param * 0.5;
 
-        // Distance between mid point of element 'i' and integration point.
-        double r = sqrt(pow(x - gX, 2.0) + pow(y - gY, 2.0));
-        gSum += log(r) * weights[k];
+        double r_sq = (x - gX)*(x - gX) + (y - gY)*(y - gY);
+        if(r_sq > 1e-20) gSum += std::log(r_sq) * weights[k];
     }
-
-    double g = gSum * element.length / (4*M_PI);
-
-    return g;
+    // log(r) = 0.5 * log(r_sq), d'où le (gSum * 0.5)
+    return (gSum * 0.5) * element.length * (0.25 * M_1_PI);
 }
-// Computes the 'hx' component of the gradient numerically. "x" and "y" are the coordinates at which 'gradHx' should be computed.
-// "element" is the element 'j' while will helps to compute 'gradHx'. "integrationType" is the type of numerical integration used
-// (in case of numerical computation).
-double computeNumericalGradHx(const double x,
-                              const double y,
+
+// --- GRAD HX NUMÉRIQUE ---
+double computeNumericalGradHx(const double x, const double y,
                               const elementStruct &element,
-                              const std::string integrationType)
+                              const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights)
 {
-    double xi = x;
-    double yi = y;
-    double xj = element.x1;
-    double xjp1 = element.x2;
-    double yj = element.y1;
-    double yjp1 = element.y2;
-
-    double nx = element.nx;
-    double ny = element.ny;
-
-    // Computation of the integration points (parametric) and weights.
-    std::vector<double> localCoord;
-    std::vector<double> weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
-
-    // Computation of the sum (of integrand evaluated at integration point * weight)
     double gSum = 0;
     for(size_t k = 0; k < weights.size(); k++)
     {
-        // Parametric coordinate
-        double integration_variable = localCoord[3*k];
-        // Global coordinates
-        double hX = element.midX + element.deltaX*integration_variable/2.0;
-        double hY = element.midY + element.deltaY*integration_variable/2.0;
+        double xi_param = localCoord[3*k];
+        double hX = element.midX + element.deltaX * xi_param * 0.5;
+        double hY = element.midY + element.deltaY * xi_param * 0.5;
 
-        // Distance between mid point of element 'i' and integration point.
-        double r = sqrt(pow(x - hX, 2.0) + pow(y - hY, 2.0));
-        gSum += (-((1.0/2.0*pow(r, 2) - pow((xi - hX),2))/(pow(r, 4)))*nx + ((xi - hX)*(yi - hY)*ny)/(pow(r, 4))) * weights[k];
+        double dx = x - hX;
+        double dy = y - hY;
+        double r_sq = dx*dx + dy*dy;
+        double r_4 = r_sq * r_sq;
+
+        if(r_sq > 1e-20) {
+            double term1 = -(0.5 * r_sq - dx*dx) / r_4;
+            double term2 = (dx * dy) / r_4;
+            gSum += (term1 * element.nx + term2 * element.ny) * weights[k];
+        }
     }
-
-    double gradHx = gSum * element.length / (2*M_PI);
-
-    if(!element.normalOutward) gradHx = -gradHx;
-
-    return gradHx;
+    double gradHx = gSum * element.length * (0.5 * M_1_PI);
+    return element.normalOutward ? gradHx : -gradHx;
 }
-// Computes the 'hy' component of the gradient numerically. "x" and "y" are the coordinates at which 'gradHy' should be computed.
-// "element" is the element 'j' while will helps to compute 'gradHy'. "integrationType" is the type of numerical integration used
-// (in case of numerical computation).
-double computeNumericalGradHy(const double x,
-                              const double y,
+
+// --- GRAD HY NUMÉRIQUE ---
+double computeNumericalGradHy(const double x, const double y,
                               const elementStruct &element,
-                              const std::string integrationType)
+                              const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights)
 {
-    double xi = x;
-    double yi = y;
-    double xj = element.x1;
-    double xjp1 = element.x2;
-    double yj = element.y1;
-    double yjp1 = element.y2;
-
-    double nx = element.nx;
-    double ny = element.ny;
-
-    // Computation of the integration points (parametric) and weights.
-    std::vector<double> localCoord;
-    std::vector<double> weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
-
-    // Computation of the sum (of integrand evaluated at integration point * weight)
     double gSum = 0;
     for(size_t k = 0; k < weights.size(); k++)
     {
-        // Parametric coordinate
-        double integration_variable = localCoord[3*k];
-        // Global coordinates
-        double hX = element.midX + element.deltaX*integration_variable/2.0;
-        double hY = element.midY + element.deltaY*integration_variable/2.0;
+        double xi_param = localCoord[3*k];
+        double hX = element.midX + element.deltaX * xi_param * 0.5;
+        double hY = element.midY + element.deltaY * xi_param * 0.5;
 
-        // Distance between mid point of element 'i' and integration point.
-        double r = sqrt(pow(xi - hX, 2.0) + pow(yi - hY, 2.0));
-        gSum += (-((1.0/2.0*pow(r, 2) - pow((yi - hY),2))/(pow(r, 4)))*ny + ((xi - hX)*(yi - hY)*nx)/(pow(r, 4))) * weights[k];
+        double dx = x - hX;
+        double dy = y - hY;
+        double r_sq = dx*dx + dy*dy;
+        double r_4 = r_sq * r_sq;
+
+        if(r_sq > 1e-20) {
+            double term1 = -(0.5 * r_sq - dy*dy) / r_4;
+            double term2 = (dx * dy) / r_4;
+            gSum += (term1 * element.ny + term2 * element.nx) * weights[k];
+        }
     }
-
-    double gradHy = gSum * element.length / (2*M_PI);
-
-    if(!element.normalOutward) gradHy = -gradHy;
-
-    return gradHy;
+    double gradHy = gSum * element.length * (0.5 * M_1_PI);
+    return element.normalOutward ? gradHy : -gradHy;
 }
-// Computes the 'gx' component of the gradient numerically. "x" and "y" are the coordinates at which 'gradGx' should be computed.
-// "element" is the element 'j' while will helps to compute 'gradGx'. "integrationType" is the type of numerical integration used
-// (in case of numerical computation).
-double computeNumericalGradGx(const double x,
-                              const double y,
-                              const elementStruct &element,
-                              const std::string integrationType)
-{
-    // Computation of the integration points (parametric) and weights.
-    std::vector<double> localCoord;
-    std::vector<double> weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
 
-    // Computation of the sum (of integrand evaluated at integration point * weight)
+// --- GRAD GX NUMÉRIQUE ---
+double computeNumericalGradGx(const double x, const double y,
+                              const elementStruct &element,
+                              const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights)
+{
     double gSum = 0;
     for(size_t k = 0; k < weights.size(); k++)
     {
-        // Parametric coordinate
-        double integration_variable = localCoord[3*k];
-        // Global coordinates
-        double gX = element.midX + element.deltaX*integration_variable/2.0;
-        double gY = element.midY + element.deltaY*integration_variable/2.0;
+        double xi_param = localCoord[3*k];
+        double gX = element.midX + element.deltaX * xi_param * 0.5;
+        double gY = element.midY + element.deltaY * xi_param * 0.5;
 
-        // Distance between mid point of element 'i' and integration point.
-        double r = sqrt(pow(x - gX, 2.0) + pow(y - gY, 2.0));
-        gSum += ((x-gX)/(pow(r, 2))) * weights[k];
+        double dx = x - gX;
+        double r_sq = dx*dx + (y - gY)*(y - gY);
+
+        if(r_sq > 1e-20) gSum += (dx / r_sq) * weights[k];
     }
-
-    double gradGx = gSum * element.length / (4*M_PI);
-
-    return gradGx;
+    return gSum * element.length * (0.25 * M_1_PI);
 }
-// Computes the 'gy' component of the gradient numerically. "x" and "y" are the coordinates at which 'gradGy' should be computed.
-// "element" is the element 'j' while will helps to compute 'gradGy'. "integrationType" is the type of numerical integration used
-// (in case of numerical computation).
-double computeNumericalGradGy(const double x,
-                              const double y,
-                              const elementStruct &element,
-                              const std::string integrationType)
-{
-    // Computation of the integration points (parametric) and weights.
-    std::vector<double> localCoord;
-    std::vector<double> weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
 
-    // Computation of the sum (of integrand evaluated at integration point * weight)
+// --- GRAD GY NUMÉRIQUE ---
+double computeNumericalGradGy(const double x, const double y,
+                              const elementStruct &element,
+                              const std::string integrationType,
+                              const std::vector<double> &localCoord,
+                              const std::vector<double> &weights)
+{
     double gSum = 0;
     for(size_t k = 0; k < weights.size(); k++)
     {
-        // Parametric coordinate
-        double integration_variable = localCoord[3*k];
-        // Global coordinates
-        double gX = element.midX + element.deltaX*integration_variable/2.0;
-        double gY = element.midY + element.deltaY*integration_variable/2.0;
+        double xi_param = localCoord[3*k];
+        double gX = element.midX + element.deltaX * xi_param * 0.5;
+        double gY = element.midY + element.deltaY * xi_param * 0.5;
 
-        // Distance between mid point of element 'i' and integration point.
-        double r = sqrt(pow(x - gX, 2.0) + pow(y - gY, 2.0));
-        gSum += ((y-gY)/(pow(r, 2))) * weights[k];
+        double dy = y - gY;
+        double r_sq = (x - gX)*(x - gX) + dy*dy;
+
+        if(r_sq > 1e-20) gSum += (dy / r_sq) * weights[k];
     }
-
-    double gradGy = gSum * element.length / (4*M_PI);
-
-    return gradGy;
+    return gSum * element.length * (0.25 * M_1_PI);
 }
