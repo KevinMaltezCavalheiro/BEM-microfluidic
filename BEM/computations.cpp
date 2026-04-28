@@ -67,6 +67,8 @@ double computeAnalyticalGradHx(const double x,
                                 (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
                                   (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
 
+    if(!element.normalOutward) gradHx_analytique = -gradHx_analytique;
+
     return gradHx_analytique;
 }
 // Computes the 'hy' component of the gradient analytically. "x" and "y" are the coordinates at which 'gradHy' should be
@@ -90,6 +92,7 @@ double computeAnalyticalGradHy(const double x,
                                      nx*(xj*yi + xjp1*yi - xjp1*yj - xj*yjp1 + xi*(-2*yi + yj + yjp1))))/
                                 (2.*Pi*(pow(xi - xj,2) + pow(yi - yj,2))*
                                  (pow(xi - xjp1,2) + pow(yi - yjp1,2)));
+    if(!element.normalOutward) gradHy_analytique = -gradHy_analytique;
 
     return gradHy_analytique;
 }
@@ -207,6 +210,8 @@ double computeNumericalGradHx(const double x,
 
     double gradHx = gSum * element.length / (2*M_PI);
 
+    if(!element.normalOutward) gradHx = -gradHx;
+
     return gradHx;
 }
 // Computes the 'hy' component of the gradient numerically. "x" and "y" are the coordinates at which 'gradHy' should be computed.
@@ -248,6 +253,8 @@ double computeNumericalGradHy(const double x,
     }
 
     double gradHy = gSum * element.length / (2*M_PI);
+
+    if(!element.normalOutward) gradHy = -gradHy;
 
     return gradHy;
 }
