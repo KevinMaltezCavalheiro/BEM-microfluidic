@@ -250,54 +250,41 @@ void detectInterfaces(std::vector<interfaceStruct> &interfaces,
         std::string name;
         gmsh::model::getPhysicalName(dimTag.first, dimTag.second, name);
 
-        // Convention: "BEM_interface_<domainA>_<domainB>"
-        // Split by '_': ["BEM", "interface", "<domainA>", "<domainB>"]
         std::stringstream ss(name);
         std::vector<std::string> words;
         std::string word;
         while(getline(ss, word, '_'))
             words.push_back(word);
 
+        // On attend au moins BEM_interface_A_B (4 mots)
         if(words.size() < 4 || words[0] != "BEM" || words[1] != "interface")
             continue;
 
-        // Domain names may themselves contain underscores, so we reconstruct
-        // them as words[2] and words[3..end].  For simplicity we assume that
-        // each domain name is a single token (no underscores internally).
-        // If you need multi-token domain names, adjust the .geo naming convention.
-        std::string dA = words[2];
-        std::string dB = words[3];
-        // Re-join remaining words if domain name has embedded underscores
-        for(std::size_t w = 4; w < words.size(); w++)
-            dB += "_" + words[w];
+        interfaceStruct iface;
+        iface.name = name; // On garde le nom complet (ex: BEM_interface_1_2_jux)
 
-        // Verify both domain names are known.
-        bool foundA = false, foundB = false;
-        for(auto &dn : domainNames)
-        {
-            if(dn == dA) foundA = true;
-            if(dn == dB) foundB = true;
-        }
-        if(!foundA || !foundB)
-        {
-            std::cout << "\tWarning: interface '" << name
-                      << "' references unknown domain(s). Skipping.\n";
+        // On récupère dA et dB
+        iface.domainA = words[2];
+        iface.domainB = words[3];
+
+        // On vérifie si les noms de domaines sont valides
+        auto itA = std::find(domainNames.begin(), domainNames.end(), iface.domainA);
+        auto itB = std::find(domainNames.begin(), domainNames.end(), iface.domainB);
+
+        if(itA == domainNames.end() || itB == domainNames.end()) {
+            std::cout << "\tWarning: interface '" << name << "' inconnue. Skipping.\n";
             continue;
         }
 
-        interfaceStruct iface;
-        iface.name    = name;
-        iface.domainA = dA;
-        iface.domainB = dB;
-
-        // Compute k-ratio = epsilon_A / epsilon_B
-        double epsA = getEpsilon("BEM_domain_" + dA);
-        double epsB = getEpsilon("BEM_domain_" + dB);
+        // Calcul du k-ratio
+        double epsA = getEpsilon("BEM_domain_" + iface.domainA);
+        double epsB = getEpsilon("BEM_domain_" + iface.domainB);
         iface.kRatio = (epsB > 0.0) ? (epsA / epsB) : 1.0;
 
         interfaces.push_back(iface);
-        std::cout << "  Detected interface '" << name
-                  << "'  (k_ratio = " << iface.kRatio << ")\n";
+        std::cout << "  Detected interface '" << name << "' (type: "
+                  << (name.find("_inc") != std::string::npos ? "Inclusion" : "Juxtaposition")
+                  << ", k_ratio = " << iface.kRatio << ")\n";
     }
 }
 
@@ -491,35 +478,74 @@ void fillSystem(Eigen::MatrixXd &A,
 }
 
 // ============================================================
-//  computeElectrostaticPressure  (unchanged from original)
+//  computeElectrostaticPressure_adapted.cpp
+//
+//  Drop-in replacement for the function in boundaryElements.cpp.
+//
+//  The original function did two things in one pass:
+//    (a) copy the solution vector x(i) into bcValue[0/1]
+//    (b) compute pressure = epsilon * phi_n^2 / 2
+//
+//  Problem with the multi-domain path:
+//    distributeGlobalSolution() has ALREADY written the correct
+//    phi and phi_n into every bcValue[0/1] (including interface
+//    elements whose flux is the shared unknown).  If we then let
+//    computeElectrostaticPressure blindly overwrite bcValue for
+//    interface elements with whatever is sitting in the global
+//    vector x (which is indexed differently), we corrupt the
+//    solution.
+//
+//  Fix:
+//    Split responsibility clearly:
+//      - Single-domain  : keep the combined update+pressure pass
+//                         (behaviour identical to before).
+//      - Multi-domain   : bcValue is already correct; just read
+//                         phi_n and compute pressure.
+//                         The function is called AFTER
+//                         distributeGlobalSolution().
+//
+//  The multi-domain pressure must also account for the correct
+//  epsilon on each side of an interface.  On BEM_interface_2_3
+//  (Oil/Water) the Maxwell stress tensor jump gives:
+//
+//      [[ (eps/2) * En^2 ]] = eps_oil * En_oil^2/2
+//                           - eps_water * En_water^2/2
+//
+//  For the FEM coupling we apply the *net* jump pressure to the
+//  droplet surface.  This is handled by the new overload
+//  computeElectrostaticPressureJump() below.
 // ============================================================
-void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
-                                  std::vector<elementStruct> &elementVector,
-                                  const Eigen::MatrixXd &x,
-                                  const std::size_t nbDirichletElements,
-                                  const std::string domainName)
-{
-    double epsilon = getEpsilon(domainName);
 
-    // Parallélisation de la boucle sur les éléments
+// ============================================================
+//  SINGLE-DOMAIN  (unchanged semantics from the original)
+// ============================================================
+void computeElectrostaticPressure(std::map<int, double>      &electrostaticPressure,
+                                  std::vector<elementStruct> &elementVector,
+                                  const Eigen::MatrixXd      &x,
+                                  const std::size_t           nbDirichletElements,
+                                  const std::string           domainName)
+{
+    const double epsilon = getEpsilon(domainName);
+
     #pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < elementVector.size(); i++)
     {
-        // On ne met à jour les bcValue que pour les éléments externes ou les trous
-        // Les éléments d'interface sont déjà gérés par distributeGlobalSolution().
-        if(elementVector[i].interfaceSide == 'E' || elementVector[i].interfaceSide == 'H')
+        // Only external / hole elements still need their bcValue updated
+        // from the solution vector.  Interface elements are handled by
+        // distributeGlobalSolution() in the multi-domain path; in the
+        // single-domain path there are no interface elements.
+        if(elementVector[i].interfaceSide == 'E' ||
+           elementVector[i].interfaceSide == 'H')
         {
             if(i < nbDirichletElements)
-                elementVector[i].bcValue[1] = x(i);
+                elementVector[i].bcValue[1] = x(i);   // Dirichlet -> qn unknown
             else
-                elementVector[i].bcValue[0] = x(i);
+                elementVector[i].bcValue[0] = x(i);   // Neumann   -> phi unknown
         }
 
-        // Calcul de la pression électrostatique
-        double pressure = epsilon * elementVector[i].bcValue[1] * elementVector[i].bcValue[1] / 2.0;
+        const double phi_n   = elementVector[i].bcValue[1];
+        const double pressure = epsilon * phi_n * phi_n * 0.5;
 
-        // L'insertion dans une std::map n'est PAS thread-safe.
-        // On utilise critical pour éviter que deux threads n'écrivent en même temps.
         #pragma omp critical
         {
             electrostaticPressure[elementVector[i].tag] = pressure;
@@ -528,52 +554,187 @@ void computeElectrostaticPressure(std::map<int, double> &electrostaticPressure,
 }
 
 // ============================================================
-//  computeNormalOrientation
-//  Pour chaque élément de la frontière, détermine si sa normale
-//  (nx,ny) pointe vers l'extérieur du domaine en vérifiant si
-//  un point légèrement décalé dans cette direction appartient
-//  au physical group du domaine.
+//  MULTI-DOMAIN  — call this AFTER distributeGlobalSolution()
+//
+//  Iterates over all domains and stores the pressure for every
+//  element.  For external / Dirichlet / Neumann elements this is
+//  simply (eps/2)*phi_n^2.  The physically meaningful quantity
+//  for the FEM coupling is the *jump* on shared interfaces; call
+//  computeElectrostaticPressureJump() instead of (or in addition
+//  to) this function when you need that.
 // ============================================================
+void computeElectrostaticPressureMultiDomain(
+        std::map<int, double>            &electrostaticPressure,
+        const std::vector<domainData>    &domains)
+{
+    for(const auto &dom : domains)
+    {
+        const double eps = dom.epsilon;
+
+        #pragma omp parallel for schedule(guided)
+        for(std::size_t i = 0; i < dom.elementVector.size(); i++)
+        {
+            const double phi_n    = dom.elementVector[i].bcValue[1];
+            const double pressure = eps * phi_n * phi_n * 0.5;
+
+            #pragma omp critical
+            {
+                electrostaticPressure[dom.elementVector[i].tag] = pressure;
+            }
+        }
+    }
+}
+
+// ============================================================
+//  JUMP PRESSURE for BEM–FEM coupling on a shared interface
+//
+//  For an interface between domain A (e.g. Oil, eps_A) and
+//  domain B (e.g. Water, eps_B), the net Maxwell-stress
+//  electrostatic pressure *acting on the interface in the
+//  direction of the outward normal of domain A* is:
+//
+//      p_jump = (eps_A * phi_nA^2 - eps_B * phi_nB^2) / 2
+//
+//  Note: distributeGlobalSolution() stores
+//        elemA.bcValue[1] =  qn_if   (flux from A side)
+//        elemB.bcValue[1] = -qn_if   (flux from B side, opposite sign)
+//  so phi_nB = -phi_nA / kRatio  (kRatio = eps_A / eps_B).
+//
+//  This function fills electrostaticPressure for every element
+//  on the specified interface using the *side-A* element tags
+//  (those are the tags that applyElecPressure() will look up,
+//  since BEM_FEM_boundary is defined on the same curves as
+//  BEM_interface_2_3 in the .geo file).
+//
+//  Parameters
+//  ----------
+//  electrostaticPressure  : map tag -> pressure (written here)
+//  domains                : all domain data (after distribute)
+//  iface                  : the interface of interest
+// ============================================================
+void computeElectrostaticPressureJump(
+        std::map<int, double>         &electrostaticPressure,
+        const std::vector<domainData> &domains,
+        const interfaceStruct         &iface)
+{
+    // Find domain A and domain B
+    const domainData *pA = nullptr, *pB = nullptr;
+    for(const auto &d : domains)
+    {
+        if(d.name == iface.domainA) pA = &d;
+        if(d.name == iface.domainB) pB = &d;
+    }
+    if(!pA || !pB)
+    {
+        std::cerr << "[computeElectrostaticPressureJump] domain not found for interface "
+                  << iface.name << "\n";
+        return;
+    }
+
+    const double epsA = pA->epsilon;
+    const double epsB = pB->epsilon;
+    const std::size_t nIf = iface.nbElements();
+
+    #pragma omp parallel for schedule(guided)
+    for(std::size_t m = 0; m < nIf; m++)
+    {
+        const std::size_t jA = iface.elemIndicesA[m];
+        const std::size_t jB = iface.elemIndicesB[m];
+
+        // phi_nA is the flux on the A-side (outward from A)
+        const double phi_nA = pA->elementVector[jA].bcValue[1];
+        // phi_nB = -phi_nA from the continuity condition stored by distribute
+        const double phi_nB = pB->elementVector[jB].bcValue[1]; // = -phi_nA
+
+        // Net Maxwell traction pointing from B into A (outward of B = droplet interior)
+        const double p_jump = 0.5 * (epsA * phi_nA * phi_nA
+                                   - epsB * phi_nB * phi_nB);
+
+        // Store under the *A-side* element tag so applyElecPressure() finds it
+        // (BEM_FEM_boundary elements share tags with BEM_interface_2_3 A-side)
+        #pragma omp critical
+        {
+            electrostaticPressure[pA->elementVector[jA].tag] = p_jump;
+        }
+    }
+}
+
 void computeNormalOrientation(std::vector<elementStruct> &elementVector,
                                const int domainPhysicalGroupTag)
 {
     for(auto &element : elementVector)
     {
-//        if(element.interfaceSide == 'A')
-//        {
-//            element.normalOutward = 0;
-//        }
-//        else if(element.interfaceSide == 'B')
-//        {
-//            element.normalOutward = 1;
-//        }
-//        else
-//        {
-//            element.normalOutward = 1;
-//        }
-        if(element.interfaceSide == 'A')
+        // On cherche le flag dans le nom de l'interface
+        bool isInclusion = (element.interfaceName.find("_inc") != std::string::npos);
+
+        // --- Cas de la frontière externe 'E' ou des trous 'H' ---
+        if(element.interfaceSide == 'E')
         {
-            // 'A' : Interface côté primaire (inversé pour couplage)
-            // 'H' : Hole (inversé pour que la normale sorte du domaine vers le centre du trou)
-            element.normalOutward = false;
-        }
-        else if(element.interfaceSide == 'B')
-        {
-            // 'B' : Interface côté secondaire
-            // 'E' : Frontière externe (Carré)
             element.normalOutward = true;
+            continue;
         }
-        else if(element.interfaceSide == 'E')
+        if(element.interfaceSide == 'H')
         {
-            // 'A' : Interface côté primaire (inversé pour couplage)
-            // 'H' : Hole (inversé pour que la normale sorte du domaine vers le centre du trou)
-            element.normalOutward = true;
-        }
-        else if(element.interfaceSide == 'H')
-        {
-            // 'B' : Interface côté secondaire
-            // 'E' : Frontière externe (Carré)
             element.normalOutward = false;
+            continue;
+        }
+
+        // --- Cas des interfaces 'A' et 'B' ---
+        if(isInclusion)
+        {
+            // LOGIQUE GOUTTE (Domaine A entoure Domaine B)
+            if(element.interfaceSide == 'A')      element.normalOutward = false;
+            else if(element.interfaceSide == 'B') element.normalOutward = true;
+        }
+        else
+        {
+            // LOGIQUE JUXTAPOSITION (Par défaut ou si _jux est présent)
+            // Ici, pour le Domaine A, la normale Gmsh est déjà sortante
+            if(element.interfaceSide == 'A')      element.normalOutward = true;
+            else if(element.interfaceSide == 'B') element.normalOutward = false;
         }
     }
+}
+
+Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
+                           const std::map<int, double> &internalPhi,
+                           const std::string &interfaceName,
+                           double epsilon_oil)
+{
+    Force2D totalForce = {0.0, 0.0};
+
+    for (const auto &el : elementVector) {
+        if (el.interfaceName == interfaceName) {
+
+            // Sécurité : Vérifier si les deux nœuds sont dans la map
+            if (internalPhi.find(el.nodeTags[0]) == internalPhi.end() ||
+                internalPhi.find(el.nodeTags[1]) == internalPhi.end()) {
+                continue; // On saute cet élément s'il manque des données nodales
+            }
+
+            double En = el.bcValue[1];
+
+            // Accès sécurisé
+            double phi1 = internalPhi.at(el.nodeTags[0]);
+            double phi2 = internalPhi.at(el.nodeTags[1]);
+
+            double Et = -(phi2 - phi1) / el.length;
+
+            double nx = el.nx;
+            double ny = el.ny;
+            double tx = -ny;
+            double ty = nx;
+
+            double Ex = En * nx + Et * tx;
+            double Ey = En * ny + Et * ty;
+            double E2 = Ex*Ex + Ey*Ey;
+
+            double Tx = epsilon_oil * (En * Ex - 0.5 * E2 * nx);
+            double Ty = epsilon_oil * (En * Ey - 0.5 * E2 * ny);
+
+            totalForce.fx += Tx * el.length;
+            totalForce.fy += Ty * el.length;
+        }
+    }
+    return totalForce;
 }

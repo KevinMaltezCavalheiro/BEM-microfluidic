@@ -581,18 +581,25 @@ void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
     displayTime(start, end, "distributeGlobalSolution", showTime);
 
     // ---- Étape 6 : pression électrostatique (Parallèle) ----
-    #pragma omp parallel for schedule(static)
-    for(std::size_t d = 0; d < domains.size(); d++)
-    {
-        auto &dom = domains[d];
-        const double eps = dom.epsilon;
-        for(auto &el : dom.elementVector)
+    // Step 6a: store per-domain pressure (useful for visualisation / debugging)
+    computeElectrostaticPressureMultiDomain(electrostaticPressure, domains);
+
+    // Step 6b: overwrite with the *jump* pressure on every interface that
+    //          is also a BEM_FEM_boundary.  The FEM solver's applyElecPressure()
+    //          looks up element tags that belong to BEM_FEM_boundary, which in
+    //          the .geo is the same set of curves as BEM_interface_2_3
+    //          (i.e. the droplet surface).  We therefore only call the jump
+    //          function for interfaces whose name contains "interface_2_3"
+    //          (or whichever interface is shared with the FEM domain).
+    for(const auto &iface : interfaces)
         {
-            const double pressure = eps * el.bcValue[1] * el.bcValue[1] / 2.0;
-            #pragma omp critical(pressure_map)
-            electrostaticPressure[el.tag] = pressure;
+            // On vérifie si le nom de l'interface contient le nom du groupe de couplage
+            // ou si l'interface lie un domaine FEM.
+            if(iface.domainA == "FEM_domain" || iface.domainB == "FEM_domain")
+            {
+                computeElectrostaticPressureJump(electrostaticPressure, domains, iface);
+            }
         }
-    }
 
     // ---- Étape 7 : post-processing (Parallèle par domaine) ----
     if(postProcessing)
@@ -631,6 +638,21 @@ void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
             computeInternalPhi(internalPhi, dNodeCoords, dNodeTags,
                                dNodeIndices, dom.elementVector, integrationType,
                                bNodeToElems, solutionType);
+
+//            for(const auto &iface : interfaces) {
+//                // Si ce domaine (dom) est le porteur (Side A) de cette interface
+//                if(iface.domainA == dom.name && iface.name.find("_inc") != std::string::npos) {
+//
+//                    Force2D F = computeDEPForceMST(dom.elementVector, internalPhi, iface.name, epsilon_oil);
+//
+//                    #pragma omp critical(print_force)
+//                    {
+//                        std::cout << "[Force DEP] Interface: " << iface.name
+//                                  << " | Fx: " << F.fx << " N/m"
+//                                  << " | Fy: " << F.fy << " N/m" << std::endl;
+//                    }
+//                }
+//            }
 
             // Calcul des données de visualisation
             std::vector<std::vector<std::vector<std::vector<double>>>> nPhi, ePhi, eField;

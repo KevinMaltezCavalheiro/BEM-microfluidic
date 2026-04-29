@@ -292,3 +292,27 @@ double computeNumericalGradGy(const double x, const double y, const elementStruc
                               const std::vector<double> &weights);
 void computeNormalOrientation(std::vector<elementStruct> &elementVector,
                                const int domainPhysicalGroupTag);
+
+  void computeElectrostaticPressureMultiDomain(
+          std::map<int, double>            &electrostaticPressure,
+          const std::vector<domainData>    &domains);
+
+  void computeElectrostaticPressureJump(
+          std::map<int, double>         &electrostaticPressure,
+          const std::vector<domainData> &domains,
+          const interfaceStruct         &iface);
+
+void boundaryElementTags(std::vector<size_t> &domainBoundaryElTags,
+                         const std::vector<std::vector<std::vector<size_t>>> &domainElementTags,
+                         const std::vector<std::vector<int>> &domainElementTypes,
+                         const std::map<size_t, std::vector<size_t>> &domainElementNodeTags,
+                         const std::map<size_t, std::vector<size_t>> &bieNodeMap);
+
+struct Force2D {
+    double fx = 0.0;
+    double fy = 0.0;
+};
+Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
+                           const std::map<int, double> &internalNodalPhi, // Utilise ta map résultante
+                           const std::string &interfaceName,
+                           double epsilon_oil);

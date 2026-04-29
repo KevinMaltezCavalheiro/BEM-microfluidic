@@ -1,166 +1,103 @@
 // ============================================================
-//  LaChoseDuStagiaire.geo  – 2-domain BEM example
-//  Domain 1 : PDMS (outside rectangle with electrode holes)
-//  Domain 2 : Oil  (inside the channel)
-//  Interface : the channel boundary (shared between the two domains)
+//  Electrodes_Channel_T_Shape_Two_Particles.geo
 // ============================================================
 
 scale = 1e-6;
 epsilon_r_PDMS = 2.8;
-epsilon_r_OIL  = 5.8;
+epsilon_r_OIL = 9.62;
+epsilon_r_WATER = 80.0;
+//epsilon_r_PDMS = 1;
+//epsilon_r_OIL = 1;
+//epsilon_r_WATER = 1;
+eps0 = 8.8541878128e-12;
 
-// ---- Geometry parameters ----
-Lx_out = 1000.0*scale;   Ly_out = 200.0*scale;
-nx_out = 16;             ny_out = 4;
-flux_out = 0.;
+Lout_x = 1000*scale; Lout_y = 200*scale;
+lc = 3*scale;
+lc_part = 2*scale;
 
-Lx1 = 100.0*scale;  Ly1 = 60.0*scale;
-cx1 = 350.0*scale;  cy1 = 0.0*scale;
-nx1 = 2;           ny1 = 2;
-phi1 = 2000.;
+// ---- 1. CADRE EXTÉRIEUR & ÉLECTRODES ----
+Point(1) = {-Lout_x/2, -Lout_y/2, 0, lc};
+Point(2) = { Lout_x/2, -Lout_y/2, 0, lc};
+Point(3) = { Lout_x/2,  Lout_y/2, 0, lc};
+Point(4) = {-Lout_x/2,  Lout_y/2, 0, lc};
+Line(1) = {1, 2}; Line(2) = {2, 3}; Line(3) = {3, 4}; Line(4) = {4, 1};
+Curve Loop(1) = {1, 2, 3, 4};
 
-Lx2 = 100.0*scale;  Ly2 = 60.0*scale;
-cx2 = -350.0*scale; cy2 = 0.0*scale;
-nx2 = 2;           ny2 = 2;
-phi2 = 0.;
+cx1 = 350*scale; w1 = 100*scale; h1 = 60*scale;
+Point(5) = {cx1-w1/2, -h1/2, 0, lc}; Point(6) = {cx1+w1/2, -h1/2, 0, lc};
+Point(7) = {cx1+w1/2,  h1/2, 0, lc}; Point(8) = {cx1-w1/2,  h1/2, 0, lc};
+Line(5) = {5, 6}; Line(6) = {6, 7}; Line(7) = {7, 8}; Line(8) = {8, 5};
+Curve Loop(2) = {5, 6, 7, 8};
 
-Lx3 = 300.0*scale;  Ly3 = 60.0*scale;
-cx3 = 0.0*scale;    cy3 = 0.0*scale;
-nx3 = 2;           ny3 = 2;
+cx2 = -350*scale;
+Point(9)  = {cx2-w1/2, -h1/2, 0, lc}; Point(10) = {cx2+w1/2, -h1/2, 0, lc};
+Point(11) = {cx2+w1/2,  h1/2, 0, lc}; Point(12) = {cx2-w1/2,  h1/2, 0, lc};
+Line(9) = {9, 10}; Line(10) = {10, 11}; Line(11) = {11, 12}; Line(12) = {12, 9};
+Curve Loop(3) = {9, 10, 11, 12};
 
-// ---- Points ----
-// Outside rectangle
-Point(1) = {-Lx_out/2, -Ly_out/2, 0, 1.0};
-Point(2) = { Lx_out/2, -Ly_out/2, 0, 1.0};
-Point(3) = { Lx_out/2,  Ly_out/2, 0, 1.0};
-Point(4) = {-Lx_out/2,  Ly_out/2, 0, 1.0};
+// ---- 2. CANAL EN T (Interface 1-2) ----
+cx3 = 0.0; Lx3 = 300.0*scale; Ly3 = 60.0*scale; w_cheminee = 80*scale;
+Point(13) = {cx3 - Lx3/2,      -Ly3/2, 0, lc}; Point(14) = {cx3 + Lx3/2,      -Ly3/2, 0, lc};
+Point(15) = {cx3 + Lx3/2,       0,      0, lc}; Point(16) = {cx3 + w_cheminee/2, 0,      0, lc};
+Point(17) = {cx3 + w_cheminee/2, Ly3/2,  0, lc}; Point(18) = {cx3 - w_cheminee/2, Ly3/2,  0, lc};
+Point(19) = {cx3 - w_cheminee/2, 0,      0, lc}; Point(20) = {cx3 - Lx3/2,       0,      0, lc};
+Line(13) = {13, 14}; Line(14) = {14, 15}; Line(15) = {15, 16}; Line(16) = {16, 17};
+Line(17) = {17, 18}; Line(18) = {18, 19}; Line(19) = {19, 20}; Line(20) = {20, 13};
+Curve Loop(4) = {13, 14, 15, 16, 17, 18, 19, 20};
 
-// Electrode 1
-Point(5) = {cx1 - Lx1/2, cy1 - Ly1/2, 0, 1.0};
-Point(6) = {cx1 - Lx1/2, cy1 + Ly1/2, 0, 1.0};
-Point(7) = {cx1 + Lx1/2, cy1 + Ly1/2, 0, 1.0};
-Point(8) = {cx1 + Lx1/2, cy1 - Ly1/2, 0, 1.0};
+// ---- 3. PARTICULE 1 (Interface 2-3) ----
+p1_rad = 20*scale;
+p1_cx = -19*scale; p1_cy = 9*scale;
 
-// Electrode 2
-Point(9)  = {cx2 - Lx2/2, cy2 - Ly2/2, 0, 1.0};
-Point(10) = {cx2 - Lx2/2, cy2 + Ly2/2, 0, 1.0};
-Point(11) = {cx2 + Lx2/2, cy2 + Ly2/2, 0, 1.0};
-Point(12) = {cx2 + Lx2/2, cy2 - Ly2/2, 0, 1.0};
+Point(21) = {p1_cx, p1_cy, 0, lc_part};
+Point(22) = {p1_cx + p1_rad, p1_cy, 0, lc_part};
+Point(23) = {p1_cx, p1_cy + p1_rad, 0, lc_part};
+Point(24) = {p1_cx - p1_rad, p1_cy, 0, lc_part};
+Point(25) = {p1_cx, p1_cy - p1_rad, 0, lc_part};
+Circle(21) = {22, 21, 23}; Circle(22) = {23, 21, 24};
+Circle(23) = {24, 21, 25}; Circle(24) = {25, 21, 22};
+Curve Loop(5) = {21, 22, 23, 24};
 
-// Channel (same points as before)
-Point(13) = {cx3 - Lx3/2, cy3 - Ly3/2, 0, 1.0};
-Point(14) = {cx3 - Lx3/2, cy3,          0, 1.0};
-Point(15) = {cx3 - 40*scale, 0,          0, 1.0};
-Point(16) = {cx3 - 40*scale, cy3+Ly3/2,  0, 1.0};
-Point(17) = {cx3 + 40*scale, cy3+Ly3/2,  0, 1.0};
-Point(18) = {cx3 + 40*scale, cy3,         0, 1.0};
-Point(19) = {cx3 + Lx3/2,    cy3,         0, 1.0};
-Point(20) = {cx3 + Lx3/2,    cy3-Ly3/2,   0, 1.0};
+// ---- 4. PARTICULE 2 (Interface 2-4) ----
+// Positionnée en -x, -y par rapport à la première
+p2_rad = 20*scale;
+p2_cx = 19.5*scale;
+p2_cy = -8.5*scale;
 
-// ---- Lines ----
-// Outside rectangle
-Line(1) = {1, 2};
-Line(2) = {2, 3};
-Line(3) = {3, 4};
-Line(4) = {4, 1};
+Point(26) = {p2_cx, p2_cy, 0, lc_part};
+Point(27) = {p2_cx + p2_rad, p2_cy, 0, lc_part};
+Point(28) = {p2_cx, p2_cy + p2_rad, 0, lc_part};
+Point(29) = {p2_cx - p2_rad, p2_cy, 0, lc_part};
+Point(30) = {p2_cx, p2_cy - p2_rad, 0, lc_part};
+Circle(25) = {27, 26, 28}; Circle(26) = {28, 26, 29};
+Circle(27) = {29, 26, 30}; Circle(28) = {30, 26, 27};
+Curve Loop(6) = {25, 26, 27, 28};
 
-// Electrode 1
-Line(5) = {5, 6};
-Line(6) = {6, 7};
-Line(7) = {7, 8};
-Line(8) = {8, 5};
+// ---- SURFACES ----
+Plane Surface(1) = {1, 2, 3, 4};     // PDMS
+Plane Surface(2) = {4, 5, 6};        // HUILE (Percée par Particule 1 ET Particule 2)
+Plane Surface(3) = {5};              // EAU (Particule 1)
+Plane Surface(4) = {6};              // EAU (Particule 2)
 
-// Electrode 2
-Line(9)  = {9, 10};
-Line(10) = {10, 11};
-Line(11) = {11, 12};
-Line(12) = {12, 9};
+// ---- GROUPES PHYSIQUES ----
+Physical Curve("BEM_outside", 100) = {1, 2, 3, 4};
+Physical Curve("BEM_Hole_E1", 101) = {5, 6, 7, 8};
+Physical Curve("BEM_Hole_E2", 102) = {9, 10, 11, 12};
+Physical Curve("BEM_interface_1_2", 103) = {13, 14, 15, 16, 17, 18, 19, 20};
+Physical Curve("BEM_interface_2_3", 104) = {21, 22, 23, 24};
+Physical Curve("BEM_interface_2_4", 105) = {25, 26, 27, 28};
 
-// Channel boundary
-Line(13) = {13, 14};
-Line(14) = {14, 15};
-Line(15) = {15, 16};
-Line(16) = {16, 17};
-Line(17) = {17, 18};
-Line(18) = {18, 19};
-Line(19) = {19, 20};
-Line(20) = {20, 13};
+Physical Surface("BEM_domain_1", 1) = {1};
+Physical Surface("BEM_domain_2", 2) = {2};
+Physical Surface("BEM_domain_3", 3) = {3};
+Physical Surface("BEM_domain_4", 4) = {4};
 
-// ---- Transfinite mesh ----
-Transfinite Curve {1} = nx_out + 1 Using Progression 1;
-Transfinite Curve {2} = ny_out + 1 Using Progression 1;
-Transfinite Curve {3} = nx_out + 1 Using Progression 1;
-Transfinite Curve {4} = ny_out + 1 Using Progression 1;
+// ---- PARAMÈTRES ET BCs ----
+SetNumber("Materials/BEM_domain_1/Epsilon", epsilon_r_PDMS * eps0);
+SetNumber("Materials/BEM_domain_2/Epsilon", epsilon_r_OIL * eps0);
+SetNumber("Materials/BEM_domain_3/Epsilon", epsilon_r_WATER * eps0);
+SetNumber("Materials/BEM_domain_4/Epsilon", epsilon_r_WATER * eps0);
 
-Transfinite Curve {5} = ny1 + 1 Using Progression 1;
-Transfinite Curve {6} = nx1 + 1 Using Progression 1;
-Transfinite Curve {7} = ny1 + 1 Using Progression 1;
-Transfinite Curve {8} = nx1 + 1 Using Progression 1;
-
-Transfinite Curve {9}  = ny2 + 1 Using Progression 1;
-Transfinite Curve {10} = nx2 + 1 Using Progression 1;
-Transfinite Curve {11} = ny2 + 1 Using Progression 1;
-Transfinite Curve {12} = nx2 + 1 Using Progression 1;
-
-Transfinite Curve {13} = ny3 + 1 Using Progression 1;
-Transfinite Curve {14} = nx3 + 1 Using Progression 1;
-Transfinite Curve {15} = ny3 + 1 Using Progression 1;
-Transfinite Curve {16} = nx3 + 1 Using Progression 1;
-Transfinite Curve {17} = ny3 + 1 Using Progression 1;
-Transfinite Curve {18} = nx3 + 1 Using Progression 1;
-Transfinite Curve {19} = ny3 + 1 Using Progression 1;
-Transfinite Curve {20} = 3*nx3 + 1 Using Progression 1;
-
-// ---- Curve loops ----
-Curve Loop(1) = {4, 1, 2, 3};        // outer rectangle
-Curve Loop(2) = {8, 5, 6, 7};        // electrode 1 hole
-Curve Loop(3) = {12, 9, 10, 11};     // electrode 2 hole
-Curve Loop(4) = {13,14,15,16,17,18,19,20}; // channel
-
-// ---- Surfaces ----
-// Domain 1 (PDMS): outer rectangle with electrode holes AND channel hole.
-Plane Surface(1) = {1, 2, 3, 4};
-
-// Domain 2 (Oil): interior of the channel.
-Plane Surface(2) = {4};
-
-// ---- Physical groups ----
-
-// Surfaces → BEM domains
-Physical Surface("BEM_domain_1", 9)  = {1};   // PDMS
-Physical Surface("BEM_domain_2", 10) = {2};   // Oil (channel)
-
-// External boundary of domain 1
-Physical Curve("outside", 5) = {1, 2, 3, 4};
-Physical Curve("hole1",   6) = {5, 6, 7, 8};
-Physical Curve("hole2",   7) = {9, 10, 11, 12};
-
-// Interface: channel boundary is SHARED between domain 1 and domain 2.
-// Convention: "BEM_interface_<domainA_name>_<domainB_name>"
-// The name tokens must match the domain suffixes above (1 and 2 here).
-Physical Curve("BEM_interface_1_2", 8) = {13,14,15,16,17,18,19,20};
-
-// ---- Material properties ----
-SetNumber("Materials/BEM_domain_1/Epsilon", epsilon_r_PDMS * 8.8541878128e-12);
-SetNumber("Materials/BEM_domain_2/Epsilon", epsilon_r_OIL  * 8.8541878128e-12);
-
-// ---- Boundary conditions (only on external boundaries) ----
-// Domain 1 external BCs:
-SetNumber("Boundary Conditions/outside/BEM_domain_1/neumann",   flux_out);
-SetNumber("Boundary Conditions/hole1/BEM_domain_1/dirichlet",   phi1);
-SetNumber("Boundary Conditions/hole2/BEM_domain_1/dirichlet",   phi2);
-
-// Domain 2 has no external boundary → no BCs to set.
-// (Its only boundary is the interface with domain 1, which is handled
-//  automatically by the continuity conditions.)
-
-// ---- Notes ----
-// The channel curve loop (4) appears in BOTH Surface(1) (as a hole) and
-// Surface(2) (as the outer boundary of the oil domain).  gmsh will generate
-// the SAME nodes on both sides, which is exactly what the BEM subdomain
-// method requires: a conformal mesh at the interface.
-//
-// If you add more interfaces in the future, just add:
-//   Physical Curve("BEM_interface_<A>_<B>", <tag>) = {...};
-// and set the corresponding Material/Epsilon values.  The C++ solver will
-// detect them automatically.
+SetNumber("Boundary Conditions/BEM_outside/BEM_domain_1/neumann", 0.0);
+SetNumber("Boundary Conditions/BEM_Hole_E1/BEM_domain_1/dirichlet", 2000.0);
+SetNumber("Boundary Conditions/BEM_Hole_E2/BEM_domain_1/dirichlet", 0.0);

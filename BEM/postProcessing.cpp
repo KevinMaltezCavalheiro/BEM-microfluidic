@@ -208,14 +208,16 @@ void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>
         #pragma omp parallel for schedule(guided) shared(phi, position)
         for(std::size_t j = 0; j < domainElementTypes[i].size(); j++)
         {
-            std::string elementName;
-            int dim, order, nbNodes, nbPrimaryNodes;
-            std::vector<double> localNodeCoord;
-
-            // L'API Gmsh est généralement thread-safe pour les getters de propriétés
-            gmsh::model::mesh::getElementProperties(domainElementTypes[i][j], elementName,
-                                                    dim, order, nbNodes, localNodeCoord,
-                                                    nbPrimaryNodes);
+            int nbNodes;
+            #pragma omp critical(gmsh_properties)
+            {
+                std::string elementName;
+                int dim, order, nbPrimaryNodes;
+                std::vector<double> localNodeCoord;
+                gmsh::model::mesh::getElementProperties(domainElementTypes[i][j], elementName,
+                                                        dim, order, nbNodes, localNodeCoord,
+                                                        nbPrimaryNodes);
+            }
 
             // Allocation de la troisième dimension (tags d'éléments)
             phi[i][j].resize(domainElementTags[i][j].size());
@@ -247,63 +249,71 @@ void boundaryElementTags(std::vector<std::size_t> &domainBoundaryElementTags,
                          const std::vector<elementStruct> &elementVector,
                          const int domainPhysicalGroupTag)
 {
-    const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
-    std::vector<std::size_t> globalLocalTags; // Vecteur pour stocker les résultats de tous les threads
+    // 1. Récupération des tags d'entités (Surfaces) liées au groupe physique
+    std::vector<int> entityTags; // Gmsh veut un vector<int> ici, pas de paires
+    gmsh::model::getEntitiesForPhysicalGroup(2, domainPhysicalGroupTag, entityTags);
 
-    // On ouvre une région parallèle
+    std::set<std::size_t> elementInDomainSet;
+
+    // 2. On boucle sur chaque entité (chaque surface) du groupe physique
+    for (int tag : entityTags) {
+        std::vector<int> elementTypes;
+        std::vector<std::vector<std::size_t>> elementTags;
+        std::vector<std::vector<std::size_t>> nodeTags;
+
+        // On récupère les éléments de la surface d'index 'tag'
+        gmsh::model::mesh::getElements(elementTypes, elementTags, nodeTags, 2, tag);
+
+        // On remplit notre Set avec tous les tags d'éléments trouvés
+        for (const auto& group : elementTags) {
+            for (std::size_t eTag : group) {
+                elementInDomainSet.insert(eTag);
+            }
+        }
+    }
+
+    const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
+    std::vector<std::size_t> globalLocalTags;
+
+    // 2. Parallélisation avec protection de l'API
     #pragma omp parallel
     {
-        // Chaque thread crée son propre conteneur local pour éviter les "critical" fréquents
         std::vector<std::size_t> threadPrivateTags;
 
-        #pragma omp for schedule(guided)
+        #pragma omp for schedule(dynamic)
         for(std::size_t i = 0; i < bieVec.size(); i++)
         {
-            std::vector<size_t> elementTags;
-            // Appel Gmsh (Lecture seule sur le mesh : généralement thread-safe)
-            gmsh::model::mesh::getElementsByCoordinates(bieVec[i].x1, bieVec[i].y1, 0,
-                                                        elementTags, 2);
+            std::vector<size_t> foundTags;
 
-            for(std::size_t j = 0; j < elementTags.size(); j++)
+            // On protège l'accès à Gmsh.
+            // Si le nommage (GMSH_API) échoue, utilise juste : #pragma omp critical
+            #pragma omp critical
             {
-                int elementType;
-                std::vector<size_t> nodeTags;
-                int entityDim, entityTag;
-                std::vector<int> physicalTags;
+                gmsh::model::mesh::getElementsByCoordinates(bieVec[i].x1, bieVec[i].y1, 0, foundTags, 2);
+            }
 
-                // On récupère les infos de l'élément
-                gmsh::model::mesh::getElement(elementTags[j], elementType, nodeTags,
-                                              entityDim, entityTag);
-                gmsh::model::getPhysicalGroupsForEntity(entityDim, entityTag, physicalTags);
-
-                for(std::size_t k = 0; k < physicalTags.size(); k++)
+            for(size_t tag : foundTags)
+            {
+                if(elementInDomainSet.find(tag) != elementInDomainSet.end())
                 {
-                    if(physicalTags[k] == domainPhysicalGroupTag)
-                    {
-                        // On ajoute au vecteur privé du thread
-                        threadPrivateTags.push_back(elementTags[j]);
-                    }
+                    threadPrivateTags.push_back(tag);
                 }
             }
         }
 
-        // Une fois la boucle terminée, on fusionne les vecteurs privés dans le vecteur global
-        // On n'entre ici qu'une seule fois par thread (très peu coûteux)
+        // Fusion des résultats
         #pragma omp critical
         {
             globalLocalTags.insert(globalLocalTags.end(), threadPrivateTags.begin(), threadPrivateTags.end());
         }
     }
 
-    // Transfert final vers l'argument de sortie
-    domainBoundaryElementTags.insert(domainBoundaryElementTags.end(),
-                                     globalLocalTags.begin(), globalLocalTags.end());
+    // Remplissage du vecteur de sortie
+    domainBoundaryElementTags = globalLocalTags;
 
-    // Nettoyage des doublons (Séquentiel, car std::unique nécessite un tri)
+    // Tri et suppression des doublons
     std::sort(domainBoundaryElementTags.begin(), domainBoundaryElementTags.end());
-    domainBoundaryElementTags.erase(
-        std::unique(domainBoundaryElementTags.begin(), domainBoundaryElementTags.end()),
-        domainBoundaryElementTags.end());
+    domainBoundaryElementTags.erase(std::unique(domainBoundaryElementTags.begin(), domainBoundaryElementTags.end()), domainBoundaryElementTags.end());
 }
 
 // ============================================================
@@ -320,30 +330,32 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
                      const int domainPhysicalGroupTag,
                      std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements)
 {
-    const std::vector<elementStruct> bieVec     = buildBIEVector(elementVector);
-    const auto                       bieNodeMap = buildBIENodeToElements(bieVec);
+    const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
+    const auto bieNodeMap = buildBIENodeToElements(bieVec);
 
     std::map<std::size_t, std::vector<std::size_t>> position;
     phiInitialization(phi, position, domainElementTypes, domainElementTags);
 
+    // --- CORRECTION ICI ---
     std::vector<size_t> domainBoundaryElTags;
-    boundaryElementTags(domainBoundaryElTags, domainElementTypes, domainElementTags,
-                        elementVector, domainPhysicalGroupTag);
+    // On passe bieNodeMap pour identifier les éléments touchant la frontière
+    boundaryElementTags(domainBoundaryElTags, domainElementTags, domainElementTypes,
+                             domainElementNodeTags, bieNodeMap);
 
-    // --- DÉBUT DE LA ZONE PARALLÈLE ---
+    // Ensuite ta zone parallèle peut démarrer sans risque
     #pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < domainBoundaryElTags.size(); i++)
     {
         std::size_t elementTag  = domainBoundaryElTags[i];
 
         // Utilisation de .at() pour la thread-safety en lecture sur la map 'position'
-        const std::vector<std::size_t> &pos = position[elementTag];
+        const std::vector<std::size_t> &pos = position.at(elementTag);
         int entityTagIndex   = pos[0];
         int elementTypeIndex = pos[1];
         int elementTagIndex  = pos[2];
 
         // Accès aux tags des nœuds de l'élément (lecture seule)
-        const std::vector<std::size_t> &nodeTags = domainElementNodeTags[elementTag];
+        const std::vector<std::size_t> &nodeTags = domainElementNodeTags.at(elementTag);
         int nbNodes = phi[entityTagIndex][elementTypeIndex][elementTagIndex].size();
 
         for(int j = 0; j < nbNodes; j++)
@@ -550,4 +562,38 @@ void displayData(const int viewTag,
     gmsh::option::setNumber("View[" + std::to_string(viewIndex) + "].MaxRecursionLevel", 3);
     gmsh::option::setNumber("View[" + std::to_string(viewIndex) + "].TargetError", -0.0001);
     gmsh::option::setNumber("View[" + std::to_string(viewIndex) + "].Visible", 0);
+}
+
+void boundaryElementTags(std::vector<size_t> &domainBoundaryElTags,
+                         const std::vector<std::vector<std::vector<size_t>>> &domainElementTags,
+                         const std::vector<std::vector<int>> &domainElementTypes,
+                         const std::map<size_t, std::vector<size_t>> &domainElementNodeTags,
+                         const std::map<size_t, std::vector<size_t>> &bieNodeMap)
+{
+    domainBoundaryElTags.clear();
+
+    // On parcourt tous les éléments du domaine (Séquentiel pour éviter les conflits Gmsh)
+    for(std::size_t i = 0; i < domainElementTags.size(); i++) {
+        for(std::size_t j = 0; j < domainElementTags[i].size(); j++) {
+            for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++) {
+
+                size_t elTag = domainElementTags[i][j][k];
+                const std::vector<size_t> &nodes = domainElementNodeTags.at(elTag);
+
+                // Si UN SEUL des nœuds de l'élément est sur la frontière (bieNodeMap),
+                // alors cet élément doit être traité par la boucle de post-proc.
+                bool isOnBoundary = false;
+                for(size_t nodeTag : nodes) {
+                    if(bieNodeMap.count(nodeTag)) {
+                        isOnBoundary = true;
+                        break;
+                    }
+                }
+
+                if(isOnBoundary) {
+                    domainBoundaryElTags.push_back(elTag);
+                }
+            }
+        }
+    }
 }
