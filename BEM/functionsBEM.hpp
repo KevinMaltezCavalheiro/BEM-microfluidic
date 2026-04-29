@@ -313,6 +313,5 @@ struct Force2D {
     double fy = 0.0;
 };
 Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
-                           const std::map<int, double> &internalNodalPhi, // Utilise ta map résultante
                            const std::string &interfaceName,
-                           double epsilon_oil);
+                           double epsilon);

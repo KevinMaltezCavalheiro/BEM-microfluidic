@@ -697,44 +697,64 @@ void computeNormalOrientation(std::vector<elementStruct> &elementVector,
 }
 
 Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
-                           const std::map<int, double> &internalPhi,
                            const std::string &interfaceName,
-                           double epsilon_oil)
+                           double epsilon)
 {
+    // 1. Collecter les éléments de l'interface dans l'ordre
+    std::vector<const elementStruct*> ifElems;
+    for(const auto &el : elementVector)
+        if(el.interfaceName == interfaceName)
+            ifElems.push_back(&el);
+
+    if(ifElems.empty()) return {0.0, 0.0};
+
     Force2D totalForce = {0.0, 0.0};
 
-    for (const auto &el : elementVector) {
-        if (el.interfaceName == interfaceName) {
+    for(std::size_t k = 0; k < ifElems.size(); k++)
+    {
+        const elementStruct &el = *ifElems[k];
 
-            // Sécurité : Vérifier si les deux nœuds sont dans la map
-            if (internalPhi.find(el.nodeTags[0]) == internalPhi.end() ||
-                internalPhi.find(el.nodeTags[1]) == internalPhi.end()) {
-                continue; // On saute cet élément s'il manque des données nodales
-            }
+        // En = flux normal (déjà stocké par distributeGlobalSolution)
+        double En = el.bcValue[1];
 
-            double En = el.bcValue[1];
+        // Et par différence finie du potentiel entre éléments voisins
+        double phi_prev = (k > 0)
+            ? ifElems[k-1]->bcValue[0]
+            : el.bcValue[0];
+        double phi_next = (k + 1 < ifElems.size())
+            ? ifElems[k+1]->bcValue[0]
+            : el.bcValue[0];
 
-            // Accès sécurisé
-            double phi1 = internalPhi.at(el.nodeTags[0]);
-            double phi2 = internalPhi.at(el.nodeTags[1]);
-
-            double Et = -(phi2 - phi1) / el.length;
-
-            double nx = el.nx;
-            double ny = el.ny;
-            double tx = -ny;
-            double ty = nx;
-
-            double Ex = En * nx + Et * tx;
-            double Ey = En * ny + Et * ty;
-            double E2 = Ex*Ex + Ey*Ey;
-
-            double Tx = epsilon_oil * (En * Ex - 0.5 * E2 * nx);
-            double Ty = epsilon_oil * (En * Ey - 0.5 * E2 * ny);
-
-            totalForce.fx += Tx * el.length;
-            totalForce.fy += Ty * el.length;
+        // Distance entre midpoints pour la dérivée tangentielle
+        double ds = 0.0;
+        if(k > 0 && k + 1 < ifElems.size()) {
+            double dmx = ifElems[k+1]->midX - ifElems[k-1]->midX;
+            double dmy = ifElems[k+1]->midY - ifElems[k-1]->midY;
+            ds = std::sqrt(dmx*dmx + dmy*dmy);
+        } else {
+            ds = el.length; // bords : différence unilatérale
         }
+
+        double Et = (ds > 1e-15) ? -(phi_next - phi_prev) / ds : 0.0;
+
+        double nx = el.nx;
+        double ny = el.ny;
+        // vecteur tangent (rotation +90° de la normale)
+        double tx = -ny;
+        double ty =  nx;
+
+        // Champ électrique reconstruit
+        double Ex = En * nx + Et * tx;
+        double Ey = En * ny + Et * ty;
+        double E2 = Ex*Ex + Ey*Ey;
+
+        // Tenseur de Maxwell (traction sur la surface)
+        double Tx = epsilon * (En * Ex - 0.5 * E2 * nx);
+        double Ty = epsilon * (En * Ey - 0.5 * E2 * ny);
+
+        totalForce.fx += Tx * el.length;
+        totalForce.fy += Ty * el.length;
     }
+
     return totalForce;
 }

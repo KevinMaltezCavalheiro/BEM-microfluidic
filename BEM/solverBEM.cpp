@@ -500,6 +500,22 @@ void distributeGlobalSolution(std::vector<domainData> &domains,
                       << "  -> X_global (u, qn) m=0: " << X_global(potBase) << ", " << X_global(fluxBase) << std::endl;
         }
     }
+    for(const auto &iface : interfaces)
+    {
+        if(iface.name.find("_inc") == std::string::npos) continue;
+
+        // Récupérer le domaine A (extérieur, huile) et son epsilon
+        const domainData *pA = nullptr;
+        for(const auto &d : domains)
+            if(d.name == iface.domainA) { pA = &d; break; }
+        if(!pA) continue;
+
+        Force2D F = computeDEPForceMST(pA->elementVector, iface.name, pA->epsilon);
+
+        std::cout << "[Force DEP] Interface: " << iface.name
+                  << " | Fx: " << F.fx << " N/m"
+                  << " | Fy: " << F.fy << " N/m" << std::endl;
+    }
 }
 
 // ============================================================
@@ -638,21 +654,6 @@ void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
             computeInternalPhi(internalPhi, dNodeCoords, dNodeTags,
                                dNodeIndices, dom.elementVector, integrationType,
                                bNodeToElems, solutionType);
-
-//            for(const auto &iface : interfaces) {
-//                // Si ce domaine (dom) est le porteur (Side A) de cette interface
-//                if(iface.domainA == dom.name && iface.name.find("_inc") != std::string::npos) {
-//
-//                    Force2D F = computeDEPForceMST(dom.elementVector, internalPhi, iface.name, epsilon_oil);
-//
-//                    #pragma omp critical(print_force)
-//                    {
-//                        std::cout << "[Force DEP] Interface: " << iface.name
-//                                  << " | Fx: " << F.fx << " N/m"
-//                                  << " | Fy: " << F.fy << " N/m" << std::endl;
-//                    }
-//                }
-//            }
 
             // Calcul des données de visualisation
             std::vector<std::vector<std::vector<std::vector<double>>>> nPhi, ePhi, eField;
