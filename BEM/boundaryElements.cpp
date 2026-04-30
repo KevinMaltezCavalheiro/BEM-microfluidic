@@ -700,60 +700,77 @@ Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
                            const std::string &interfaceName,
                            double epsilon)
 {
-    // 1. Collecter les éléments de l'interface dans l'ordre
+    Force2D totalForce = {0.0, 0.0};
+
+    // 1. Filtrer les éléments de l'interface demandée
     std::vector<const elementStruct*> ifElems;
     for(const auto &el : elementVector)
         if(el.interfaceName == interfaceName)
             ifElems.push_back(&el);
 
-    if(ifElems.empty()) return {0.0, 0.0};
+    if(ifElems.empty()) return totalForce;
 
-    Force2D totalForce = {0.0, 0.0};
+    // 2. Construire la map nodeTag → indices dans ifElems
+    //    (même logique que buildBIENodeToElements, mais local à cette interface)
+    std::map<std::size_t, std::vector<std::size_t>> nodeToIfElems;
+    for(std::size_t k = 0; k < ifElems.size(); k++)
+    {
+        nodeToIfElems[ifElems[k]->nodeTags[0]].push_back(k);
+        nodeToIfElems[ifElems[k]->nodeTags[1]].push_back(k);
+    }
 
+    // 3. Pour chaque élément, Et est calculé via les deux nœuds extrêmes
+    //    et leurs voisins topologiques (les autres éléments qui partagent ce nœud)
     for(std::size_t k = 0; k < ifElems.size(); k++)
     {
         const elementStruct &el = *ifElems[k];
+        const double En = el.bcValue[1];
 
-        // En = flux normal (déjà stocké par distributeGlobalSolution)
-        double En = el.bcValue[1];
+        // --- Reconstruction de Et par différence finie nodale ---
+        // Pour chaque nœud du segment, on trouve l'élément voisin
+        // (l'autre élément qui partage ce nœud, != k)
 
-        // Et par différence finie du potentiel entre éléments voisins
-        double phi_prev = (k > 0)
-            ? ifElems[k-1]->bcValue[0]
-            : el.bcValue[0];
-        double phi_next = (k + 1 < ifElems.size())
-            ? ifElems[k+1]->bcValue[0]
-            : el.bcValue[0];
+        auto getNeighborPhi = [&](std::size_t nodeTag, std::size_t selfIdx) -> double
+        {
+            const auto &neighbors = nodeToIfElems.at(nodeTag);
+            for(std::size_t idx : neighbors)
+                if(idx != selfIdx)
+                    return ifElems[idx]->bcValue[0]; // phi du voisin
+            return ifElems[selfIdx]->bcValue[0];     // bord : repli sur soi-même
+        };
 
-        // Distance entre midpoints pour la dérivée tangentielle
-        double ds = 0.0;
-        if(k > 0 && k + 1 < ifElems.size()) {
-            double dmx = ifElems[k+1]->midX - ifElems[k-1]->midX;
-            double dmy = ifElems[k+1]->midY - ifElems[k-1]->midY;
+        // phi aux nœuds voisins de chaque extrémité
+        double phi_prev = getNeighborPhi(el.nodeTags[0], k); // voisin côté nœud 0
+        double phi_next = getNeighborPhi(el.nodeTags[1], k); // voisin côté nœud 1
+
+        // Distance entre les midpoints des deux voisins (base de la différence finie)
+        const elementStruct *ePrev = nullptr, *eNext = nullptr;
+        for(std::size_t idx : nodeToIfElems.at(el.nodeTags[0]))
+            if(idx != k) ePrev = ifElems[idx];
+        for(std::size_t idx : nodeToIfElems.at(el.nodeTags[1]))
+            if(idx != k) eNext = ifElems[idx];
+
+        double ds;
+        if(ePrev && eNext) {
+            double dmx = eNext->midX - ePrev->midX;
+            double dmy = eNext->midY - ePrev->midY;
             ds = std::sqrt(dmx*dmx + dmy*dmy);
         } else {
-            ds = el.length; // bords : différence unilatérale
+            ds = el.length; // extrémité de courbe ouverte
         }
 
         double Et = (ds > 1e-15) ? -(phi_next - phi_prev) / ds : 0.0;
 
-        double nx = el.nx;
-        double ny = el.ny;
-        // vecteur tangent (rotation +90° de la normale)
-        double tx = -ny;
-        double ty =  nx;
+        // 4. Reconstruction du champ E et tenseur de Maxwell
+        const double nx = el.nx, ny = el.ny;
+        const double tx = -ny,   ty =  nx;
 
-        // Champ électrique reconstruit
-        double Ex = En * nx + Et * tx;
-        double Ey = En * ny + Et * ty;
-        double E2 = Ex*Ex + Ey*Ey;
+        const double Ex = En * nx + Et * tx;
+        const double Ey = En * ny + Et * ty;
+        const double E2 = Ex*Ex + Ey*Ey;
 
-        // Tenseur de Maxwell (traction sur la surface)
-        double Tx = epsilon * (En * Ex - 0.5 * E2 * nx);
-        double Ty = epsilon * (En * Ey - 0.5 * E2 * ny);
-
-        totalForce.fx += Tx * el.length;
-        totalForce.fy += Ty * el.length;
+        totalForce.fx += epsilon * (En * Ex - 0.5 * E2 * nx) * el.length;
+        totalForce.fy += epsilon * (En * Ey - 0.5 * E2 * ny) * el.length;
     }
 
     return totalForce;

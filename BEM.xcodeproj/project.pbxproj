@@ -47,6 +47,8 @@
 		0A66D9AD2FA203C000031D45 /* DropletsInChannel.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = DropletsInChannel.geo; sourceTree = "<group>"; };
 		0A66D9AE2FA2181900031D45 /* 3DprintedElectrodes.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = 3DprintedElectrodes.geo; sourceTree = "<group>"; };
 		0A66D9AF2FA2211900031D45 /* 2rectangles.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = 2rectangles.geo; sourceTree = "<group>"; };
+		0A66D9B12FA2C2B400031D45 /* Electrode.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = Electrode.geo; sourceTree = "<group>"; };
+		0A66D9B22FA360EB00031D45 /* BEMelectrode.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = BEMelectrode.geo; sourceTree = "<group>"; };
 		0A9704272F7AB62400165948 /* simpleInterface.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterface.geo; sourceTree = "<group>"; };
 		0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterfaceDirichlet.geo; sourceTree = "<group>"; };
 		0A9704292F7ABFB200165948 /* verification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = verification.cpp; sourceTree = "<group>"; };
@@ -94,6 +96,8 @@
 				0A9704292F7ABFB200165948 /* verification.cpp */,
 				0A4A491228354C5A0073EDCC /* functionsBEM.hpp */,
 				0A4A491128354C590073EDCC /* functionsFEM.hpp */,
+				0A66D9B12FA2C2B400031D45 /* Electrode.geo */,
+				0A66D9B22FA360EB00031D45 /* BEMelectrode.geo */,
 				0A66D9AD2FA203C000031D45 /* DropletsInChannel.geo */,
 				0A66D9AE2FA2181900031D45 /* 3DprintedElectrodes.geo */,
 				0A66D9A62F9FE36300031D45 /* rectangle.geo */,

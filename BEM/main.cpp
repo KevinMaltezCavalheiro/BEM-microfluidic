@@ -148,4 +148,4 @@ int main(int argc, char **argv)
     return 0;
 }
 
-////todo: calculer la force DEP sur la sphère, FEM-BEM couplage pour une goutte ? (avec interface = ressort + untanglemesh), BEM 3D, BEMStokes, electrodesCAD
+////todo: calculer la force DEP sur la sphère, FEM-BEM couplage pour une goutte ? (avec interface = ressort + untanglemesh), BEM 3D, BEMStokes, electrodesCAD, permittivité complexe
