@@ -1,0 +1,14 @@
+////git command////
+git add -A && git commit -am "Your Message" && git pull && git push
+git commit -am "commit message"
+git commit
+git pull
+git push
+
+////code command////
+source '/Users/Kevin/multiphysics-0471/multiphysics-0471/envs/linux-macos.sh'
+./solver '/Users/Kevin/multiphysics-0471/multiphysics-0471/srcs/BEM/geo_and_mesh_files/rectangle.geo'
+gmsh -2 -order 3 '/Users/Kevin/multiphysics-0471/multiphysics-0471/srcs/BEM/geo_and_mesh_files/rectangle.geo'
+./solver '/Users/Kevin/multiphysics-0471/multiphysics-0471/srcs/BEM/geo_and_mesh_files/rectangle.msh'
+gmsh results.msh
+

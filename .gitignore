@@ -27,3 +27,61 @@ a.out
 *.fdb_latexmk
 
 Backup_of*
+
+# Xcode
+build/
+DerivedData/
+*.moved-aside
+*.xcuserstate
+
+# Compilateurs & C++
+*.o
+*.out
+*.exe
+/BEM/bin/
+/Users/Kevin/BEMinterface/BEM/text_files/
+/Users/Kevin/BEMinterface/BEM/srcs/
+/Users/Kevin/BEMinterface/BEM/multiphysics-0471-master-srcs/
+/Users/Kevin/BEMinterface/BEM/merge/
+/Users/Kevin/BEMinterface/BEM/geo_and_mesh_files/
+/Users/Kevin/BEMinterface/BEM/code louis/
+/Users/Kevin/BEMinterface/BEM/build/
+/Users/Kevin/BEMinterface/BEM/ancien_codes/
+/Users/Kevin/BEMinterface/BEM/2rectangles.geo
+/Users/Kevin/BEMinterface/BEM/beamActuation.geo
+/Users/Kevin/BEMinterface/BEM/beamActuationGeneral.geo
+/Users/Kevin/BEMinterface/BEM/BEM_convergence.geo
+/Users/Kevin/BEMinterface/BEM/clampedMicroBeam.geo
+/Users/Kevin/BEMinterface/BEM/complex_validation.geo
+/Users/Kevin/BEMinterface/BEM/coupling_validation.geo
+/Users/Kevin/BEMinterface/BEM/doubleHole.geo
+/Users/Kevin/BEMinterface/BEM/FoldedFlexureBeam.geo
+/Users/Kevin/BEMinterface/BEM/hole.geo
+/Users/Kevin/BEMinterface/BEM/hybrid_complex.geo
+/Users/Kevin/BEMinterface/BEM/hybrid_geo.geo
+/Users/Kevin/BEMinterface/BEM/impossible.geo
+/Users/Kevin/BEMinterface/BEM/l_shape.geo
+/Users/Kevin/BEMinterface/BEM/large_rotation_validation_single_surface.geo
+/Users/Kevin/BEMinterface/BEM/large_rotation_validation.geo
+/Users/Kevin/BEMinterface/BEM/longitudinal_comb.geo
+/Users/Kevin/BEMinterface/BEM/longitudinalCombDevice.geo
+/Users/Kevin/BEMinterface/BEM/MEMS.geo
+/Users/Kevin/BEMinterface/BEM/multiphysics-0471-master-srcs.zip
+/Users/Kevin/BEMinterface/BEM/my_geo.db
+/Users/Kevin/BEMinterface/BEM/my_geo.geo
+/Users/Kevin/BEMinterface/BEM/rectangle.geo
+/Users/Kevin/BEMinterface/BEM/self_weight.geo
+/Users/Kevin/BEMinterface/BEM/simple_tension.geo
+/Users/Kevin/BEMinterface/BEM/squeeze.geo
+/Users/Kevin/BEMinterface/BEM/transverse_comb.geo
+/Users/Kevin/BEMinterface/BEM/two_BEM_test.geo
+/Users/Kevin/BEMinterface/BEM/uniform_charge.geo
+/Users/Kevin/BEMinterface/BEM/functionsFEM.cpp
+/Users/Kevin/BEMinterface/BEM/functionsFEM.hpp
+/Users/Kevin/BEMinterface/BEM/mainBEM.cpp
+/Users/Kevin/BEMinterface/BEM/mainFEM.cpp
+/Users/Kevin/BEMinterface/BEM/solverFEM.cpp
+
+# Gmsh (fichiers temporaires ou lourds)
+*.msh
+*.pos
