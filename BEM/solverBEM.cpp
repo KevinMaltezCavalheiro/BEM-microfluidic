@@ -504,17 +504,23 @@ void distributeGlobalSolution(std::vector<domainData> &domains,
     {
         if(iface.name.find("_inc") == std::string::npos) continue;
 
-        // Récupérer le domaine A (extérieur, huile) et son epsilon
-        const domainData *pA = nullptr;
-        for(const auto &d : domains)
-            if(d.name == iface.domainA) { pA = &d; break; }
-        if(!pA) continue;
+        const domainData *pA = nullptr, *pB = nullptr;
+        for(const auto &d : domains) {
+            if(d.name == iface.domainA) pA = &d;
+            if(d.name == iface.domainB) pB = &d;
+        }
+        if(!pA || !pB) continue;
 
-        Force2D F = computeDEPForceMST(pA->elementVector, iface.name, pA->epsilon);
+        double thickness = 30e-6;  // 50 µm — à adapter à ta géométrie réelle
 
-        std::cout << "[Force DEP] Interface: " << iface.name
-                  << " | Fx: " << F.fx << " N/m"
-                  << " | Fy: " << F.fy << " N/m" << std::endl;
+        Force2D F = computeDEPForceMST(pA->elementVector, iface.name,
+                                        pA->epsilon, pB->epsilon, thickness);
+
+        std::cout << "[Force DEP 3D] Interface: " << iface.name
+                  << " | Fx: " << F.fx << " N"
+                  << " | Fy: " << F.fy << " N"
+                  << " | Norm: " << sqrt(F.fx*F.fx+F.fy*F.fy) << "N" << std::endl;
+
     }
 }
 

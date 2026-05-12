@@ -45,8 +45,6 @@ double computeAnalyticalG(const double x, const double y, const elementStruct &e
     const double xjp1 = element.x2;
     const double yj = element.y1;
     const double yjp1 = element.y2;
-    // On remplace Pi par une constante pour éviter la division
-    const double inv_4Pi = 0.25 * M_1_PI;
 
     // Étape 1 : Remplacer pow(..., 2) par (a*a) - C'est CA le gain de temps
     const double dx_seg = xj - xjp1;

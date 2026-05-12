@@ -696,22 +696,101 @@ void computeNormalOrientation(std::vector<elementStruct> &elementVector,
     }
 }
 
+// Calcule la force DEP sur une interface "domainA / domainB" via le tenseur de Maxwell.
+// elementVector : tous les éléments BEM du domaine A (côté extérieur de l'interface)
+// interfaceName : ex. "BEM_interface_3_4_inc"
+// epsilonA      : permittivité du domaine A (huile, côté extérieur)
+// epsilonB      : permittivité du domaine B (goutte, côté intérieur)
+
+//test ordre de grandeur:
+//V = 1000 V
+//gap ~ 100 µm  →  E ~ 10⁷ V/m
+//R_goutte = 36 µm
+//h = 30 µm
+//ε_huile = 9.62·ε₀,  ε_eau = 80·ε₀
+//F_DEP = 2π · ε_m · R³ · Re[K] · ∇|E|²
+//Re[K] = (ε_eau - ε_huile)/(ε_eau + 2·ε_huile)
+//      = (80 - 9.62)/(80 + 2×9.62) ≈ 70.4/99.2 ≈ 0.71  (pDEP ✓)
+//F ~ 2π × 9.62×8.85e-12 × (36e-6)³ × 0.71 × 2.8e18
+//~ 2π × 85e-12 × 4.7e-14 × 0.71 × 2.8e18
+//~ ~ 0.6 µN
+
+//η_HFE7500 ~ 1.24 mPa·s  (fluide fluoré, très peu visqueux)
+//R_goutte = 36 µm = 36×10⁻⁶ m
+//v = 100-200 µm/s = 10⁻⁴ à 2×10⁻⁴ m/s
+//
+//F_Stokes = 6π · η · R · v
+//         = 6π × 1.24×10⁻³ × 36×10⁻⁶ × (10⁻⁴ à 2×10⁻⁴)
+//         = 6π × 1.24e-3 × 36e-6 × 1.5e-4  (valeur centrale)
+//         ~ 6π × 6.7×10⁻¹²
+//         ~ 1.26×10⁻¹⁰ N
+//         ~ 0.13 nN
+//F_BEM  ~ 0.52 µN  =  520 nN
+//F_Stokes ~ 0.13 nN
+//Ratio : F_BEM / F_Stokes ~ 4000 ×
+// 2R = 72 µm  >  h = 30 µm
+//F_drag ~ 4π·η·a²·v / (h·ln(a/h))  (approximation lubrification)
+//       ~ 4π × 1.24e-3 × (36e-6)² × 1.5e-4 / (30e-6 × ln(36/30))
+//       ~ 4π × 1.24e-3 × 1.3e-9 × 1.5e-4 / (30e-6 × 0.18)
+//       ~ 4π × 2.4e-16 / 5.4e-6 × 1e3
+//       ~ ~ 1-10 nN
+
+//Phénomène              Fréquence dominante    Modèle requis
+//──────────────────────────────────────────────────────────────
+//DEP diélectrique       > 1 MHz                BEM Laplace ε complexe  ← ton code
+//Conductrice (Maxwell)  toutes fréquences      BEM Laplace ε_A seul    ← maintenant
+//ACEO                   100 Hz - 100 kHz       BEM + Stokes + EDL
+//Électrophorèse         DC - 1 kHz             BEM + charge surfacique
+//Tension de surface     toutes                 couplage mécanique
+//Écoulement Poiseuille  toutes                 Stokes + BEM
+
+// ==============================================================================
+// JUSTIFICATION DU MODÈLE PSEUDO-3D PAR PLANS ORTHOGONAUX (XY / YZ) & CODE BEM
+// ==============================================================================
+// Question attendue : Pourquoi utiliser un modèle 2D multi-plan plutôt qu'une
+// simulation BEM 3D complète (comme préconisé par Schütz et al., Lab Chip 2019) ?
+//
+// 1. Limitation physique des électrodes inférieures :
+//    Placer les électrodes sous le canal (z=0) crée une forte décroissance du champ
+//    électrique E(z) selon la hauteur. Un modèle 2D XY pur à z=0 surestimerait la force
+//    de DEP subie par la goutte sur toute sa hauteur (h = 30 µm).
+//
+// 2. Notre méthodologie de réconciliation 2D (Approche Pseudo-3D) :
+//    - Plan vertical (YZ) : On simule la section transversale pour obtenir le profil
+//      du champ E(y,z). On en déduit un facteur d'atténuation géométrique alpha(y) :
+//         alpha(y) = <|E(y)|^2>_z / |E(y, z=0)|^2   (moyenne sur la hauteur du canal)
+//    - Plan horizontal (XY) : On simule la déflection dans le plan de tri et on
+//      corrige la force locale : F_DEP_corrigée(x,y) = alpha(y) * F_DEP_2D_XY(x,y).
+//
+// 3. Pourquoi ce choix par rapport au BEM 3D complet ?
+//    - Vitesse & Prototypage rapide : Un code BEM 3D (Schütz et al.) est extrêmement
+//      lourd et coûteux en temps de calcul. L'approche XY/YZ donne les mêmes tendances
+//      et ordres de grandeur pour optimiser la forme des électrodes en quelques minutes.
+//    - Science ouverte & Accessibilité : Notre code BEM 2D + interfaces est
+//      entièrement Open Source. Il permet à la communauté de tester des designs sans
+//      avoir recours à des solveurs 3D propriétaires complexes.
+// ==============================================================================
+
+// En gros, epsilon eau = 80, c'est pour l'eau ultra pur -> K = 0.71
+// Si je prends de l'eau du robinet, on a D = epsilon eau*E -> E tend vers 0 à l'intérieur (conducteur), D reste fini donc epsilon eau tend vers l'infini -> epsilon eau non pure >> 80 -> K = 1
+
 Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
-                           const std::string &interfaceName,
-                           double epsilon)
+                           const std::string                 &interfaceName,
+                           double                             epsilonA,
+                           double                             epsilonB,
+                           double                             thickness)   // épaisseur du canal [m]
 {
     Force2D totalForce = {0.0, 0.0};
 
-    // 1. Filtrer les éléments de l'interface demandée
+    // ── 1. Collecter les éléments de l'interface ──────────────────────────────
     std::vector<const elementStruct*> ifElems;
-    for(const auto &el : elementVector)
+    for(const elementStruct &el : elementVector)
         if(el.interfaceName == interfaceName)
             ifElems.push_back(&el);
 
     if(ifElems.empty()) return totalForce;
 
-    // 2. Construire la map nodeTag → indices dans ifElems
-    //    (même logique que buildBIENodeToElements, mais local à cette interface)
+    // ── 2. Connectivité nodale locale ─────────────────────────────────────────
     std::map<std::size_t, std::vector<std::size_t>> nodeToIfElems;
     for(std::size_t k = 0; k < ifElems.size(); k++)
     {
@@ -719,59 +798,65 @@ Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
         nodeToIfElems[ifElems[k]->nodeTags[1]].push_back(k);
     }
 
-    // 3. Pour chaque élément, Et est calculé via les deux nœuds extrêmes
-    //    et leurs voisins topologiques (les autres éléments qui partagent ce nœud)
+    // ── 3. Boucle sur les éléments ────────────────────────────────────────────
     for(std::size_t k = 0; k < ifElems.size(); k++)
     {
         const elementStruct &el = *ifElems[k];
-        const double En = el.bcValue[1];
 
-        // --- Reconstruction de Et par différence finie nodale ---
-        // Pour chaque nœud du segment, on trouve l'élément voisin
-        // (l'autre élément qui partage ce nœud, != k)
+        // bcValue[1] = ∂φ/∂n dans la convention du BEM (cohérente avec nx,ny stockés).
+        // On ne corrige PAS le signe ici : la convention interne est consistante.
+        const double En_A = el.bcValue[1];
 
-        auto getNeighborPhi = [&](std::size_t nodeTag, std::size_t selfIdx) -> double
-        {
-            const auto &neighbors = nodeToIfElems.at(nodeTag);
-            for(std::size_t idx : neighbors)
-                if(idx != selfIdx)
-                    return ifElems[idx]->bcValue[0]; // phi du voisin
-            return ifElems[selfIdx]->bcValue[0];     // bord : repli sur soi-même
-        };
+        // Condition de saut : ε_A * En_A = -ε_B * En_B
+        // (normales opposées de chaque côté de l'interface)
+        const double En_B = -(epsilonA / epsilonB) * En_A;
 
-        // phi aux nœuds voisins de chaque extrémité
-        double phi_prev = getNeighborPhi(el.nodeTags[0], k); // voisin côté nœud 0
-        double phi_next = getNeighborPhi(el.nodeTags[1], k); // voisin côté nœud 1
+        // ── Reconstruction de Et ──────────────────────────────────────────────
+        double phi_prev = el.bcValue[0];
+        double phi_next = el.bcValue[0];
+        const elementStruct *ePrev = nullptr;
+        const elementStruct *eNext = nullptr;
 
-        // Distance entre les midpoints des deux voisins (base de la différence finie)
-        const elementStruct *ePrev = nullptr, *eNext = nullptr;
         for(std::size_t idx : nodeToIfElems.at(el.nodeTags[0]))
-            if(idx != k) ePrev = ifElems[idx];
-        for(std::size_t idx : nodeToIfElems.at(el.nodeTags[1]))
-            if(idx != k) eNext = ifElems[idx];
+            if(idx != k) { ePrev = ifElems[idx]; phi_prev = ePrev->bcValue[0]; }
 
-        double ds;
-        if(ePrev && eNext) {
-            double dmx = eNext->midX - ePrev->midX;
-            double dmy = eNext->midY - ePrev->midY;
+        for(std::size_t idx : nodeToIfElems.at(el.nodeTags[1]))
+            if(idx != k) { eNext = ifElems[idx]; phi_next = eNext->bcValue[0]; }
+
+        double ds = el.length;
+        if(ePrev && eNext)
+        {
+            const double dmx = eNext->midX - ePrev->midX;
+            const double dmy = eNext->midY - ePrev->midY;
             ds = std::sqrt(dmx*dmx + dmy*dmy);
-        } else {
-            ds = el.length; // extrémité de courbe ouverte
         }
 
-        double Et = (ds > 1e-15) ? -(phi_next - phi_prev) / ds : 0.0;
+        const double Et = (ds > 1e-15) ? -(phi_next - phi_prev) / ds : 0.0;
 
-        // 4. Reconstruction du champ E et tenseur de Maxwell
-        const double nx = el.nx, ny = el.ny;
-        const double tx = -ny,   ty =  nx;
+        // ── Champ E de chaque côté ────────────────────────────────────────────
+        const double nx = el.nx;
+        const double ny = el.ny;
+        const double tx = -ny;
+        const double ty =  nx;
 
-        const double Ex = En * nx + Et * tx;
-        const double Ey = En * ny + Et * ty;
-        const double E2 = Ex*Ex + Ey*Ey;
+        const double Ex_A = En_A * nx + Et * tx;
+        const double Ey_A = En_A * ny + Et * ty;
+        const double Ex_B = En_B * nx + Et * tx;
+        const double Ey_B = En_B * ny + Et * ty;
 
-        totalForce.fx += epsilon * (En * Ex - 0.5 * E2 * nx) * el.length;
-        totalForce.fy += epsilon * (En * Ey - 0.5 * E2 * ny) * el.length;
+        const double E2_A = Ex_A*Ex_A + Ey_A*Ey_A;
+        const double E2_B = Ex_B*Ex_B + Ey_B*Ey_B;
+
+        // ── Saut du tenseur de Maxwell ────────────────────────────────────────
+        const double Tx = epsilonA * (En_A * Ex_A - 0.5 * E2_A * nx)
+                        - epsilonB * (En_B * Ex_B - 0.5 * E2_B * nx);
+        const double Ty = epsilonA * (En_A * Ey_A - 0.5 * E2_A * ny)
+                        - epsilonB * (En_B * Ey_B - 0.5 * E2_B * ny);
+
+        // Intégration sur l'élément × épaisseur du canal pour passer en 3D [N]
+        totalForce.fx += Tx * el.length * thickness;
+        totalForce.fy += Ty * el.length * thickness;
     }
 
-    return totalForce;
+    return totalForce;  // Force 3D en [N]
 }

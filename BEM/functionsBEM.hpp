@@ -313,5 +313,7 @@ struct Force2D {
     double fy = 0.0;
 };
 Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
-                           const std::string &interfaceName,
-                           double epsilon);
+                           const std::string                 &interfaceName,
+                           double                             epsilonA,
+                           double                             epsilonB,
+                           double                             thickness);

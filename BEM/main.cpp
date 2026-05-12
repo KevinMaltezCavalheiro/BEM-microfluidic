@@ -48,7 +48,6 @@ int main(int argc, char **argv)
         std::map<int,std::pair<double,double>> boundaryDisplacementMap;
 
         int nbViews = 0;
-        double start = omp_get_wtime();
 
         int iteration;
 
