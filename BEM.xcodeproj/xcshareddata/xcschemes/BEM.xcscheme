@@ -57,7 +57,7 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "/Users/Kevin/BEMinterface/BEM/BEMelectrode.geo"
-            isEnabled = "NO">
+            isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
             argument = "/Users/Kevin/BEMinterface/BEM/Electrode.geo"
@@ -69,7 +69,7 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "/Users/Kevin/BEMinterface/BEM/3DprintedElectrodes.geo"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
          <CommandLineArgument
             argument = "/Users/Kevin/BEMinterface/BEM/simpleInterfaceDirichlet.geo"
