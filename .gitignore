@@ -92,7 +92,11 @@ DerivedData/
 /Users/Kevin/BEMinterface/BEM/mainBEM.cpp
 /Users/Kevin/BEMinterface/BEM/mainFEM.cpp
 /Users/Kevin/BEMinterface/BEM/solverFEM.cpp
-/Users/Kevin/BEMinterface/BEM/zone51.geo
+/Users/Kevin/BEMinterface/BEM/geo/zone51.geo
+/Users/Kevin/BEMinterface/BEM/comit.sh
+/Users/Kevin/BEMinterface/BEM/LaChoseDuStagiaire.geo
+/Users/Kevin/BEMinterface/BEM/electrodeMicroflu.geo
+/Users/Kevin/BEMinterface/BEM/electrodeTop.geo
 
 # Gmsh (fichiers temporaires ou lourds)
 *.msh
