@@ -1,6 +1,9 @@
 # list of ignored files/folders
 
+# Build / IDE
 build/
+*.xcodeproj/
+.DS_Store
 *~
 *.o
 *.obj
@@ -25,6 +28,14 @@ a.out
 *.toc
 *.fls 
 *.fdb_latexmk
+
+# Dossiers lourds et analyses externes
+dataMathematica/
+Eigen/
+gmsh-sdk/
+*.nb
+*.pdf
+*.txt
 
 Backup_of*
 
