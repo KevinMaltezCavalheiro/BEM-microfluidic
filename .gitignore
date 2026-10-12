@@ -18,6 +18,7 @@ dataMathematica/
 /BEM/LaChoseDuStagiaire.geo
 /BEM/electrodeMicroflu.geo
 /BEM/electrodeTop.geo
+/BEM/geo/zone51.geo
 
 # Analyses et documents externes
 *.nb
