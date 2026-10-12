@@ -1,17 +1,5 @@
 #include "functionsBEM.hpp"
 
-// ============================================================
-//  INTERNAL HELPER: BIE-filtered element list
-//
-//  The BIE representation integral for domain D must only sum over
-//  elements that physically bound D:
-//    'E'  → external boundary element of D  → always included
-//    'A'  → interface element, primary side  → included (bounds D from inside)
-//    'B'  → interface element, secondary side → EXCLUDED (bounds the OTHER domain)
-//
-//  Using 'B' elements in D's BIE would double-count the interface and
-//  produce incorrect potential / electric field values.
-// ============================================================
 static std::vector<elementStruct>
 buildBIEVector(const std::vector<elementStruct> &elementVector)
 {
@@ -24,17 +12,16 @@ static std::map<std::size_t, std::vector<std::size_t>>
 buildBIENodeToElements(const std::vector<elementStruct> &bieVec)
 {
     std::map<std::size_t, std::vector<std::size_t>> m;
+
     for(std::size_t i = 0; i < bieVec.size(); i++)
     {
-        auto ins = [&](std::size_t tag){
-            if(!m.count(tag)) m[tag] = {i};
-            else              m[tag].push_back(i);
-        };
-        ins(bieVec[i].nodeTags[0]);
-        ins(bieVec[i].nodeTags[1]);
+        m[bieVec[i].nodeTags[0]].push_back(i);
+        m[bieVec[i].nodeTags[1]].push_back(i);
+
         if(bieVec[i].midNodeTag != 0)
-            m[bieVec[i].midNodeTag] = {i};
+            m[bieVec[i].midNodeTag].push_back(i);
     }
+
     return m;
 }
 
@@ -336,79 +323,102 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
     std::map<std::size_t, std::vector<std::size_t>> position;
     phiInitialization(phi, position, domainElementTypes, domainElementTags);
 
-    // --- CORRECTION ICI ---
-    std::vector<size_t> domainBoundaryElTags;
-    // On passe bieNodeMap pour identifier les éléments touchant la frontière
-    boundaryElementTags(domainBoundaryElTags, domainElementTags, domainElementTypes,
-                             domainElementNodeTags, bieNodeMap);
+    // ============================================================
+    // 1. Reconstruction du potentiel aux nœuds BIE
+    // ============================================================
+    //
+    // Le potentiel BEM est constant sur chaque élément 1D.
+    // Au niveau d'un nœud partagé par plusieurs éléments BIE,
+    // on reconstruit le potentiel nodal par moyenne.
+    //
+    std::map<std::size_t, double> boundaryNodePhi;
 
-    // Ensuite ta zone parallèle peut démarrer sans risque
-    #pragma omp parallel for schedule(guided)
-    for(std::size_t i = 0; i < domainBoundaryElTags.size(); i++)
+    for(const auto &[nodeTag, bieIndices] : bieNodeMap)
     {
-        std::size_t elementTag  = domainBoundaryElTags[i];
+        if(bieIndices.empty())
+            continue;
 
-        // Utilisation de .at() pour la thread-safety en lecture sur la map 'position'
+        double sumPhi = 0.0;
+
+        for(std::size_t bieIndex : bieIndices)
+        {
+            const auto &e = bieVec[bieIndex];
+            sumPhi += e.bcValue[0];
+        }
+
+        boundaryNodePhi[nodeTag] =
+            sumPhi / static_cast<double>(bieIndices.size());
+    }
+
+
+    // ============================================================
+    // 2. Propagation aux éléments 2D
+    // ============================================================
+    //
+    // IMPORTANT :
+    // on parcourt TOUS les éléments 2D du domaine.
+    //
+    // Un élément peut toucher la frontière par un seul sommet
+    // sans avoir lui-même d'arête BIE.
+    //
+    // Exemple :
+    //
+    //     5 ---- 63 ---- 64
+    //            |
+    //            |
+    //          triangle
+    //
+    // Le triangle contenant 63 doit néanmoins recevoir phi(63).
+    //
+    std::vector<std::size_t> allElementTags;
+    allElementTags.reserve(position.size());
+
+    for(const auto &[elementTag, pos] : position)
+        allElementTags.push_back(elementTag);
+
+    #pragma omp parallel for schedule(guided)
+    for(std::size_t i = 0; i < allElementTags.size(); i++)
+    {
+        const std::size_t elementTag = allElementTags[i];
+
         const std::vector<std::size_t> &pos = position.at(elementTag);
-        int entityTagIndex   = pos[0];
-        int elementTypeIndex = pos[1];
-        int elementTagIndex  = pos[2];
 
-        // Accès aux tags des nœuds de l'élément (lecture seule)
-        const std::vector<std::size_t> &nodeTags = domainElementNodeTags.at(elementTag);
-        int nbNodes = phi[entityTagIndex][elementTypeIndex][elementTagIndex].size();
+        const int entityTagIndex   = pos[0];
+        const int elementTypeIndex = pos[1];
+        const int elementTagIndex  = pos[2];
+
+        const std::vector<std::size_t> &nodeTags =
+            domainElementNodeTags.at(elementTag);
+
+        const int nbNodes =
+            phi[entityTagIndex][elementTypeIndex][elementTagIndex].size();
 
         for(int j = 0; j < nbNodes; j++)
         {
-            std::size_t elementNodeTag = nodeTags[j];
+            
+            const std::size_t nodeTag = nodeTags[j];
 
-            // Vérification si le nœud est sur la frontière BIE
-            if(!bieNodeMap.count(elementNodeTag))
-                continue;
+            auto it = boundaryNodePhi.find(nodeTag);
 
-            const std::vector<std::size_t> &commonIndices = bieNodeMap.at(elementNodeTag);
-
-            if(commonIndices.size() == 1)
+            if(it != boundaryNodePhi.end())
             {
                 phi[entityTagIndex][elementTypeIndex][elementTagIndex][j] =
-                    bieVec[commonIndices[0]].bcValue[0];
-            }
-            else
-            {
-                double currentPhi = 0.0;
-                int count = 0;
-
-                int adjIdx0 = commonIndices[0];
-                std::size_t adjNode0 = bieVec[adjIdx0].nodeTags[0];
-                if(adjNode0 == elementNodeTag) adjNode0 = bieVec[adjIdx0].nodeTags[1];
-
-                // Recherche dans le vecteur local nodeTags
-                if(std::count(nodeTags.begin(), nodeTags.end(), adjNode0)) count++;
-                currentPhi += bieVec[adjIdx0].bcValue[0];
-
-                int adjIdx1 = commonIndices[1];
-                std::size_t adjNode1 = bieVec[adjIdx1].nodeTags[0];
-                if(adjNode1 == elementNodeTag) adjNode1 = bieVec[adjIdx1].nodeTags[1];
-
-                if(std::count(nodeTags.begin(), nodeTags.end(), adjNode1))
-                {
-                    if(count == 0) currentPhi  = bieVec[adjIdx1].bcValue[0];
-                    else         { currentPhi += bieVec[adjIdx1].bcValue[0]; currentPhi /= 2.0; }
-                }
-                else if(count == 0)
-                {
-                    currentPhi += bieVec[adjIdx1].bcValue[0];
-                    currentPhi /= 2.0;
-                }
-
-                // Écriture dans le tenseur phi (OK car (i, j) unique par thread)
-                phi[entityTagIndex][elementTypeIndex][elementTagIndex][j] = currentPhi;
+                    it->second;
             }
         }
     }
 
-    // Association finale (souvent rapide, peut rester séquentielle ou être parallélisée en interne)
-    elementNodalPhiAssociation(phi, domainElementTags, domainElementNodeTags, internalNodalPhi);
+    // ============================================================
+    // 3. Association des nœuds internes
+    // ============================================================
+    //
+    // Les nœuds qui n'ont pas reçu de valeur frontière sont encore
+    // à HUGE_VAL et sont traités ici à partir de internalNodalPhi.
+    //
+    elementNodalPhiAssociation(phi,
+                               domainElementTags,
+                               domainElementNodeTags,
+                               internalNodalPhi);
 }
 // ============================================================
 //  elementNodalPhiAssociation  (unchanged from original)

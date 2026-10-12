@@ -12,8 +12,8 @@ epsilon_r_WATER = 80.0;
 eps0 = 8.8541878128e-12;
 
 Lout_x = 1000*scale; Lout_y = 200*scale;
-lc = 3*scale;
-lc_part = 2*scale;
+lc = 10*scale;
+lc_part = 5*scale;
 
 // ---- 1. CADRE EXTÉRIEUR & ÉLECTRODES ----
 Point(1) = {-Lout_x/2, -Lout_y/2, 0, lc};
@@ -43,7 +43,9 @@ Point(17) = {cx3 + w_cheminee/2, Ly3/2,  0, lc}; Point(18) = {cx3 - w_cheminee/2
 Point(19) = {cx3 - w_cheminee/2, 0,      0, lc}; Point(20) = {cx3 - Lx3/2,       0,      0, lc};
 Line(13) = {13, 14}; Line(14) = {14, 15}; Line(15) = {15, 16}; Line(16) = {16, 17};
 Line(17) = {17, 18}; Line(18) = {18, 19}; Line(19) = {19, 20}; Line(20) = {20, 13};
-Curve Loop(4) = {13, 14, 15, 16, 17, 18, 19, 20};
+
+// CORRECTION : On inverse l'ordre pour retrouver le sens horaire du code 1
+Curve Loop(4) = {-20, -19, -18, -17, -16, -15, -14, -13};
 
 // ---- 3. PARTICULE 1 (Interface 2-3) ----
 p1_rad = 20*scale;
@@ -56,7 +58,7 @@ Point(24) = {p1_cx - p1_rad, p1_cy, 0, lc_part};
 Point(25) = {p1_cx, p1_cy - p1_rad, 0, lc_part};
 Circle(21) = {22, 21, 23}; Circle(22) = {23, 21, 24};
 Circle(23) = {24, 21, 25}; Circle(24) = {25, 21, 22};
-Curve Loop(5) = {21, 22, 23, 24};
+Curve Loop(5) = {-24, -23, -22, -21};
 
 // ---- 4. PARTICULE 2 (Interface 2-4) ----
 // Positionnée en -x, -y par rapport à la première
@@ -71,7 +73,7 @@ Point(29) = {p2_cx - p2_rad, p2_cy, 0, lc_part};
 Point(30) = {p2_cx, p2_cy - p2_rad, 0, lc_part};
 Circle(25) = {27, 26, 28}; Circle(26) = {28, 26, 29};
 Circle(27) = {29, 26, 30}; Circle(28) = {30, 26, 27};
-Curve Loop(6) = {25, 26, 27, 28};
+Curve Loop(6) = {-28, -27, -26, -25};
 
 // ---- SURFACES ----
 Plane Surface(1) = {1, 2, 3, 4};     // PDMS

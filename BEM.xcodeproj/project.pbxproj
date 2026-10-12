@@ -29,6 +29,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0A0B394F3061DD6C00680F1A /* testElectrodeTop.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = testElectrodeTop.geo; sourceTree = "<group>"; };
+		0A0B39543062B72F00680F1A /* zone51.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = zone51.geo; sourceTree = "<group>"; };
+		0A0B39553073B89500680F1A /* 3DprintedElectrodesMultiWell100.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = 3DprintedElectrodesMultiWell100.geo; sourceTree = "<group>"; };
+		0A0B395630744AE300680F1A /* electrodeVV.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = electrodeVV.geo; sourceTree = "<group>"; };
+		0A0B39583075F54900680F1A /* 3DprintedElectrodesMultiWell145.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = 3DprintedElectrodesMultiWell145.geo; sourceTree = "<group>"; };
+		0A0B39593076D78500680F1A /* 3DprintedElectrode_thick_electrode_fit.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = 3DprintedElectrode_thick_electrode_fit.geo; sourceTree = "<group>"; };
 		0A4A490E28354C590073EDCC /* postProcessing.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = postProcessing.cpp; sourceTree = "<group>"; };
 		0A4A491028354C590073EDCC /* solverBEM.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = solverBEM.cpp; sourceTree = "<group>"; };
 		0A4A491228354C5A0073EDCC /* functionsBEM.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = functionsBEM.hpp; sourceTree = "<group>"; };
@@ -47,6 +53,8 @@
 		0A9704272F7AB62400165948 /* simpleInterface.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterface.geo; sourceTree = "<group>"; };
 		0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = simpleInterfaceDirichlet.geo; sourceTree = "<group>"; };
 		0A9704292F7ABFB200165948 /* verification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = verification.cpp; sourceTree = "<group>"; };
+		0AFB11A33038942B0028D3B6 /* 3DprintedElectrodeValidation.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = 3DprintedElectrodeValidation.geo; sourceTree = "<group>"; };
+		0AFB11A43038FABD0028D3B6 /* 3DprintedElectrodeSimpleTest.geo */ = {isa = PBXFileReference; lastKnownFileType = text; path = 3DprintedElectrodeSimpleTest.geo; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,6 +69,70 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0A0B394E3061720800680F1A /* geo */ = {
+			isa = PBXGroup;
+			children = (
+				0A0B395730744B4F00680F1A /* UpperView */,
+				0A0B3950306295CC00680F1A /* DEP */,
+				0A0B3951306296FA00680F1A /* 3DPrintedElectrodes */,
+				0A0B39523062981800680F1A /* TestAndValidation */,
+				0A0B395330629EEA00680F1A /* PDMSElectrodes */,
+				0A0B39543062B72F00680F1A /* zone51.geo */,
+			);
+			path = geo;
+			sourceTree = "<group>";
+		};
+		0A0B3950306295CC00680F1A /* DEP */ = {
+			isa = PBXGroup;
+			children = (
+				0A66D9B22FA360EB00031D45 /* BEMelectrode.geo */,
+				0A66D9B12FA2C2B400031D45 /* Electrode.geo */,
+			);
+			path = DEP;
+			sourceTree = "<group>";
+		};
+		0A0B3951306296FA00680F1A /* 3DPrintedElectrodes */ = {
+			isa = PBXGroup;
+			children = (
+				0A66D9AE2FA2181900031D45 /* 3DprintedElectrodes.geo */,
+				0AFB11A33038942B0028D3B6 /* 3DprintedElectrodeValidation.geo */,
+				0AFB11A43038FABD0028D3B6 /* 3DprintedElectrodeSimpleTest.geo */,
+				0A0B39593076D78500680F1A /* 3DprintedElectrode_thick_electrode_fit.geo */,
+				0A0B39553073B89500680F1A /* 3DprintedElectrodesMultiWell100.geo */,
+				0A0B39583075F54900680F1A /* 3DprintedElectrodesMultiWell145.geo */,
+			);
+			path = 3DPrintedElectrodes;
+			sourceTree = "<group>";
+		};
+		0A0B39523062981800680F1A /* TestAndValidation */ = {
+			isa = PBXGroup;
+			children = (
+				0A66D9B32FB3512600031D45 /* 2rectangles.geo */,
+				0A66D9B42FB3513000031D45 /* rectangle.geo */,
+				0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */,
+				0A9704272F7AB62400165948 /* simpleInterface.geo */,
+				0A66D9A82FA0FA3F00031D45 /* complexInterface.geo */,
+			);
+			path = TestAndValidation;
+			sourceTree = "<group>";
+		};
+		0A0B395330629EEA00680F1A /* PDMSElectrodes */ = {
+			isa = PBXGroup;
+			children = (
+				0A66D9AD2FA203C000031D45 /* DropletsInChannel.geo */,
+			);
+			path = PDMSElectrodes;
+			sourceTree = "<group>";
+		};
+		0A0B395730744B4F00680F1A /* UpperView */ = {
+			isa = PBXGroup;
+			children = (
+				0A0B395630744AE300680F1A /* electrodeVV.geo */,
+				0A0B394F3061DD6C00680F1A /* testElectrodeTop.geo */,
+			);
+			path = UpperView;
+			sourceTree = "<group>";
+		};
 		0A591E3C27F9CE1700B1D4E1 = {
 			isa = PBXGroup;
 			children = (
@@ -81,6 +153,7 @@
 		0A591E4727F9CE1700B1D4E1 /* BEM */ = {
 			isa = PBXGroup;
 			children = (
+				0A0B394E3061720800680F1A /* geo */,
 				0A66D9B52FB3513D00031D45 /* main.cpp */,
 				0A4A491028354C590073EDCC /* solverBEM.cpp */,
 				0A4A491328354C5A0073EDCC /* boundaryElements.cpp */,
@@ -88,15 +161,6 @@
 				0A4A490E28354C590073EDCC /* postProcessing.cpp */,
 				0A9704292F7ABFB200165948 /* verification.cpp */,
 				0A4A491228354C5A0073EDCC /* functionsBEM.hpp */,
-				0A66D9B12FA2C2B400031D45 /* Electrode.geo */,
-				0A66D9B22FA360EB00031D45 /* BEMelectrode.geo */,
-				0A66D9AD2FA203C000031D45 /* DropletsInChannel.geo */,
-				0A66D9AE2FA2181900031D45 /* 3DprintedElectrodes.geo */,
-				0A66D9B32FB3512600031D45 /* 2rectangles.geo */,
-				0A66D9B42FB3513000031D45 /* rectangle.geo */,
-				0A9704272F7AB62400165948 /* simpleInterface.geo */,
-				0A66D9A82FA0FA3F00031D45 /* complexInterface.geo */,
-				0A9704282F7ABB1F00165948 /* simpleInterfaceDirichlet.geo */,
 			);
 			path = BEM;
 			sourceTree = "<group>";

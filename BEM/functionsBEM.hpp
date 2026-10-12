@@ -9,28 +9,36 @@
 #include <string>
 #include <Eigen/Dense>
 #include <omp.h>
+#include <algorithm>
+#include <cstdlib>
 
 // ============================================================
 //  ELEMENT STRUCT
 // ============================================================
+
 struct elementStruct
 {
-    std::size_t tag;
-    double      bcValue[2];     // [phi, phi_n]
-    std::size_t nodeTags[2];
-    std::size_t midNodeTag;
-    double      length;
-    double      x1, y1, x2, y2;
-    double      midX, midY;
-    double      deltaX, deltaY;
-    double      nx, ny;
-    bool normalOutward;
+    std::size_t tag = 0;
+    double bcValue[2] = {HUGE_VAL, HUGE_VAL}; // [phi, phi_n]
+    std::size_t nodeTags[2] = {0, 0};
+    std::size_t midNodeTag = 0;
 
-    // 'E' = external boundary, 'A' = interface primary side, 'B' = interface secondary side
-    char        interfaceSide  = 'E';
-    std::string interfaceName  = "";
-    int         interfaceIndex = -1;
-    int         globalIndex    = -1;
+    double length = 0.0;
+    double x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0;
+    double midX = 0.0, midY = 0.0;
+    double deltaX = 0.0, deltaY = 0.0;
+    double nx = 0.0, ny = 0.0;
+    bool normalOutward = true;
+
+    // Domaine auquel appartient cette représentation BIE
+    int domainPhysicalGroupTag = -1;
+
+    // E = external, A = interface primary side,
+    // B = interface secondary side, H = hole
+    char interfaceSide = 'E';
+    std::string interfaceName = "";
+    int interfaceIndex = -1;
+    int globalIndex = -1;
 };
 
 // ============================================================

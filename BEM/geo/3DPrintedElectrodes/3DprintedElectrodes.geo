@@ -9,16 +9,17 @@ epsilon_r_OIL    = 9.62;
 epsilon_r_WATER  = 80.0;
 eps0 = 8.8541878128e-12;
 
-Lout_x = 1000*scale; Lout_y = 300*scale;
-H_interface = -20*scale;
-lc = 4*scale; // Mesh un peu plus léger pour le calcul global
+Lout_x = 1000*scale; Lout_y = 600*scale;
+H_interface = -120*scale;
+lc = 10*scale; // Mesh plus grossier pour le calcul global
 lc_part = 2*scale;
+lc_canal = 3*scale;
 
 // ---- 1. CADRE EXTÉRIEUR ----
 Point(1) = {-Lout_x/2, -Lout_y/2, 0, lc};
 Point(2) = { Lout_x/2, -Lout_y/2, 0, lc};
-Point(3) = { Lout_x/2,  Lout_y/2, 0, lc};
-Point(4) = {-Lout_x/2,  Lout_y/2, 0, lc};
+Point(3) = { Lout_x/2,  Lout_y/3, 0, lc};
+Point(4) = {-Lout_x/2,  Lout_y/3, 0, lc};
 Point(100) = {-Lout_x/2, H_interface, 0, lc};
 Point(101) = { Lout_x/2, H_interface, 0, lc};
 
@@ -27,7 +28,7 @@ Line(4) = {3, 4}; Line(5) = {4, 100}; Line(6) = {100, 1};
 Line(7) = {100, 101}; // INTERFACE PLATE
 
 // ---- 2. ÉLECTRODES (Trous dans la Résine) ----
-cx1 = 350*scale; w1 = 100*scale; h1 = 60*scale; y_elec = -80*scale;
+cx1 = 350*scale; w1 = 100*scale; h1 = 60*scale; y_elec = -151*scale;
 Point(5) = {cx1-w1/2, y_elec-h1/2, 0, lc}; Point(6) = {cx1+w1/2, y_elec-h1/2, 0, lc};
 Point(7) = {cx1+w1/2, y_elec+h1/2, 0, lc}; Point(8) = {cx1-w1/2, y_elec+h1/2, 0, lc};
 Line(8) = {5, 6}; Line(9) = {6, 7}; Line(10) = {7, 8}; Line(11) = {8, 5};
@@ -38,11 +39,15 @@ Point(11) = {cx2+w1/2, y_elec+h1/2, 0, lc}; Point(12) = {cx2-w1/2, y_elec+h1/2, 
 Line(12) = {9, 10}; Line(13) = {10, 11}; Line(14) = {11, 12}; Line(15) = {12, 9};
 
 // ---- 3. CANAL EN T (Inclusion dans le PDMS) ----
-cx3 = 0.0; Lx3 = 300.0*scale; Ly3 = 60.0*scale; w_cheminee = 80*scale; y_canal = 40*scale;
-Point(13) = {cx3-Lx3/2, y_canal-Ly3/2, 0, lc}; Point(14) = {cx3+Lx3/2, y_canal-Ly3/2, 0, lc};
-Point(15) = {cx3+Lx3/2, y_canal,       0, lc}; Point(16) = {cx3+w_cheminee/2, y_canal, 0, lc};
-Point(17) = {cx3+w_cheminee/2, y_canal+Ly3/2, 0, lc}; Point(18) = {cx3-w_cheminee/2, y_canal+Ly3/2, 0, lc};
-Point(19) = {cx3-w_cheminee/2, y_canal, 0, lc}; Point(20) = {cx3-Lx3/2, y_canal, 0, lc};
+cx3 = 0.0; Lx3 = 300.0*scale; Ly3 = 60.0*scale; w_cheminee = 80*scale; y_canal = 60*scale;
+Point(13) = {cx3-Lx3/2, y_canal-Ly3/2, 0, lc_canal}; // <--- lc_canal ici
+Point(14) = {cx3+Lx3/2, y_canal-Ly3/2, 0, lc_canal}; // <--- et ainsi de suite...
+Point(15) = {cx3+Lx3/2, y_canal,       0, lc_canal};
+Point(16) = {cx3+w_cheminee/2, y_canal, 0, lc_canal};
+Point(17) = {cx3+w_cheminee/2, y_canal+Ly3/2, 0, lc_canal};
+Point(18) = {cx3-w_cheminee/2, y_canal+Ly3/2, 0, lc_canal};
+Point(19) = {cx3-w_cheminee/2, y_canal, 0, lc_canal};
+Point(20) = {cx3-Lx3/2, y_canal,       0, lc_canal};
 Line(16) = {13, 14}; Line(17) = {14, 15}; Line(18) = {15, 16}; Line(19) = {16, 17};
 Line(20) = {17, 18}; Line(21) = {18, 19}; Line(22) = {19, 20}; Line(23) = {20, 13};
 

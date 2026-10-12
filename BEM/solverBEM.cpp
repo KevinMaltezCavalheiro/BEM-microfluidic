@@ -490,7 +490,9 @@ void distributeGlobalSolution(std::vector<domainData> &domains,
             domains[idxA].elementVector[jA].bcValue[1] = qn_if;
 
             domains[idxB].elementVector[jB].bcValue[0] = u_if;
-            domains[idxB].elementVector[jB].bcValue[1] = -qn_if; // Flux opposé sur l'autre face
+            //domains[idxB].elementVector[jB].bcValue[1] = -qn_if; // Flux opposé sur l'autre face
+            domains[idxB].elementVector[jB].bcValue[1] =
+                -iface.kRatio * qn_if;
         }
 
         // On garde le debug pour le premier élément (exécuté par un thread à la fois)
@@ -663,7 +665,6 @@ void multiDomainSolverBEM(std::map<int, double> &electrostaticPressure,
 
             // Calcul des données de visualisation
             std::vector<std::vector<std::vector<std::vector<double>>>> nPhi, ePhi, eField;
-
             elementNodeData(nPhi, dElemTags, dElemTypes, dElemNodeTags,
                             dom.elementVector, internalPhi, dom.physicalGroupTag, bNodeToElems);
 

@@ -100,7 +100,7 @@ Line(58) = {65,1}; Line(59) = {1,2}; Line(60) = {2,3};
 Line(61) = {39, 40}; // Milieu Haut
 Line(62) = {6, 7};   // Coin Haut Droit
 Line(63) = {101, 6}; // Vertical Haut Droit
-Line(64) = {100, 3}; // Vertical Haut Gauche (Sens: Bas -> Haut pour boucle anti-horaire)
+Line(64) = {3, 100}; // Vertical Haut Gauche (Sens: Bas -> Haut pour boucle anti-horaire)
 Line(100) = {100, 101}; // INTERFACE
 
 Line(65) = {4, 5};   // Bas horizontal
@@ -110,7 +110,7 @@ Line(67) = {5, 101}; // Vertical Bas Droit
 // ---- 3. SURFACES ----
 // PDMS (Haut)
 // On part de 100 -> 63 -> 62 -> 1:32 -> 61 -> 33:60 -> -64
-Curve Loop(1) = {100, 63, 62, 1:32, 61, 33:60, -64};
+Curve Loop(1) = {100, 63, 62, 1:32, 61, 33:60, 64};
 Plane Surface(1) = {1};
 
 // OIL (Bas)

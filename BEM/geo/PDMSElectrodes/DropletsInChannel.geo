@@ -9,8 +9,8 @@ epsilon_r_WATER = 80.0;
 eps0 = 8.8541878128e-12;
 
 Lout_x = 1000*scale; Lout_y = 200*scale;
-lc = 3*scale;
-lc_part = 2*scale;
+lc = 2*scale;
+lc_part = 1*scale;
 
 // ---- 1. CADRE EXTÉRIEUR ----
 Point(1) = {-Lout_x/2, -Lout_y/2, 0, lc};

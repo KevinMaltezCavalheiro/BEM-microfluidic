@@ -2,8 +2,8 @@
 // Facteur de conversion : 100 / (15.94691077 - (-11.73264531))
 
 scale = 3.612774e-6;
-lc_coeff = 9.22362 * 0.2;
-lc = lc_coeff * scale;
+lc_coeff = 9.22362 * 0.4;
+lc = lc_coeff * scale * 0.5;
 
 // ── Points (Scalés) ──────────────────────────────────────────
 Point(1) = {-326.8810553 * scale, 48.17069178 * scale, 0, lc};

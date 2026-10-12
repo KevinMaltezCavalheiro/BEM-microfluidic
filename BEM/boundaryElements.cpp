@@ -106,133 +106,236 @@ void computeGeometricParam(elementStruct &element,
 //  Convention: Dirichlet elements come first, Neumann elements after.
 //  Interface elements are handled by addInterfaceElements().
 // ============================================================
-std::size_t fillElementVector(std::vector<elementStruct> &elementVector,
-                              int &domainPhysicalGroupDim,
-                              int &domainPhysicalGroupTag,
-                              std::map<int, std::pair<double, double>> &nodalDisplacements,
-                              const std::string domainName)
+std::size_t fillElementVector(
+    std::vector<elementStruct>& elementVector,
+    int& domainPhysicalGroupDim,
+    int& domainPhysicalGroupTag,
+    std::map<int, std::pair<double, double>>& nodalDisplacements,
+    const std::string domainName)
 {
     std::size_t nbDirichletElements = 0;
 
     std::map<std::string, std::pair<bool, double>> boundaryConditions;
     getBC(boundaryConditions, domainName);
 
+    // ---------------------------------------------------------
+    // 1. Identifier le domaine courant et ses surfaces 2D
+    // ---------------------------------------------------------
     gmsh::vectorpair physicalGroupsDimTags;
     gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
-    for(std::size_t i = 0; i < physicalGroupsDimTags.size(); i++)
+    bool domainFound = false;
+    std::vector<int> domainSurfaceTags;
+
+    for (const auto& [dim, tag] : physicalGroupsDimTags)
     {
-        int physicalGroupDim = physicalGroupsDimTags[i].first;
-        int physicalGroupTag = physicalGroupsDimTags[i].second;
+        if (dim != 2)
+            continue;
+
+        std::string name;
+        gmsh::model::getPhysicalName(dim, tag, name);
+
+        if (name != domainName)
+            continue;
+
+        domainPhysicalGroupDim = dim;
+        domainPhysicalGroupTag = tag;
+
+        gmsh::model::getEntitiesForPhysicalGroup(
+            dim, tag, domainSurfaceTags);
+
+        domainFound = true;
+        break;
+    }
+
+    if (!domainFound)
+    {
+        std::cerr << "[ERROR] Domain not found: "
+                  << domainName << '\n';
+        std::exit(EXIT_FAILURE);
+    }
+
+    // ---------------------------------------------------------
+    // 2. Parcourir les groupes physiques portant une BC
+    // ---------------------------------------------------------
+    for (const auto& [physicalGroupDim, physicalGroupTag]
+         : physicalGroupsDimTags)
+    {
         std::string physicalGroupName;
-        gmsh::model::getPhysicalName(physicalGroupDim, physicalGroupTag, physicalGroupName);
+        gmsh::model::getPhysicalName(
+            physicalGroupDim, physicalGroupTag, physicalGroupName);
 
-        if(physicalGroupName.compare(domainName) == 0)
-        {
-            domainPhysicalGroupDim = physicalGroupDim;
-            domainPhysicalGroupTag = physicalGroupTag;
-        }
-
-        if(boundaryConditions.find(physicalGroupName) == boundaryConditions.end())
+        auto bcIt = boundaryConditions.find(physicalGroupName);
+        if (bcIt == boundaryConditions.end())
             continue;
 
-        if(physicalGroupName.substr(0, 14) == "BEM_interface_")
+        // Les interfaces sont ajoutées séparément par
+        // addInterfaceElements().
+        if (physicalGroupName.rfind("BEM_interface_", 0) == 0)
             continue;
 
-        // --- DÉTECTION DU TROU ---
-        bool isHole = (physicalGroupName.find("Hole") != std::string::npos ||
-                       physicalGroupName.find("hole") != std::string::npos);
+        // Les frontières externes doivent être des courbes 1D.
+        if (physicalGroupDim != 1)
+            continue;
 
-        bool   bcType  = boundaryConditions[physicalGroupName].first;
-        double bcValue = boundaryConditions[physicalGroupName].second;
+        const bool isHole =
+            physicalGroupName.find("Hole") != std::string::npos ||
+            physicalGroupName.find("hole") != std::string::npos;
+
+        const bool bcType = bcIt->second.first;
+        const double bcValue = bcIt->second.second;
 
         std::vector<int> entityTags;
-        gmsh::model::getEntitiesForPhysicalGroup(physicalGroupDim, physicalGroupTag, entityTags);
+        gmsh::model::getEntitiesForPhysicalGroup(
+            physicalGroupDim, physicalGroupTag, entityTags);
 
-        for(std::size_t m = 0; m < entityTags.size(); m++)
+        // -----------------------------------------------------
+        // 3. Traiter chaque courbe du groupe physique
+        // -----------------------------------------------------
+        for (const int curveTag : entityTags)
         {
-            std::vector<int> elementTypes = {1, 8};
-            for(std::size_t j = 0; j < elementTypes.size(); j++)
+            // Vérifier que la courbe est adjacente à une surface
+            // du domaine courant.
+            std::vector<int> upward, downward;
+            gmsh::model::getAdjacencies(
+                1, curveTag, upward, downward);
+
+            const bool belongsToDomain =
+                std::any_of(
+                    upward.begin(), upward.end(),
+                    [&](const int surfaceTag)
+                    {
+                        return std::find(
+                            domainSurfaceTags.begin(),
+                            domainSurfaceTags.end(),
+                            surfaceTag
+                        ) != domainSurfaceTags.end();
+                    });
+
+            if (!belongsToDomain)
+                continue;
+
+            // Éléments linéaires et quadratiques (ordre 2).
+            const std::vector<int> elementTypes = {1, 8};
+
+            for (const int elementType : elementTypes)
             {
-                int nbNodesPerElement = (elementTypes[j] == 8) ? 3 : 2;
+                const int nbNodesPerElement =
+                    (elementType == 8) ? 3 : 2;
 
                 std::vector<std::size_t> elementTags;
                 std::vector<std::size_t> elementNodeTags;
-                gmsh::model::mesh::getElementsByType(elementTypes[j], elementTags,
-                                                     elementNodeTags, entityTags[m]);
+
+                gmsh::model::mesh::getElementsByType(
+                    elementType, elementTags,
+                    elementNodeTags, curveTag);
+
+                if (elementTags.empty())
+                    continue;
 
                 std::vector<std::size_t> nodeTags;
                 std::vector<double> nodeCoords, parametricNodeCoords;
-                gmsh::model::mesh::getNodesByElementType(elementTypes[j], nodeTags, nodeCoords,
-                                                         parametricNodeCoords, entityTags[m], false);
+
+                gmsh::model::mesh::getNodesByElementType(
+                    elementType, nodeTags, nodeCoords,
+                    parametricNodeCoords, curveTag, false);
 
                 std::map<std::size_t, std::size_t> nodeIndices;
-                for(std::size_t k = 0; k < nodeTags.size(); k++)
+                for (std::size_t k = 0; k < nodeTags.size(); ++k)
                     nodeIndices[nodeTags[k]] = k;
 
-                // --- DÉBUT DE LA RÉGION PARALLÈLE ---
+                // -------------------------------------------------
+                // 4. Construction parallèle des éléments BIE
+                // -------------------------------------------------
                 #pragma omp parallel
                 {
                     std::vector<elementStruct> localDirichlet;
                     std::vector<elementStruct> localNeumann;
 
                     #pragma omp for schedule(guided)
-                    for(std::size_t el = 0; el < elementTags.size(); el++)
+                    for (std::size_t el = 0;
+                         el < elementTags.size(); ++el)
                     {
                         elementStruct element;
-                        element.tag         = elementTags[el];
-                        element.nodeTags[0] = nodeTags[nbNodesPerElement*el];
-                        element.nodeTags[1] = nodeTags[nbNodesPerElement*el + 1];
-                        element.midNodeTag  = (nbNodesPerElement == 3)
-                                              ? nodeTags[nbNodesPerElement*el + 2] : 0;
 
-                        // On applique les nouveaux flags
-                        element.interfaceSide  = isHole ? 'H' : 'E';
-                        element.interfaceName  = physicalGroupName;
+                        element.tag = elementTags[el];
+                        element.domainPhysicalGroupTag =
+                            domainPhysicalGroupTag;
+
+                        element.nodeTags[0] =
+                            elementNodeTags[nbNodesPerElement * el];
+
+                        element.nodeTags[1] =
+                            elementNodeTags[nbNodesPerElement * el + 1];
+
+                        element.midNodeTag =
+                            (nbNodesPerElement == 3)
+                            ? elementNodeTags[nbNodesPerElement * el + 2]
+                            : 0;
+
+                        element.interfaceSide = isHole ? 'H' : 'E';
+                        element.interfaceName = physicalGroupName;
                         element.interfaceIndex = -1;
 
-                        std::pair<double,double> d1 = {0.0,0.0}, d2 = {0.0,0.0};
+                        std::pair<double, double> d1 = {0.0, 0.0};
+                        std::pair<double, double> d2 = {0.0, 0.0};
 
-                        // Note: Les maps std::map ne sont pas thread-safe en écriture,
-                        // mais en lecture seule (count/find), c'est généralement OK ici.
-                        if(nodalDisplacements.count(element.nodeTags[0]))
-                            d1 = nodalDisplacements[element.nodeTags[0]];
-                        if(nodalDisplacements.count(element.nodeTags[1]))
-                            d2 = nodalDisplacements[element.nodeTags[1]];
+                        auto it1 = nodalDisplacements.find(
+                            static_cast<int>(element.nodeTags[0]));
+                        if (it1 != nodalDisplacements.end())
+                            d1 = it1->second;
 
-                        computeGeometricParam(element, nodeIndices, nodeCoords, d1, d2);
+                        auto it2 = nodalDisplacements.find(
+                            static_cast<int>(element.nodeTags[1]));
+                        if (it2 != nodalDisplacements.end())
+                            d2 = it2->second;
 
-                        if(bcType) {
+                        computeGeometricParam(
+                            element, nodeIndices, nodeCoords, d1, d2);
+
+                        if (bcType)
+                        {
                             element.bcValue[0] = bcValue;
                             localDirichlet.push_back(element);
                         }
-                        else {
+                        else
+                        {
                             element.bcValue[1] = bcValue;
                             localNeumann.push_back(element);
                         }
                     }
 
-                    // Fusion des résultats locaux dans le vecteur global
                     #pragma omp critical
                     {
-                        if (!localDirichlet.empty()) {
-                            elementVector.insert(elementVector.begin(), localDirichlet.begin(), localDirichlet.end());
+                        if (!localDirichlet.empty())
+                        {
+                            elementVector.insert(
+                                elementVector.begin(),
+                                localDirichlet.begin(),
+                                localDirichlet.end());
+
                             nbDirichletElements += localDirichlet.size();
                         }
-                        if (!localNeumann.empty()) {
-                            elementVector.insert(elementVector.end(), localNeumann.begin(), localNeumann.end());
+
+                        if (!localNeumann.empty())
+                        {
+                            elementVector.insert(
+                                elementVector.end(),
+                                localNeumann.begin(),
+                                localNeumann.end());
                         }
                     }
-                } // --- FIN DE LA RÉGION PARALLÈLE ---
+                }
             }
         }
     }
 
-    // On garde l'orientation hors parallélisation (souvent séquentiel par nature)
+    // Calcul de l'orientation des normales après construction.
     computeNormalOrientation(elementVector, domainPhysicalGroupTag);
 
     return nbDirichletElements;
 }
+
 // ============================================================
 //  detectInterfaces
 //  Scans all Physical Curves for the pattern "BEM_interface_<A>_<B>".
@@ -288,96 +391,173 @@ void detectInterfaces(std::vector<interfaceStruct> &interfaces,
     }
 }
 
-// ============================================================
-//  addInterfaceElements
-//  Appends elements of the interface curve to both domain A and domain B.
-//  Side A and side B share the same physical geometry but have opposite
-//  outward normals, hence the sign convention in the global assembly.
-// ============================================================
-void addInterfaceElements(domainData &domainA,
-                          domainData &domainB,
-                          interfaceStruct &iface,
-                          std::map<int, std::pair<double,double>> &nodalDisplacements)
+
+void addInterfaceElements(
+    domainData& domainA,
+    domainData& domainB,
+    interfaceStruct& iface,
+    std::map<int, std::pair<double, double>>& nodalDisplacements)
 {
+    // ---------------------------------------------------------
+    // 1. Trouver le groupe physique de l'interface
+    // ---------------------------------------------------------
     gmsh::vectorpair physicalGroupsDimTags;
     gmsh::model::getPhysicalGroups(physicalGroupsDimTags);
 
-    int ifaceDim = -1, ifaceTag = -1;
-    for(auto &dimTag : physicalGroupsDimTags)
+    int ifaceDim = -1;
+    int ifaceTag = -1;
+
+    for (const auto& [dim, tag] : physicalGroupsDimTags)
     {
         std::string name;
-        gmsh::model::getPhysicalName(dimTag.first, dimTag.second, name);
-        if(name == iface.name) { ifaceDim = dimTag.first; ifaceTag = dimTag.second; break; }
+        gmsh::model::getPhysicalName(dim, tag, name);
+
+        if (name == iface.name)
+        {
+            ifaceDim = dim;
+            ifaceTag = tag;
+            break;
+        }
     }
-    if(ifaceDim < 0)
+
+    if (ifaceDim != 1 || ifaceTag < 0)
     {
-        std::cerr << "Error: Cannot find Physical Curve '" << iface.name << "'.\n";
+        std::cerr
+            << "[ERROR] Cannot find Physical Curve '"
+            << iface.name << "' (dimension 1).\n";
         return;
     }
 
+    // ---------------------------------------------------------
+    // 2. Récupérer les courbes de l'interface
+    // ---------------------------------------------------------
     std::vector<int> entityTags;
-    gmsh::model::getEntitiesForPhysicalGroup(ifaceDim, ifaceTag, entityTags);
+    gmsh::model::getEntitiesForPhysicalGroup(
+        ifaceDim, ifaceTag, entityTags);
 
-    std::vector<int> elementTypes = {1, 8};
-    for(auto entityTag : entityTags)
+    const std::vector<int> elementTypes = {1, 8};
+
+    // ---------------------------------------------------------
+    // 3. Construire les deux représentations BIE
+    // ---------------------------------------------------------
+    for (const int entityTag : entityTags)
     {
-        for(int elType : elementTypes)
+        for (const int elType : elementTypes)
         {
-            int nbNPE = (elType == 8) ? 3 : 2;
+            const int nbNPE = (elType == 8) ? 3 : 2;
 
-            std::vector<std::size_t> elTags, elNodeTags;
-            gmsh::model::mesh::getElementsByType(elType, elTags, elNodeTags, entityTag);
-            if(elTags.empty()) continue;
+            std::vector<std::size_t> elTags;
+            std::vector<std::size_t> elNodeTags;
+
+            gmsh::model::mesh::getElementsByType(
+                elType, elTags, elNodeTags, entityTag);
+
+            if (elTags.empty())
+                continue;
 
             std::vector<std::size_t> nodeTags;
             std::vector<double> nodeCoords, parametric;
-            gmsh::model::mesh::getNodesByElementType(elType, nodeTags, nodeCoords,
-                                                      parametric, entityTag, false);
+
+            gmsh::model::mesh::getNodesByElementType(
+                elType, nodeTags, nodeCoords,
+                parametric, entityTag, false);
 
             std::map<std::size_t, std::size_t> nodeIndices;
-            for(std::size_t k = 0; k < nodeTags.size(); k++)
+
+            for (std::size_t k = 0; k < nodeTags.size(); ++k)
                 nodeIndices[nodeTags[k]] = k;
 
-            for(std::size_t el = 0; el < elTags.size(); el++)
+            for (std::size_t el = 0; el < elTags.size(); ++el)
             {
                 elementStruct base;
-                base.tag         = elTags[el];
-                base.nodeTags[0] = elNodeTags[nbNPE*el];
-                base.nodeTags[1] = elNodeTags[nbNPE*el + 1];
-                base.midNodeTag  = (nbNPE == 3) ? elNodeTags[nbNPE*el + 2] : 0;
-                base.bcValue[0]  = 0.0;
-                base.bcValue[1]  = 0.0;
+
+                base.tag = elTags[el];
+
+                base.nodeTags[0] =
+                    elNodeTags[nbNPE * el];
+
+                base.nodeTags[1] =
+                    elNodeTags[nbNPE * el + 1];
+
+                base.midNodeTag =
+                    (nbNPE == 3)
+                    ? elNodeTags[nbNPE * el + 2]
+                    : 0;
+
+                base.bcValue[0] = 0.0;
+                base.bcValue[1] = 0.0;
                 base.interfaceName = iface.name;
+                base.interfaceIndex = -1;
 
-                std::pair<double,double> d1 = {0.0,0.0}, d2 = {0.0,0.0};
-                if(nodalDisplacements.count(base.nodeTags[0]))
-                    d1 = nodalDisplacements[base.nodeTags[0]];
-                if(nodalDisplacements.count(base.nodeTags[1]))
-                    d2 = nodalDisplacements[base.nodeTags[1]];
-                computeGeometricParam(base, nodeIndices, nodeCoords, d1, d2);
+                // Les déplacements sont consultés en lecture seule.
+                auto it1 = nodalDisplacements.find(
+                    static_cast<int>(base.nodeTags[0]));
 
-                // --- Côté A : tester si la normale pointe vers l'intérieur de domainA ---
+                auto it2 = nodalDisplacements.find(
+                    static_cast<int>(base.nodeTags[1]));
+
+                std::pair<double, double> d1 = {0.0, 0.0};
+                std::pair<double, double> d2 = {0.0, 0.0};
+
+                if (it1 != nodalDisplacements.end())
+                    d1 = it1->second;
+
+                if (it2 != nodalDisplacements.end())
+                    d2 = it2->second;
+
+                computeGeometricParam(
+                    base, nodeIndices, nodeCoords, d1, d2);
+
+                // ---------------------------------------------
+                // Côté A : représentation dans le domaine A
+                // ---------------------------------------------
                 elementStruct elA = base;
+
+                elA.domainPhysicalGroupTag =
+                    domainA.physicalGroupTag;
+
                 elA.interfaceSide = 'A';
-                iface.elemIndicesA.push_back(domainA.elementVector.size());
+
+                iface.elemIndicesA.push_back(
+                    domainA.elementVector.size());
+
                 domainA.elementVector.push_back(elA);
 
-                // --- Côté B : même normale géométrique mais testée pour domainB ---
-                // → résultat opposé à elA par construction (les deux domaines sont de
-                //   part et d'autre de l'interface)
+                // ---------------------------------------------
+                // Côté B : représentation dans le domaine B
+                // ---------------------------------------------
                 elementStruct elB = base;
+
+                elB.domainPhysicalGroupTag =
+                    domainB.physicalGroupTag;
+
                 elB.interfaceSide = 'B';
-                iface.elemIndicesB.push_back(domainB.elementVector.size());
+
+                iface.elemIndicesB.push_back(
+                    domainB.elementVector.size());
+
                 domainB.elementVector.push_back(elB);
             }
         }
-        computeNormalOrientation(domainA.elementVector, domainA.physicalGroupTag);
-        computeNormalOrientation(domainB.elementVector, domainB.physicalGroupTag);
     }
 
-    std::cout << "  Interface '" << iface.name << "': added "
-              << iface.elemIndicesA.size() << " element(s) per side.\n";
+    // ---------------------------------------------------------
+    // 4. Réorienter les normales après ajout de l'interface
+    // ---------------------------------------------------------
+    computeNormalOrientation(
+        domainA.elementVector,
+        domainA.physicalGroupTag);
+
+    computeNormalOrientation(
+        domainB.elementVector,
+        domainB.physicalGroupTag);
+
+    std::cout
+        << "  Interface '" << iface.name << "': added "
+        << iface.elemIndicesA.size()
+        << " element(s) per side.\n";
 }
+
 
 // ============================================================
 //  fillSystem  (extended for interface elements)

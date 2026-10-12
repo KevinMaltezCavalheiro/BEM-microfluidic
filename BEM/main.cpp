@@ -18,6 +18,7 @@ int main(int argc, char **argv)
     // also sets the number of threads to "General.NumThreads".
     double start = omp_get_wtime();
     int nthreads = omp_get_max_threads();
+    std::cout << "number of threads: " << nthreads << std::endl;
     gmsh::initialize();
     omp_set_num_threads(nthreads);
 
