@@ -79,5 +79,5 @@ export OMP_NUM_THREADS=8
 
 ## 📜 References
 
-* **Boundary Element Method in Electrostatics**: Brebbia, C. A., & Dominguez, J. *Boundary Elements: An Introductory Course*.
+* **Katsikadelis, J. T.** (2020). *The Boundary Element Method for Engineers and Scientists: Theory and Applications* (2nd ed.). Academic Press.
 * **Microfluidic BEM Electrostatics**: Schütz et al., *Lab on a Chip*, 2019.
