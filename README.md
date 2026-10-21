@@ -1,6 +1,6 @@
-<img width="1117" height="1054" alt="‎electrodes" src="https://github.com/user-attachments/assets/008785c3-eceb-4ef7-b3a3-8e65db6d8438" />
-<img width="641" height="620" alt="Capture d’écran 2026-10-19 à 23 31 55" src="https://github.com/user-attachments/assets/87daad20-88f8-49b0-854f-067cc0b33d46" />
-<img width="641" height="620" alt="Capture d’écran 2026-10-19 à 23 31 48" src="https://github.com/user-attachments/assets/113f1378-ddca-47fe-9499-fd9891063914" />
+<img width="558" height="527" alt="‎electrodes" src="https://github.com/user-attachments/assets/008785c3-eceb-4ef7-b3a3-8e65db6d8438" />
+<img width="320" height="310" alt="Capture d’écran 2026-10-19 à 23 31 55" src="https://github.com/user-attachments/assets/87daad20-88f8-49b0-854f-067cc0b33d46" />
+<img width="320" height="310" alt="Capture d’écran 2026-10-19 à 23 31 48" src="https://github.com/user-attachments/assets/113f1378-ddca-47fe-9499-fd9891063914" />
 
 
 # ⚡ 2D Multi-Domain Boundary Element Method (BEM) Solver for Electrostatics
