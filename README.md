@@ -92,4 +92,3 @@ export OMP_NUM_THREADS=8
 ## 📜 References & Citation
 
 * **Katsikadelis, J. T.** (2020). *The Boundary Element Method for Engineers and Scientists: Theory and Applications* (2nd ed.). Academic Press.
-* **School of Civil Engineering, [National Technical University of Athens](https://maps.google.com/?cid=15305320542236276229&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQ)** (NTUA).
