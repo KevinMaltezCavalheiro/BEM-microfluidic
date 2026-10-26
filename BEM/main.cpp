@@ -34,10 +34,9 @@ int main(int argc, char **argv)
 
     std::map<int,std::pair<double,double>> boundaryDisplacementMap;
 
-    int nbViews = 0;
-
-    solverBEM(electrostaticPressure, nbViews, boundaryDisplacementMap, true, 1, false);
-
+    BEMParams params;   // valeurs de parameters.hpp
+    solverBEM(electrostaticPressure, boundaryDisplacementMap, true, 1, false, params);
+    
     double total_time = omp_get_wtime() - start;
     std::cout << "total execution time: " << total_time << " [s]. \n";
 
@@ -47,4 +46,15 @@ int main(int argc, char **argv)
     return 0;
 }
 
-////todo: calculer la force DEP sur la sphère, FEM-BEM couplage pour une goutte ? (avec interface = ressort + untanglemesh), BEM 3D, BEMStokes, electrodesCAD, permittivité complexe
+////todo old:
+///FEM-BEM couplage pour une goutte ? (avec interface = ressort + untanglemesh), BEM 3D, BEMStokes
+///
+///todo new:
+///code au propre
+///permittivité complexe
+///electrodesCAD
+///
+///done:
+///plot DEP -> artéfacts + préfacteur F = 1/2 alpha grad (E^2)
+//////plot pressurejump
+///calculer la force DEP sur la sphère

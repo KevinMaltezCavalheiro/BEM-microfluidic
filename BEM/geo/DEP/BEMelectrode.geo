@@ -271,7 +271,7 @@ SetNumber("Materials/BEM_domain_6/Epsilon", epsilon_r_PDMS * eps0);
 SetNumber("Materials/BEM_domain_7/Epsilon", epsilon_r_WATER * eps0);
 
 SetNumber("Boundary Conditions/negativeElectrode_E/BEM_domain_1/dirichlet", 0.0);
-SetNumber("Boundary Conditions/positiveElectrode_E/BEM_domain_1/dirichlet", 1000.0);
+SetNumber("Boundary Conditions/positiveElectrode_E/BEM_domain_1/dirichlet", 2000.0);
 
 SetNumber("Boundary Conditions/BEM_neumann_PDMS1_E/BEM_domain_1/neumann", 0.0);
 SetNumber("Boundary Conditions/BEM_neumann_OIL_E/BEM_domain_2/neumann",   0.0);

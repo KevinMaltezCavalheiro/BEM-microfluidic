@@ -398,6 +398,8 @@ void addInterfaceElements(
     interfaceStruct& iface,
     std::map<int, std::pair<double, double>>& nodalDisplacements)
 {
+    iface.elemIndicesA.clear();
+    iface.elemIndicesB.clear();
     // ---------------------------------------------------------
     // 1. Trouver le groupe physique de l'interface
     // ---------------------------------------------------------
@@ -558,287 +560,6 @@ void addInterfaceElements(
         << " element(s) per side.\n";
 }
 
-
-// ============================================================
-//  fillSystem  (extended for interface elements)
-//
-//  The convention in the local system is:
-//    - columns 0 .. nbDirichletElements-1   : Dirichlet unknowns (phi_n)
-//    - columns nbDirichletElements .. nbExternalElements-1 : Neumann unknowns (phi)
-//    - columns nbExternalElements .. N-1     : interface elements
-//      For each interface element the unknown is BOTH phi AND phi_n, but they
-//      are handled at the GLOBAL level.  In the local block we treat them as
-//      "Neumann-side unknowns" (phi is prescribed = 0 dummy; phi_n unknown) so
-//      that the block structure [A | H_if] * [x_ext ; u_if] + [-G_if] * qn_if
-//      is easy to extract.  The caller (assembleGlobalSystem) uses the raw H
-//      and G values computed here and places them in the right columns.
-//
-//  For the local system we reuse the same structure as before.  Only the
-//  mapping to the global system changes (done in assembleGlobalSystem).
-// ============================================================
-void fillSystem(Eigen::MatrixXd &A,
-                Eigen::MatrixXd &B,
-                Eigen::MatrixXd &c,
-                const std::vector<elementStruct> &elementVector,
-                const std::size_t nbDirichletElements,
-                const std::string integrationType,
-                const bool solutionType)
-{
-    // nbExternalElements: all elements with interfaceSide == 'E' ou 'H'
-    // Ce calcul reste séquentiel car très rapide.
-    std::size_t nbExternalElements = 0;
-    for(auto &e : elementVector)
-        if(e.interfaceSide == 'E' || e.interfaceSide == 'H') nbExternalElements++;
-
-    // On récupère la taille pour la lisibilité
-    const std::size_t N = elementVector.size();
-    std::vector<double> localCoord, weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
-
-    // Début de la parallélisation
-    // collapse(2) permet de fusionner les deux boucles pour que les threads
-    // se partagent les N*N itérations au lieu de seulement les N de la première boucle.
-    #pragma omp parallel for collapse(2) schedule(guided) shared(elementVector, A, B, c)
-    for(std::size_t i = 0; i < N; i++)
-    {
-        for(std::size_t j = 0; j < N; j++)
-        {
-            // h et g sont déclarés à l'intérieur pour être privés à chaque itération
-            double h = 0.0;
-            double g = 0.0;
-
-            if(i == j)
-            {
-                h = -0.5;
-                g = (elementVector[i].length / (2*M_PI)) * (std::log(elementVector[i].length/2) - 1);
-            }
-            else
-            {
-                // Note : computeAnalyticalH prend maintenant 4 arguments
-                h = computeAnalyticalH(elementVector[i].midX, elementVector[i].midY,
-                                       elementVector[j], elementVector[j].normalOutward);
-
-                if(!solutionType)
-                    g = computeNumericalG(elementVector[i].midX, elementVector[i].midY,
-                                          elementVector[j], integrationType, localCoord, weights);
-                else
-                    g = computeAnalyticalG(elementVector[i].midX, elementVector[i].midY,
-                                           elementVector[j]);
-            }
-
-            // ---- Remplissage des matrices A, B et du vecteur c ----
-            // Les opérations d'écriture dans les matrices Eigen sont sûres ici
-            // car chaque paire (i, j) est unique par thread.
-
-            if(elementVector[j].interfaceSide == 'E' || elementVector[j].interfaceSide == 'H')
-            {
-                if(j < nbDirichletElements)
-                {
-                    A(i,j) =  g;
-                    B(i,j) =  h;
-                    // Note: c(j) est écrit plusieurs fois (pour chaque i), mais c'est
-                    // la même valeur, donc pas de race condition problématique.
-                    c(j)   = elementVector[j].bcValue[0];
-                }
-                else
-                {
-                    A(i,j) = -h;
-                    B(i,j) = -g;
-                    c(j)   = elementVector[j].bcValue[1];
-                }
-            }
-            else
-            {
-                A(i,j) = -h;
-                B(i,j) = -g;
-                c(j)   = 0.0;
-            }
-        }
-    }
-}
-
-// ============================================================
-//  computeElectrostaticPressure_adapted.cpp
-//
-//  Drop-in replacement for the function in boundaryElements.cpp.
-//
-//  The original function did two things in one pass:
-//    (a) copy the solution vector x(i) into bcValue[0/1]
-//    (b) compute pressure = epsilon * phi_n^2 / 2
-//
-//  Problem with the multi-domain path:
-//    distributeGlobalSolution() has ALREADY written the correct
-//    phi and phi_n into every bcValue[0/1] (including interface
-//    elements whose flux is the shared unknown).  If we then let
-//    computeElectrostaticPressure blindly overwrite bcValue for
-//    interface elements with whatever is sitting in the global
-//    vector x (which is indexed differently), we corrupt the
-//    solution.
-//
-//  Fix:
-//    Split responsibility clearly:
-//      - Single-domain  : keep the combined update+pressure pass
-//                         (behaviour identical to before).
-//      - Multi-domain   : bcValue is already correct; just read
-//                         phi_n and compute pressure.
-//                         The function is called AFTER
-//                         distributeGlobalSolution().
-//
-//  The multi-domain pressure must also account for the correct
-//  epsilon on each side of an interface.  On BEM_interface_2_3
-//  (Oil/Water) the Maxwell stress tensor jump gives:
-//
-//      [[ (eps/2) * En^2 ]] = eps_oil * En_oil^2/2
-//                           - eps_water * En_water^2/2
-//
-//  For the FEM coupling we apply the *net* jump pressure to the
-//  droplet surface.  This is handled by the new overload
-//  computeElectrostaticPressureJump() below.
-// ============================================================
-
-// ============================================================
-//  SINGLE-DOMAIN  (unchanged semantics from the original)
-// ============================================================
-void computeElectrostaticPressure(std::map<int, double>      &electrostaticPressure,
-                                  std::vector<elementStruct> &elementVector,
-                                  const Eigen::MatrixXd      &x,
-                                  const std::size_t           nbDirichletElements,
-                                  const std::string           domainName)
-{
-    const double epsilon = getEpsilon(domainName);
-
-    #pragma omp parallel for schedule(guided)
-    for(std::size_t i = 0; i < elementVector.size(); i++)
-    {
-        // Only external / hole elements still need their bcValue updated
-        // from the solution vector.  Interface elements are handled by
-        // distributeGlobalSolution() in the multi-domain path; in the
-        // single-domain path there are no interface elements.
-        if(elementVector[i].interfaceSide == 'E' ||
-           elementVector[i].interfaceSide == 'H')
-        {
-            if(i < nbDirichletElements)
-                elementVector[i].bcValue[1] = x(i);   // Dirichlet -> qn unknown
-            else
-                elementVector[i].bcValue[0] = x(i);   // Neumann   -> phi unknown
-        }
-
-        const double phi_n   = elementVector[i].bcValue[1];
-        const double pressure = epsilon * phi_n * phi_n * 0.5;
-
-        #pragma omp critical
-        {
-            electrostaticPressure[elementVector[i].tag] = pressure;
-        }
-    }
-}
-
-// ============================================================
-//  MULTI-DOMAIN  — call this AFTER distributeGlobalSolution()
-//
-//  Iterates over all domains and stores the pressure for every
-//  element.  For external / Dirichlet / Neumann elements this is
-//  simply (eps/2)*phi_n^2.  The physically meaningful quantity
-//  for the FEM coupling is the *jump* on shared interfaces; call
-//  computeElectrostaticPressureJump() instead of (or in addition
-//  to) this function when you need that.
-// ============================================================
-void computeElectrostaticPressureMultiDomain(
-        std::map<int, double>            &electrostaticPressure,
-        const std::vector<domainData>    &domains)
-{
-    for(const auto &dom : domains)
-    {
-        const double eps = dom.epsilon;
-
-        #pragma omp parallel for schedule(guided)
-        for(std::size_t i = 0; i < dom.elementVector.size(); i++)
-        {
-            const double phi_n    = dom.elementVector[i].bcValue[1];
-            const double pressure = eps * phi_n * phi_n * 0.5;
-
-            #pragma omp critical
-            {
-                electrostaticPressure[dom.elementVector[i].tag] = pressure;
-            }
-        }
-    }
-}
-
-// ============================================================
-//  JUMP PRESSURE for BEM–FEM coupling on a shared interface
-//
-//  For an interface between domain A (e.g. Oil, eps_A) and
-//  domain B (e.g. Water, eps_B), the net Maxwell-stress
-//  electrostatic pressure *acting on the interface in the
-//  direction of the outward normal of domain A* is:
-//
-//      p_jump = (eps_A * phi_nA^2 - eps_B * phi_nB^2) / 2
-//
-//  Note: distributeGlobalSolution() stores
-//        elemA.bcValue[1] =  qn_if   (flux from A side)
-//        elemB.bcValue[1] = -qn_if   (flux from B side, opposite sign)
-//  so phi_nB = -phi_nA / kRatio  (kRatio = eps_A / eps_B).
-//
-//  This function fills electrostaticPressure for every element
-//  on the specified interface using the *side-A* element tags
-//  (those are the tags that applyElecPressure() will look up,
-//  since BEM_FEM_boundary is defined on the same curves as
-//  BEM_interface_2_3 in the .geo file).
-//
-//  Parameters
-//  ----------
-//  electrostaticPressure  : map tag -> pressure (written here)
-//  domains                : all domain data (after distribute)
-//  iface                  : the interface of interest
-// ============================================================
-void computeElectrostaticPressureJump(
-        std::map<int, double>         &electrostaticPressure,
-        const std::vector<domainData> &domains,
-        const interfaceStruct         &iface)
-{
-    // Find domain A and domain B
-    const domainData *pA = nullptr, *pB = nullptr;
-    for(const auto &d : domains)
-    {
-        if(d.name == iface.domainA) pA = &d;
-        if(d.name == iface.domainB) pB = &d;
-    }
-    if(!pA || !pB)
-    {
-        std::cerr << "[computeElectrostaticPressureJump] domain not found for interface "
-                  << iface.name << "\n";
-        return;
-    }
-
-    const double epsA = pA->epsilon;
-    const double epsB = pB->epsilon;
-    const std::size_t nIf = iface.nbElements();
-
-    #pragma omp parallel for schedule(guided)
-    for(std::size_t m = 0; m < nIf; m++)
-    {
-        const std::size_t jA = iface.elemIndicesA[m];
-        const std::size_t jB = iface.elemIndicesB[m];
-
-        // phi_nA is the flux on the A-side (outward from A)
-        const double phi_nA = pA->elementVector[jA].bcValue[1];
-        // phi_nB = -phi_nA from the continuity condition stored by distribute
-        const double phi_nB = pB->elementVector[jB].bcValue[1]; // = -phi_nA
-
-        // Net Maxwell traction pointing from B into A (outward of B = droplet interior)
-        const double p_jump = 0.5 * (epsA * phi_nA * phi_nA
-                                   - epsB * phi_nB * phi_nB);
-
-        // Store under the *A-side* element tag so applyElecPressure() finds it
-        // (BEM_FEM_boundary elements share tags with BEM_interface_2_3 A-side)
-        #pragma omp critical
-        {
-            electrostaticPressure[pA->elementVector[jA].tag] = p_jump;
-        }
-    }
-}
-
 void computeNormalOrientation(std::vector<elementStruct> &elementVector,
                                const int domainPhysicalGroupTag)
 {
@@ -876,167 +597,88 @@ void computeNormalOrientation(std::vector<elementStruct> &elementVector,
     }
 }
 
-// Calcule la force DEP sur une interface "domainA / domainB" via le tenseur de Maxwell.
-// elementVector : tous les éléments BEM du domaine A (côté extérieur de l'interface)
-// interfaceName : ex. "BEM_interface_3_4_inc"
-// epsilonA      : permittivité du domaine A (huile, côté extérieur)
-// epsilonB      : permittivité du domaine B (goutte, côté intérieur)
-
-//test ordre de grandeur:
-//V = 1000 V
-//gap ~ 100 µm  →  E ~ 10⁷ V/m
-//R_goutte = 36 µm
-//h = 30 µm
-//ε_huile = 9.62·ε₀,  ε_eau = 80·ε₀
-//F_DEP = 2π · ε_m · R³ · Re[K] · ∇|E|²
-//Re[K] = (ε_eau - ε_huile)/(ε_eau + 2·ε_huile)
-//      = (80 - 9.62)/(80 + 2×9.62) ≈ 70.4/99.2 ≈ 0.71  (pDEP ✓)
-//F ~ 2π × 9.62×8.85e-12 × (36e-6)³ × 0.71 × 2.8e18
-//~ 2π × 85e-12 × 4.7e-14 × 0.71 × 2.8e18
-//~ ~ 0.6 µN
-
-//η_HFE7500 ~ 1.24 mPa·s  (fluide fluoré, très peu visqueux)
-//R_goutte = 36 µm = 36×10⁻⁶ m
-//v = 100-200 µm/s = 10⁻⁴ à 2×10⁻⁴ m/s
+// ============================================================
+//  MULTI-DOMAIN  — call this AFTER distributeGlobalSolution()
 //
-//F_Stokes = 6π · η · R · v
-//         = 6π × 1.24×10⁻³ × 36×10⁻⁶ × (10⁻⁴ à 2×10⁻⁴)
-//         = 6π × 1.24e-3 × 36e-6 × 1.5e-4  (valeur centrale)
-//         ~ 6π × 6.7×10⁻¹²
-//         ~ 1.26×10⁻¹⁰ N
-//         ~ 0.13 nN
-//F_BEM  ~ 0.52 µN  =  520 nN
-//F_Stokes ~ 0.13 nN
-//Ratio : F_BEM / F_Stokes ~ 4000 ×
-// 2R = 72 µm  >  h = 30 µm
-//F_drag ~ 4π·η·a²·v / (h·ln(a/h))  (approximation lubrification)
-//       ~ 4π × 1.24e-3 × (36e-6)² × 1.5e-4 / (30e-6 × ln(36/30))
-//       ~ 4π × 1.24e-3 × 1.3e-9 × 1.5e-4 / (30e-6 × 0.18)
-//       ~ 4π × 2.4e-16 / 5.4e-6 × 1e3
-//       ~ ~ 1-10 nN
-
-//Phénomène              Fréquence dominante    Modèle requis
-//──────────────────────────────────────────────────────────────
-//DEP diélectrique       > 1 MHz                BEM Laplace ε complexe  ← ton code
-//Conductrice (Maxwell)  toutes fréquences      BEM Laplace ε_A seul    ← maintenant
-//ACEO                   100 Hz - 100 kHz       BEM + Stokes + EDL
-//Électrophorèse         DC - 1 kHz             BEM + charge surfacique
-//Tension de surface     toutes                 couplage mécanique
-//Écoulement Poiseuille  toutes                 Stokes + BEM
-
-// ==============================================================================
-// JUSTIFICATION DU MODÈLE PSEUDO-3D PAR PLANS ORTHOGONAUX (XY / YZ) & CODE BEM
-// ==============================================================================
-// Question attendue : Pourquoi utiliser un modèle 2D multi-plan plutôt qu'une
-// simulation BEM 3D complète (comme préconisé par Schütz et al., Lab Chip 2019) ?
-//
-// 1. Limitation physique des électrodes inférieures :
-//    Placer les électrodes sous le canal (z=0) crée une forte décroissance du champ
-//    électrique E(z) selon la hauteur. Un modèle 2D XY pur à z=0 surestimerait la force
-//    de DEP subie par la goutte sur toute sa hauteur (h = 30 µm).
-//
-// 2. Notre méthodologie de réconciliation 2D (Approche Pseudo-3D) :
-//    - Plan vertical (YZ) : On simule la section transversale pour obtenir le profil
-//      du champ E(y,z). On en déduit un facteur d'atténuation géométrique alpha(y) :
-//         alpha(y) = <|E(y)|^2>_z / |E(y, z=0)|^2   (moyenne sur la hauteur du canal)
-//    - Plan horizontal (XY) : On simule la déflection dans le plan de tri et on
-//      corrige la force locale : F_DEP_corrigée(x,y) = alpha(y) * F_DEP_2D_XY(x,y).
-//
-// 3. Pourquoi ce choix par rapport au BEM 3D complet ?
-//    - Vitesse & Prototypage rapide : Un code BEM 3D (Schütz et al.) est extrêmement
-//      lourd et coûteux en temps de calcul. L'approche XY/YZ donne les mêmes tendances
-//      et ordres de grandeur pour optimiser la forme des électrodes en quelques minutes.
-//    - Science ouverte & Accessibilité : Notre code BEM 2D + interfaces est
-//      entièrement Open Source. Il permet à la communauté de tester des designs sans
-//      avoir recours à des solveurs 3D propriétaires complexes.
-// ==============================================================================
-
-// En gros, epsilon eau = 80, c'est pour l'eau ultra pur -> K = 0.71
-// Si je prends de l'eau du robinet, on a D = epsilon eau*E -> E tend vers 0 à l'intérieur (conducteur), D reste fini donc epsilon eau tend vers l'infini -> epsilon eau non pure >> 80 -> K = 1
-
-Force2D computeDEPForceMST(const std::vector<elementStruct> &elementVector,
-                           const std::string                 &interfaceName,
-                           double                             epsilonA,
-                           double                             epsilonB,
-                           double                             thickness)   // épaisseur du canal [m]
+//  Iterates over all domains and stores the pressure for every
+//  element.  For external / Dirichlet / Neumann elements this is
+//  simply (eps/2)*phi_n^2.  The physically meaningful quantity
+//  for the FEM coupling is the *jump* on shared interfaces; call
+//  computeElectrostaticPressureJump() instead of (or in addition
+//  to) this function when you need that.
+// ============================================================
+void computeElectrostaticPressureMultiDomain(
+        std::map<int, double>            &electrostaticPressure,
+        const std::vector<domainData>    &domains)
 {
-    Force2D totalForce = {0.0, 0.0};
-
-    // ── 1. Collecter les éléments de l'interface ──────────────────────────────
-    std::vector<const elementStruct*> ifElems;
-    for(const elementStruct &el : elementVector)
-        if(el.interfaceName == interfaceName)
-            ifElems.push_back(&el);
-
-    if(ifElems.empty()) return totalForce;
-
-    // ── 2. Connectivité nodale locale ─────────────────────────────────────────
-    std::map<std::size_t, std::vector<std::size_t>> nodeToIfElems;
-    for(std::size_t k = 0; k < ifElems.size(); k++)
+    for(const auto &dom : domains)
     {
-        nodeToIfElems[ifElems[k]->nodeTags[0]].push_back(k);
-        nodeToIfElems[ifElems[k]->nodeTags[1]].push_back(k);
-    }
+        const double eps = dom.epsilon;
 
-    // ── 3. Boucle sur les éléments ────────────────────────────────────────────
-    for(std::size_t k = 0; k < ifElems.size(); k++)
-    {
-        const elementStruct &el = *ifElems[k];
-
-        // bcValue[1] = ∂φ/∂n dans la convention du BEM (cohérente avec nx,ny stockés).
-        // On ne corrige PAS le signe ici : la convention interne est consistante.
-        const double En_A = el.bcValue[1];
-
-        // Condition de saut : ε_A * En_A = -ε_B * En_B
-        // (normales opposées de chaque côté de l'interface)
-        const double En_B = -(epsilonA / epsilonB) * En_A;
-
-        // ── Reconstruction de Et ──────────────────────────────────────────────
-        double phi_prev = el.bcValue[0];
-        double phi_next = el.bcValue[0];
-        const elementStruct *ePrev = nullptr;
-        const elementStruct *eNext = nullptr;
-
-        for(std::size_t idx : nodeToIfElems.at(el.nodeTags[0]))
-            if(idx != k) { ePrev = ifElems[idx]; phi_prev = ePrev->bcValue[0]; }
-
-        for(std::size_t idx : nodeToIfElems.at(el.nodeTags[1]))
-            if(idx != k) { eNext = ifElems[idx]; phi_next = eNext->bcValue[0]; }
-
-        double ds = el.length;
-        if(ePrev && eNext)
+        #pragma omp parallel for schedule(guided)
+        for(std::size_t i = 0; i < dom.elementVector.size(); i++)
         {
-            const double dmx = eNext->midX - ePrev->midX;
-            const double dmy = eNext->midY - ePrev->midY;
-            ds = std::sqrt(dmx*dmx + dmy*dmy);
+            const double phi_n    = dom.elementVector[i].bcValue[1];
+            const double pressure = eps * phi_n * phi_n * 0.5;
+
+            #pragma omp critical
+            {
+                electrostaticPressure[dom.elementVector[i].tag] = pressure;
+            }
         }
+    }
+}
 
-        const double Et = (ds > 1e-15) ? -(phi_next - phi_prev) / ds : 0.0;
-
-        // ── Champ E de chaque côté ────────────────────────────────────────────
-        const double nx = el.nx;
-        const double ny = el.ny;
-        const double tx = -ny;
-        const double ty =  nx;
-
-        const double Ex_A = En_A * nx + Et * tx;
-        const double Ey_A = En_A * ny + Et * ty;
-        const double Ex_B = En_B * nx + Et * tx;
-        const double Ey_B = En_B * ny + Et * ty;
-
-        const double E2_A = Ex_A*Ex_A + Ey_A*Ey_A;
-        const double E2_B = Ex_B*Ex_B + Ey_B*Ey_B;
-
-        // ── Saut du tenseur de Maxwell ────────────────────────────────────────
-        const double Tx = epsilonA * (En_A * Ex_A - 0.5 * E2_A * nx)
-                        - epsilonB * (En_B * Ex_B - 0.5 * E2_B * nx);
-        const double Ty = epsilonA * (En_A * Ey_A - 0.5 * E2_A * ny)
-                        - epsilonB * (En_B * Ey_B - 0.5 * E2_B * ny);
-
-        // Intégration sur l'élément × épaisseur du canal pour passer en 3D [N]
-        totalForce.fx += Tx * el.length * thickness;
-        totalForce.fy += Ty * el.length * thickness;
+void computeElectrostaticPressureJump(
+        std::map<int, double>         &electrostaticPressure,
+        const std::vector<domainData> &domains,
+        const interfaceStruct         &iface)
+{
+    // Find domain A and domain B
+    const domainData *pA = nullptr, *pB = nullptr;
+    for(const auto &d : domains)
+    {
+        if(d.name == iface.domainA) pA = &d;
+        if(d.name == iface.domainB) pB = &d;
+    }
+    if(!pA || !pB)
+    {
+        std::cerr << "[computeElectrostaticPressureJump] domain not found for interface "
+                  << iface.name << "\n";
+        return;
     }
 
-    return totalForce;  // Force 3D en [N]
+    const double epsA = pA->epsilon;
+    const double epsB = pB->epsilon;
+    const std::size_t nIf = iface.nbElements();
+
+    #pragma omp parallel for schedule(guided)
+    for(std::size_t m = 0; m < nIf; m++)
+    {
+        const std::size_t jA = iface.elemIndicesA[m];
+        const std::size_t jB = iface.elemIndicesB[m];
+
+        // Net Maxwell traction pointing from B into A (outward of B = droplet interior)
+        const auto& elA = pA->elementVector.at(jA);
+        const auto& elB = pB->elementVector.at(jB);
+
+        // Normale commune dirigée de B vers A
+        const double nx = elB.normalOutward ? elB.nx : -elB.nx;
+        const double ny = elB.normalOutward ? elB.ny : -elB.ny;
+
+        // Contrainte normale de Maxwell des deux côtés
+        const double stressA = maxwellNormalStress(
+            elA, epsA, nx, ny);
+
+        const double stressB = maxwellNormalStress(
+            elB, epsB, nx, ny);
+
+        // Saut de contrainte normale [Pa]
+        const double p_jump = stressA - stressB;
+
+        #pragma omp critical
+        {
+            electrostaticPressure[elA.tag] = p_jump;
+        }
+    }
 }

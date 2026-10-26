@@ -19,6 +19,7 @@ dataMathematica/
 /BEM/electrodeMicroflu.geo
 /BEM/electrodeTop.geo
 /BEM/geo/zone51.geo
+/BEM/functionsBEM.cpp
 
 # Analyses et documents externes
 *.nb

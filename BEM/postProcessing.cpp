@@ -1,12 +1,6 @@
 #include "functionsBEM.hpp"
 
-static std::vector<elementStruct>
-buildBIEVector(const std::vector<elementStruct> &elementVector)
-{
-    // Plus besoin de boucle ou d'OpenMP ici :
-    // Le constructeur par copie est extrêmement rapide.
-    return elementVector;
-}
+// static std::vector<elementStruct>
 // Build a node→element map restricted to the BIE element list.
 static std::map<std::size_t, std::vector<std::size_t>>
 buildBIENodeToElements(const std::vector<elementStruct> &bieVec)
@@ -79,6 +73,38 @@ void getModel(std::vector<std::size_t> &domainNodeTags,
     }
 }
 
+DomainMesh loadDomainMesh(const domainData &dom)
+{
+    DomainMesh m;
+    getModel(m.nodeTags, m.nodeIndices, m.nodeCoords, m.entityTags,
+             m.elemTypes, m.elemTags, m.elemNodeTags,
+             dom.physicalGroupDim, dom.physicalGroupTag);
+
+    m.barycenters.resize(m.entityTags.size());
+    for(std::size_t i = 0; i < m.entityTags.size(); i++)
+    {
+        m.barycenters[i].resize(m.elemTypes[i].size());
+        for(std::size_t j = 0; j < m.elemTypes[i].size(); j++)
+            gmsh::model::mesh::getBarycenters(m.elemTypes[i][j], m.entityTags[i],
+                                              false, false, m.barycenters[i][j]);
+    }
+
+    m.nbNodes.resize(m.entityTags.size());
+    for(std::size_t i = 0; i < m.entityTags.size(); i++)
+    {
+        m.nbNodes[i].resize(m.elemTypes[i].size());
+        for(std::size_t j = 0; j < m.elemTypes[i].size(); j++)
+        {
+            std::string elementName;
+            int dim, order, nbPrimaryNodes;
+            std::vector<double> localNodeCoord;
+            gmsh::model::mesh::getElementProperties(m.elemTypes[i][j], elementName, dim, order,
+                                                    m.nbNodes[i][j], localNodeCoord, nbPrimaryNodes);
+        }
+    }
+    return m;
+}
+
 // ============================================================
 //  computeNodeToElements  (unchanged from original)
 // ============================================================
@@ -94,94 +120,90 @@ void computeNodeToElements(std::map<std::size_t, std::vector<std::size_t>> &boun
         ins(elementVector[i].nodeTags[0]);
         ins(elementVector[i].nodeTags[1]);
         if(elementVector[i].midNodeTag != 0)
-            boundaryNodeToElements[elementVector[i].midNodeTag] = {i};
+            boundaryNodeToElements[elementVector[i].midNodeTag].push_back(i);
     }
 }
 
 // ============================================================
 //  computeInternalPhi
 // ============================================================
-
-void computeInternalPhi(std::map<int, double> &internalNodalPhi,
-                        const std::vector<double> &domainNodeCoords,
-                        const std::vector<std::size_t> &domainNodeTags,
-                        std::map<std::size_t, std::size_t> &domainNodeIndices,
-                        const std::vector<elementStruct> &elementVector,
-                        const std::string integrationType,
-                        std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements,
-                        const bool &solutionType)
+void computeInternalPhi(
+    std::map<int, double> &internalNodalPhi,
+    const std::vector<double> &domainNodeCoords,
+    const std::vector<std::size_t> &domainNodeTags,
+    const std::map<std::size_t, std::size_t> &domainNodeIndices,
+    const std::vector<elementStruct> &elementVector,
+    const Quadrature &quad,
+    std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements,
+    const bool &solutionType)
 {
-    // On construit le vecteur BIE une seule fois avant la boucle parallèle
-    const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
+    const std::vector<elementStruct> &bieVec = elementVector;
 
-        std::cout << "\n--- DIAGNOSTIC DOMAINE ---" << std::endl;
-        int countA = 0, countB = 0, countE = 0;
-        for(const auto& el : elementVector) {
-            if(el.interfaceSide == 'A') countA++;
-            else if(el.interfaceSide == 'B') countB++;
-            else countE++;
-        }
-        std::cout << "Total elements: " << elementVector.size()
-                  << " | E: " << countE << " | A: " << countA << " | B: " << countB << std::endl;
-
-    std::cout << "Total nodes domain: " << domainNodeTags.size() << std::endl;
-
-    // Vecteur temporaire pour éviter les conflits d'écriture dans la map
-    // On l'initialise à 0.
     std::vector<double> internalNodalPhiTmp(domainNodeTags.size(), 0.0);
 
-    std::vector<double> localCoord, weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
-
-    // Parallélisation sur les nœuds du domaine
     #pragma omp parallel for schedule(guided)
     for(std::size_t i = 0; i < domainNodeTags.size(); i++)
     {
-        std::size_t nodeTag = domainNodeTags[i];
+        const std::size_t nodeTag = domainNodeTags[i];
 
-        // On ignore les nœuds qui sont sur la frontière
-        if(boundaryNodeToElements.count(nodeTag)) continue;
+        // Ignorer les nœuds situés sur la frontière
+        if(boundaryNodeToElements.count(nodeTag))
+            continue;
 
-        // Récupération des coordonnées (Lecture seule : OK)
-        double x = domainNodeCoords[3 * domainNodeIndices[nodeTag]];
-        double y = domainNodeCoords[3 * domainNodeIndices[nodeTag] + 1];
+        const std::size_t nodeIndex = domainNodeIndices.at(nodeTag);
+        const double x = domainNodeCoords[3 * nodeIndex];
+        const double y = domainNodeCoords[3 * nodeIndex + 1];
 
         double termGq = 0.0;
         double termHu = 0.0;
 
-        // Boucle interne sur les éléments (Lecture seule sur bieVec : OK)
-        for(const auto& el : bieVec)
+        for(const auto &el : bieVec)
         {
-            double g = solutionType ? computeAnalyticalG(x, y, el)
-                                    : computeNumericalG(x, y, el, integrationType, localCoord, weights);
+            double g, h;
 
-            // Attention : computeAnalyticalH prend maintenant la normale en argument
-            double h = computeAnalyticalH(x, y, el, el.normalOutward);
+            if(solutionType)
+            {
+                const Kernels kernels = computeAnalyticalKernels(
+                    x, y, el, el.normalOutward);
+
+                g = kernels.G;
+                h = kernels.H;
+            }
+            else
+            {
+                g = computeNumericalG(
+                    x, y, el, quad.type,
+                    quad.localCoord, quad.weights);
+
+                h = computeAnalyticalH(
+                    x, y, el, el.normalOutward);
+            }
 
             termHu += h * el.bcValue[0];
             termGq += g * el.bcValue[1];
         }
 
-        // Stockage dans le vecteur temporaire à l'indice i (propre à chaque thread)
         internalNodalPhiTmp[i] = termHu - termGq;
     }
 
-    // Phase finale séquentielle : remplissage de la map
+    // Remplissage séquentiel de la map
     for(std::size_t i = 0; i < domainNodeTags.size(); i++)
     {
-        // On ne remplit la map que si le nœud n'était pas sur la frontière
         if(!boundaryNodeToElements.count(domainNodeTags[i]))
         {
-            internalNodalPhi[domainNodeTags[i]] = internalNodalPhiTmp[i];
+            internalNodalPhi[domainNodeTags[i]] =
+                internalNodalPhiTmp[i];
         }
     }
 }
+
 // ============================================================
 //  phiInitialization  (unchanged from original)
 // ============================================================
 void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
                        std::map<std::size_t, std::vector<std::size_t>> &position,
                        const std::vector<std::vector<int>> &domainElementTypes,
+                       const std::vector<std::vector<int>> &nbNodesPerType,
                        const std::vector<std::vector<std::vector<size_t>>> &domainElementTags)
 {
     // Première dimension : tags d'entités (souvent petit, on ne parallélise pas ici)
@@ -195,16 +217,7 @@ void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>
         #pragma omp parallel for schedule(guided) shared(phi, position)
         for(std::size_t j = 0; j < domainElementTypes[i].size(); j++)
         {
-            int nbNodes;
-            #pragma omp critical(gmsh_properties)
-            {
-                std::string elementName;
-                int dim, order, nbPrimaryNodes;
-                std::vector<double> localNodeCoord;
-                gmsh::model::mesh::getElementProperties(domainElementTypes[i][j], elementName,
-                                                        dim, order, nbNodes, localNodeCoord,
-                                                        nbPrimaryNodes);
-            }
+            const int nNodes = nbNodesPerType[i][j];
 
             // Allocation de la troisième dimension (tags d'éléments)
             phi[i][j].resize(domainElementTags[i][j].size());
@@ -212,7 +225,7 @@ void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>
             for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
             {
                 // Allocation de la quatrième dimension (potentiel aux nœuds)
-                phi[i][j][k].resize(nbNodes, HUGE_VAL);
+                phi[i][j][k].resize(nNodes, HUGE_VAL);
 
                 std::vector<std::size_t> pos = {i, j, k};
 
@@ -225,83 +238,6 @@ void phiInitialization(std::vector<std::vector<std::vector<std::vector<double>>>
         }
     }
 }
-// ============================================================
-//  boundaryElementTags
-//  BIE fix: only walk over 'E' and 'A' elements when searching for
-//  2D elements adjacent to the boundary.
-// ============================================================
-void boundaryElementTags(std::vector<std::size_t> &domainBoundaryElementTags,
-                         const std::vector<std::vector<int>> &domainElementTypes,
-                         const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
-                         const std::vector<elementStruct> &elementVector,
-                         const int domainPhysicalGroupTag)
-{
-    // 1. Récupération des tags d'entités (Surfaces) liées au groupe physique
-    std::vector<int> entityTags; // Gmsh veut un vector<int> ici, pas de paires
-    gmsh::model::getEntitiesForPhysicalGroup(2, domainPhysicalGroupTag, entityTags);
-
-    std::set<std::size_t> elementInDomainSet;
-
-    // 2. On boucle sur chaque entité (chaque surface) du groupe physique
-    for (int tag : entityTags) {
-        std::vector<int> elementTypes;
-        std::vector<std::vector<std::size_t>> elementTags;
-        std::vector<std::vector<std::size_t>> nodeTags;
-
-        // On récupère les éléments de la surface d'index 'tag'
-        gmsh::model::mesh::getElements(elementTypes, elementTags, nodeTags, 2, tag);
-
-        // On remplit notre Set avec tous les tags d'éléments trouvés
-        for (const auto& group : elementTags) {
-            for (std::size_t eTag : group) {
-                elementInDomainSet.insert(eTag);
-            }
-        }
-    }
-
-    const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
-    std::vector<std::size_t> globalLocalTags;
-
-    // 2. Parallélisation avec protection de l'API
-    #pragma omp parallel
-    {
-        std::vector<std::size_t> threadPrivateTags;
-
-        #pragma omp for schedule(dynamic)
-        for(std::size_t i = 0; i < bieVec.size(); i++)
-        {
-            std::vector<size_t> foundTags;
-
-            // On protège l'accès à Gmsh.
-            // Si le nommage (GMSH_API) échoue, utilise juste : #pragma omp critical
-            #pragma omp critical
-            {
-                gmsh::model::mesh::getElementsByCoordinates(bieVec[i].x1, bieVec[i].y1, 0, foundTags, 2);
-            }
-
-            for(size_t tag : foundTags)
-            {
-                if(elementInDomainSet.find(tag) != elementInDomainSet.end())
-                {
-                    threadPrivateTags.push_back(tag);
-                }
-            }
-        }
-
-        // Fusion des résultats
-        #pragma omp critical
-        {
-            globalLocalTags.insert(globalLocalTags.end(), threadPrivateTags.begin(), threadPrivateTags.end());
-        }
-    }
-
-    // Remplissage du vecteur de sortie
-    domainBoundaryElementTags = globalLocalTags;
-
-    // Tri et suppression des doublons
-    std::sort(domainBoundaryElementTags.begin(), domainBoundaryElementTags.end());
-    domainBoundaryElementTags.erase(std::unique(domainBoundaryElementTags.begin(), domainBoundaryElementTags.end()), domainBoundaryElementTags.end());
-}
 
 // ============================================================
 //  elementNodeData
@@ -311,17 +247,18 @@ void boundaryElementTags(std::vector<std::size_t> &domainBoundaryElementTags,
 void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
                      const std::vector<std::vector<std::vector<size_t>>> &domainElementTags,
                      const std::vector<std::vector<int>> &domainElementTypes,
-                     std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
+                     const std::vector<std::vector<int>> &nbNodesPerType,
+                     const std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
                      const std::vector<elementStruct> &elementVector,
                      std::map<int, double> &internalNodalPhi,
                      const int domainPhysicalGroupTag,
                      std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements)
 {
-    const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
+    const std::vector<elementStruct> &bieVec = elementVector;
     const auto bieNodeMap = buildBIENodeToElements(bieVec);
 
     std::map<std::size_t, std::vector<std::size_t>> position;
-    phiInitialization(phi, position, domainElementTypes, domainElementTags);
+    phiInitialization(phi, position, domainElementTypes, nbNodesPerType, domainElementTags);
 
     // ============================================================
     // 1. Reconstruction du potentiel aux nœuds BIE
@@ -354,22 +291,6 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
     // ============================================================
     // 2. Propagation aux éléments 2D
     // ============================================================
-    //
-    // IMPORTANT :
-    // on parcourt TOUS les éléments 2D du domaine.
-    //
-    // Un élément peut toucher la frontière par un seul sommet
-    // sans avoir lui-même d'arête BIE.
-    //
-    // Exemple :
-    //
-    //     5 ---- 63 ---- 64
-    //            |
-    //            |
-    //          triangle
-    //
-    // Le triangle contenant 63 doit néanmoins recevoir phi(63).
-    //
     std::vector<std::size_t> allElementTags;
     allElementTags.reserve(position.size());
 
@@ -425,7 +346,7 @@ void elementNodeData(std::vector<std::vector<std::vector<std::vector<double>>>> 
 // ============================================================
 void elementNodalPhiAssociation(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
                                 const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
-                                std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
+                                const std::map<std::size_t, std::vector<std::size_t>> &domainElementNodeTags,
                                 std::map<int, double> &internalNodalPhi)
 {
     // On boucle sur les entités et les types d'éléments
@@ -439,7 +360,7 @@ void elementNodalPhiAssociation(std::vector<std::vector<std::vector<std::vector<
             for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
             {
                 // Utilisation de .at() pour garantir un accès thread-safe en lecture seule
-                const std::vector<std::size_t> &nodeTags = domainElementNodeTags[domainElementTags[i][j][k]];
+                const std::vector<std::size_t> &nodeTags = domainElementNodeTags.at(domainElementTags[i][j][k]);
 
                 for(std::size_t l = 0; l < nodeTags.size(); l++)
                 {
@@ -462,95 +383,124 @@ void elementNodalPhiAssociation(std::vector<std::vector<std::vector<std::vector<
 //  computeElementData
 //  BIE fix: only use 'E' and 'A' elements in the integral sum.
 // ============================================================
-void computeElementData(std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
-                        std::vector<std::vector<std::vector<std::vector<double>>>> &electricField,
-                        const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
-                        const std::vector<std::vector<int>> &domainElementTypes,
-                        const std::vector<int> &domainEntityTags,
-                        const std::vector<elementStruct> &elementVector,
-                        const bool solutionType,
-                        const std::string integrationType,
-                        const bool computePhi,
-                        const bool computeElectricField)
+void computeElementData(
+    std::vector<std::vector<std::vector<std::vector<double>>>> &phi,
+    std::vector<std::vector<std::vector<std::vector<double>>>> &electricField,
+    const DomainMesh &mesh,
+    const std::vector<elementStruct> &elementVector,
+    const bool solutionType,
+    const Quadrature &quad,
+    const bool computePhi,
+    const bool computeElectricField)
 {
-    // Construction du vecteur BIE une seule fois
-    const std::vector<elementStruct> bieVec = buildBIEVector(elementVector);
+    const std::vector<elementStruct> &bieVec = elementVector;
 
-    std::vector<double> localCoord, weights;
-    gmsh::model::mesh::getIntegrationPoints(1, integrationType, localCoord, weights);
+    phi.resize(mesh.entityTags.size());
+    electricField.resize(mesh.entityTags.size());
 
-    phi.resize(domainEntityTags.size());
-    electricField.resize(domainEntityTags.size());
-
-    for(std::size_t i = 0; i < domainEntityTags.size(); i++)
+    for(std::size_t i = 0; i < mesh.entityTags.size(); i++)
     {
-        phi[i].resize(domainElementTypes[i].size());
-        electricField[i].resize(domainElementTypes[i].size());
+        phi[i].resize(mesh.elemTypes[i].size());
+        electricField[i].resize(mesh.elemTypes[i].size());
 
-        for(std::size_t j = 0; j < domainElementTypes[i].size(); j++)
+        for(std::size_t j = 0; j < mesh.elemTypes[i].size(); j++)
         {
-            phi[i][j].resize(domainElementTags[i][j].size());
-            electricField[i][j].resize(domainElementTags[i][j].size());
+            phi[i][j].resize(mesh.elemTags[i][j].size());
+            electricField[i][j].resize(mesh.elemTags[i][j].size());
 
-            // Récupération des barycentres pour le groupe actuel
-            std::vector<double> barycenters;
-            gmsh::model::mesh::getBarycenters(domainElementTypes[i][j], domainEntityTags[i],
-                                              false, false, barycenters);
+            const std::vector<double> &barycenters = mesh.barycenters[i][j];
 
-            // Parallélisation sur les éléments du domaine (k)
             #pragma omp parallel for schedule(guided)
-            for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++)
+            for(std::size_t k = 0; k < mesh.elemTags[i][j].size(); k++)
             {
-                double x = barycenters[3*k];
-                double y = barycenters[3*k + 1];
+                const double x = barycenters[3*k];
+                const double y = barycenters[3*k + 1];
 
-                double currentPhi = 0.0, gradPhiX = 0.0, gradPhiY = 0.0;
+                double currentPhi = 0.0;
+                double gradPhiX = 0.0;
+                double gradPhiY = 0.0;
 
-                // Boucle interne sur les éléments de frontière (bieVec)
                 for(std::size_t el = 0; el < bieVec.size(); el++)
                 {
+                    const elementStruct &e = bieVec[el];
+
                     if(computePhi)
                     {
-                        double h = computeAnalyticalH(x, y, bieVec[el], bieVec[el].normalOutward);
-                        double g = solutionType ?
-                            computeAnalyticalG(x, y, bieVec[el]) :
-                            computeNumericalG(x, y, bieVec[el], integrationType, localCoord, weights);
+                        double h, g;
 
-                        currentPhi += h * bieVec[el].bcValue[0] - g * bieVec[el].bcValue[1];
+                        if(solutionType)
+                        {
+                            const Kernels kernels = computeAnalyticalKernels(
+                                x, y, e, e.normalOutward);
+
+                            h = kernels.H;
+                            g = kernels.G;
+                        }
+                        else
+                        {
+                            h = computeAnalyticalH(
+                                x, y, e, e.normalOutward);
+
+                            g = computeNumericalG(
+                                x, y, e, quad.type,
+                                quad.localCoord, quad.weights);
+                        }
+
+                        currentPhi += h * e.bcValue[0]
+                                    - g * e.bcValue[1];
                     }
+
 
                     if(computeElectricField)
                     {
                         double hX, gX, hY, gY;
-                        if(!solutionType)
+
+                        if(solutionType)
                         {
-                            hX = computeNumericalGradHx(x, y, bieVec[el], integrationType, localCoord, weights);
-                            gX = computeNumericalGradGx(x, y, bieVec[el], integrationType, localCoord, weights);
-                            hY = computeNumericalGradHy(x, y, bieVec[el], integrationType, localCoord, weights);
-                            gY = computeNumericalGradGy(x, y, bieVec[el], integrationType, localCoord, weights);
+                            const FirstKernels kernels =
+                                computeAnalyticalFirstKernels(x, y, e);
+
+                            hX = kernels.Hx;
+                            gX = kernels.Gx;
+                            hY = kernels.Hy;
+                            gY = kernels.Gy;
                         }
                         else
                         {
-                            hX = computeAnalyticalGradHx(x, y, bieVec[el]);
-                            gX = computeAnalyticalGradGx(x, y, bieVec[el]);
-                            hY = computeAnalyticalGradHy(x, y, bieVec[el]);
-                            gY = computeAnalyticalGradGy(x, y, bieVec[el]);
+                            hX = computeNumericalGradHx(
+                                x, y, e, quad.type, quad.localCoord, quad.weights);
+
+                            gX = computeNumericalGradGx(
+                                x, y, e, quad.type, quad.localCoord, quad.weights);
+
+                            hY = computeNumericalGradHy(
+                                x, y, e, quad.type, quad.localCoord, quad.weights);
+
+                            gY = computeNumericalGradGy(
+                                x, y, e, quad.type, quad.localCoord, quad.weights);
                         }
-                        gradPhiX += hX * bieVec[el].bcValue[0] - gX * bieVec[el].bcValue[1];
-                        gradPhiY += hY * bieVec[el].bcValue[0] - gY * bieVec[el].bcValue[1];
+
+                        gradPhiX += hX * e.bcValue[0] - gX * e.bcValue[1];
+                        gradPhiY += hY * e.bcValue[0] - gY * e.bcValue[1];
                     }
+
                 }
 
-                // Écriture des résultats (chaque k est unique, donc pas de conflit)
-                phi[i][j][k].resize(1, currentPhi);
-                electricField[i][j][k].resize(3);
-                electricField[i][j][k][0] = -gradPhiX;
-                electricField[i][j][k][1] = -gradPhiY;
-                electricField[i][j][k][2] = 0.0;
+                if(computePhi)
+                    phi[i][j][k].assign(1, currentPhi);
+
+                if(computeElectricField)
+                {
+                    electricField[i][j][k].resize(3);
+                    electricField[i][j][k][0] = -gradPhiX;
+                    electricField[i][j][k][1] = -gradPhiY;
+                    electricField[i][j][k][2] = 0.0;
+                }
             }
         }
     }
 }
+
 
 // ============================================================
 //  displayData  (unchanged from original)
@@ -560,50 +510,789 @@ void displayData(const int viewTag,
                  const std::string fileName,
                  const std::string dataType,
                  const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
-                 const std::vector<std::vector<std::vector<std::vector<double>>>> &data,
-                 const int viewIndex)
+                 const std::vector<std::vector<std::vector<std::vector<double>>>> &data)
 {
     for(std::size_t i = 0; i < data.size(); i++)
         for(std::size_t j = 0; j < data[i].size(); j++)
             gmsh::view::addModelData(viewTag, 0, modelName, dataType,
                                      domainElementTags[i][j], data[i][j]);
 
-    gmsh::option::setNumber("View[" + std::to_string(viewIndex) + "].IntervalsType", 3);
-    gmsh::option::setNumber("View[" + std::to_string(viewIndex) + "].MaxRecursionLevel", 3);
-    gmsh::option::setNumber("View[" + std::to_string(viewIndex) + "].TargetError", -0.0001);
-    gmsh::option::setNumber("View[" + std::to_string(viewIndex) + "].Visible", 0);
+    setViewDefaults(viewTag);
 }
 
-void boundaryElementTags(std::vector<size_t> &domainBoundaryElTags,
-                         const std::vector<std::vector<std::vector<size_t>>> &domainElementTags,
-                         const std::vector<std::vector<int>> &domainElementTypes,
-                         const std::map<size_t, std::vector<size_t>> &domainElementNodeTags,
-                         const std::map<size_t, std::vector<size_t>> &bieNodeMap)
+void computeInternalElectricField(
+    std::map<std::size_t, std::vector<double>> &internalNodalE,
+    const std::vector<double> &domainNodeCoords,
+    const std::vector<std::size_t> &domainNodeTags,
+    const std::map<std::size_t, std::size_t> &domainNodeIndices,
+    const std::vector<elementStruct> &elementVector,
+    const Quadrature &quad,
+    std::map<std::size_t, std::vector<std::size_t>> &boundaryNodeToElements,
+    const bool &solutionType)
 {
-    domainBoundaryElTags.clear();
+    const std::vector<elementStruct> &bieVec = elementVector;
 
-    // On parcourt tous les éléments du domaine (Séquentiel pour éviter les conflits Gmsh)
-    for(std::size_t i = 0; i < domainElementTags.size(); i++) {
-        for(std::size_t j = 0; j < domainElementTags[i].size(); j++) {
-            for(std::size_t k = 0; k < domainElementTags[i][j].size(); k++) {
+    std::vector<std::vector<double>> internalNodalETmp(
+        domainNodeTags.size(), std::vector<double>(3, 0.0));
 
-                size_t elTag = domainElementTags[i][j][k];
-                const std::vector<size_t> &nodes = domainElementNodeTags.at(elTag);
+    #pragma omp parallel for schedule(guided)
+    for(std::size_t i = 0; i < domainNodeTags.size(); i++)
+    {
+        const std::size_t nodeTag = domainNodeTags[i];
 
-                // Si UN SEUL des nœuds de l'élément est sur la frontière (bieNodeMap),
-                // alors cet élément doit être traité par la boucle de post-proc.
-                bool isOnBoundary = false;
-                for(size_t nodeTag : nodes) {
-                    if(bieNodeMap.count(nodeTag)) {
-                        isOnBoundary = true;
-                        break;
+        // Les nœuds de frontière sont traités dans elementNodeElectricField.
+        if(boundaryNodeToElements.count(nodeTag))
+            continue;
+
+        const std::size_t nodeIndex = domainNodeIndices.at(nodeTag);
+        const double x = domainNodeCoords[3 * nodeIndex];
+        const double y = domainNodeCoords[3 * nodeIndex + 1];
+
+        double gradPhiX = 0.0;
+        double gradPhiY = 0.0;
+
+        for(const auto &el : bieVec)
+        {
+            double hX, gX, hY, gY;
+
+            if(solutionType)
+            {
+                // Noyaux d'ordre 1 depuis une seule géométrie
+                const FirstKernels fk = computeAnalyticalFirstKernels(x, y, el);
+                hX = fk.Hx;  gX = fk.Gx;
+                hY = fk.Hy;  gY = fk.Gy;
+            }
+            else
+            {
+                hX = computeNumericalGradHx(
+                    x, y, el, quad.type, quad.localCoord, quad.weights);
+                gX = computeNumericalGradGx(
+                    x, y, el, quad.type, quad.localCoord, quad.weights);
+                hY = computeNumericalGradHy(
+                    x, y, el, quad.type, quad.localCoord, quad.weights);
+                gY = computeNumericalGradGy(
+                    x, y, el, quad.type, quad.localCoord, quad.weights);
+            }
+
+            gradPhiX += hX * el.bcValue[0] - gX * el.bcValue[1];
+            gradPhiY += hY * el.bcValue[0] - gY * el.bcValue[1];
+        }
+
+        internalNodalETmp[i][0] = -gradPhiX;
+        internalNodalETmp[i][1] = -gradPhiY;
+        internalNodalETmp[i][2] = 0.0;
+    }
+
+    for(std::size_t i = 0; i < domainNodeTags.size(); i++)
+    {
+        const std::size_t nodeTag = domainNodeTags[i];
+
+        if(!boundaryNodeToElements.count(nodeTag))
+            internalNodalE[nodeTag] = internalNodalETmp[i];
+    }
+}
+
+void elementNodeElectricField(
+    std::vector<std::vector<std::vector<std::vector<std::vector<double>>>>>
+        &electricFieldNode,
+    const std::vector<std::vector<std::vector<std::size_t>>>
+        &domainElementTags,
+    const std::map<std::size_t, std::vector<std::size_t>>
+        &domainElementNodeTags,
+    const std::vector<elementStruct> &elementVector,
+    const std::map<std::size_t, std::vector<double>> &internalNodalE)
+{
+    // Accumulateur nodal : [somme Ex, somme Ey, nombre de contributions].
+    std::map<std::size_t, std::vector<double>> boundaryNodeE;
+
+    for(const auto &el : elementVector)
+    {
+        if(el.Ex == HUGE_VAL || el.Ey == HUGE_VAL)
+            continue;
+
+        auto addContribution =
+            [&](const std::size_t nodeTag)
+        {
+            auto &v = boundaryNodeE[nodeTag];
+
+            if(v.empty())
+                v = std::vector<double>(3, 0.0);
+
+            v[0] += el.Ex;
+            v[1] += el.Ey;
+            v[2] += 1.0;
+        };
+
+        addContribution(el.nodeTags[0]);
+        addContribution(el.nodeTags[1]);
+
+        if(el.midNodeTag != 0)
+            addContribution(el.midNodeTag);
+    }
+
+    // Moyenne des contributions aux nœuds de frontière.
+    for(auto &[nodeTag, v] : boundaryNodeE)
+    {
+        if(v[2] > 0.0)
+        {
+            v[0] /= v[2];
+            v[1] /= v[2];
+        }
+    }
+
+    // Allocation et remplissage des données ElementNodeData.
+    electricFieldNode.resize(domainElementTags.size());
+
+    for(std::size_t i = 0; i < domainElementTags.size(); i++)
+    {
+        electricFieldNode[i].resize(domainElementTags[i].size());
+
+        for(std::size_t j = 0; j < domainElementTags[i].size(); j++)
+        {
+            electricFieldNode[i][j].resize(
+                domainElementTags[i][j].size());
+
+            for(std::size_t k = 0;
+                k < domainElementTags[i][j].size(); k++)
+            {
+                const std::size_t elementTag =
+                    domainElementTags[i][j][k];
+
+                const auto &nodeTags =
+                    domainElementNodeTags.at(elementTag);
+
+                electricFieldNode[i][j][k].resize(
+                    nodeTags.size(), std::vector<double>(3, 0.0));
+
+                for(std::size_t l = 0; l < nodeTags.size(); l++)
+                {
+                    const std::size_t nodeTag = nodeTags[l];
+
+                    const auto itB = boundaryNodeE.find(nodeTag);
+
+                    if(itB != boundaryNodeE.end())
+                    {
+                        electricFieldNode[i][j][k][l][0] =
+                            itB->second[0];
+                        electricFieldNode[i][j][k][l][1] =
+                            itB->second[1];
                     }
-                }
+                    else
+                    {
+                        const auto itI = internalNodalE.find(nodeTag);
 
-                if(isOnBoundary) {
-                    domainBoundaryElTags.push_back(elTag);
+                        if(itI != internalNodalE.end())
+                        {
+                            electricFieldNode[i][j][k][l][0] =
+                                itI->second[0];
+                            electricFieldNode[i][j][k][l][1] =
+                                itI->second[1];
+                            electricFieldNode[i][j][k][l][2] =
+                                itI->second[2];
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+void displayNodeElectricField(
+    const int viewTag,
+    const std::string modelName,
+    const std::vector<std::vector<std::vector<std::size_t>>> &domainElementTags,
+    const std::vector<
+        std::vector<
+            std::vector<
+                std::vector<
+                    std::vector<double>>>>>
+        &data)
+{
+    for(std::size_t i = 0; i < data.size(); i++)
+    {
+        for(std::size_t j = 0; j < data[i].size(); j++)
+        {
+            std::vector<std::vector<double>> elementData;
+            elementData.reserve(data[i][j].size());
+
+            for(std::size_t k = 0; k < data[i][j].size(); k++)
+            {
+                std::vector<double> values;
+                values.reserve(data[i][j][k].size() * 3);
+
+                for(const auto &nodeField : data[i][j][k])
+                {
+                    values.push_back(nodeField[0]); // Ex
+                    values.push_back(nodeField[1]); // Ey
+                    values.push_back(nodeField[2]); // Ez
+                }
+
+                elementData.push_back(std::move(values));
+            }
+
+            gmsh::view::addModelData(
+                viewTag,
+                0,
+                modelName,
+                "ElementNodeData",
+                domainElementTags[i][j],
+                elementData,
+                0.0,
+                3
+            );
+        }
+    }
+    setViewDefaults(viewTag);
+}
+
+void computeBoundaryElectricField(std::vector<elementStruct> &elementVector)
+{
+    const std::vector<elementStruct> &bieVec = elementVector;
+
+    const auto bieNodeMap = buildBIENodeToElements(bieVec);
+
+    // 1. Reconstruction du potentiel aux nœuds de frontière.
+    std::map<std::size_t, double> boundaryNodePhi;
+
+    for(const auto &[nodeTag, bieIndices] : bieNodeMap)
+    {
+        if(bieIndices.empty())
+            continue;
+
+        double sumPhi = 0.0;
+
+        for(const std::size_t index : bieIndices)
+        {
+            sumPhi += bieVec[index].bcValue[0];
+        }
+
+        boundaryNodePhi[nodeTag] =
+            sumPhi / static_cast<double>(bieIndices.size());
+    }
+
+    // 2. Calcul de En et Et sur chaque élément BIE.
+    for(auto &el : elementVector)
+    {
+        if(el.length <= 1e-15)
+            continue;
+
+        const auto it0 = boundaryNodePhi.find(el.nodeTags[0]);
+        const auto it1 = boundaryNodePhi.find(el.nodeTags[1]);
+
+        if(it0 == boundaryNodePhi.end() ||
+           it1 == boundaryNodePhi.end())
+            continue;
+
+        // Convention provisoire : En = -d(phi)/dn.
+        el.En = -el.bcValue[1];
+        el.Et = -(it1->second - it0->second) / el.length;
+    }
+}
+
+void computeCartesianElectricField(
+    std::vector<elementStruct> &elementVector)
+{
+    for(auto &el : elementVector)
+    {
+        if(el.length <= 1e-15 ||
+           el.En == HUGE_VAL ||
+           el.Et == HUGE_VAL)
+            continue;
+
+        // Normale orientée vers l'extérieur du domaine.
+        const double nxOut =
+            el.normalOutward ? el.nx : -el.nx;
+        const double nyOut =
+            el.normalOutward ? el.ny : -el.ny;
+
+        // Tangente orientée du nœud 0 vers le nœud 1.
+        const double tx = el.deltaX / el.length;
+        const double ty = el.deltaY / el.length;
+
+        el.Ex = el.En * nxOut + el.Et * tx;
+        el.Ey = el.En * nyOut + el.Et * ty;
+    }
+}
+
+//éviter calcul en double
+//eviter le calcul des deux représentation de E (elementdata et elementnodedata)
+//paralleliser E elementnodedata et les autres fonctions
+
+// ---------- Maxwell nodal, dérivé de E déjà calculé ----------
+void computeMaxwellStressNodal(
+    NodalScalarData& Txx,
+    NodalScalarData& Tyy,
+    NodalScalarData& Txy,
+    NodalScalarData& Tzz,
+    const NodalVectorData& nodalE,
+    const double epsilon)
+{
+    Txx.resize(nodalE.size());
+    Tyy.resize(nodalE.size());
+    Txy.resize(nodalE.size());
+    Tzz.resize(nodalE.size());
+
+    for (std::size_t i = 0; i < nodalE.size(); ++i)
+    {
+        Txx[i].resize(nodalE[i].size());
+        Tyy[i].resize(nodalE[i].size());
+        Txy[i].resize(nodalE[i].size());
+        Tzz[i].resize(nodalE[i].size());
+
+        for (std::size_t j = 0; j < nodalE[i].size(); ++j)
+        {
+            Txx[i][j].resize(nodalE[i][j].size());
+            Tyy[i][j].resize(nodalE[i][j].size());
+            Txy[i][j].resize(nodalE[i][j].size());
+            Tzz[i][j].resize(nodalE[i][j].size());
+
+            for (std::size_t k = 0; k < nodalE[i][j].size(); ++k)
+            {
+                const std::size_t nn = nodalE[i][j][k].size();
+
+                Txx[i][j][k].resize(nn);
+                Tyy[i][j][k].resize(nn);
+                Txy[i][j][k].resize(nn);
+                Tzz[i][j][k].resize(nn);
+
+                for (std::size_t l = 0; l < nn; ++l)
+                {
+                    const double Ex = nodalE[i][j][k][l][0];
+                    const double Ey = nodalE[i][j][k][l][1];
+
+                    const double E2 = Ex * Ex + Ey * Ey;
+                    const double halfEps = 0.5 * epsilon;
+
+                    Txx[i][j][k][l] = halfEps * (Ex * Ex - Ey * Ey);
+                    Tyy[i][j][k][l] = halfEps * (Ey * Ey - Ex * Ex);
+                    Txy[i][j][k][l] = epsilon * Ex * Ey;
+                    Tzz[i][j][k][l] = -halfEps * E2;
+                }
+            }
+        }
+    }
+}
+
+
+void computeElementGradE2(
+    std::vector<std::vector<std::vector<std::vector<double>>>> &gradE2,
+    const DomainMesh &mesh,
+    const std::vector<elementStruct> &elementVector,
+    const Quadrature &quad,
+    const bool &solutionType,
+    const double prefactor)
+{
+    const std::vector<elementStruct> &bieVec = elementVector;
+
+    gradE2.resize(mesh.entityTags.size());
+
+    for(std::size_t i = 0; i < mesh.entityTags.size(); i++)
+    {
+        gradE2[i].resize(mesh.elemTypes[i].size());
+
+        for(std::size_t j = 0; j < mesh.elemTypes[i].size(); j++)
+        {
+            gradE2[i][j].resize(mesh.elemTags[i][j].size());
+
+            const std::vector<double> &barycenters =
+                mesh.barycenters[i][j];
+
+            #pragma omp parallel for schedule(guided)
+            for(std::size_t k = 0; k < mesh.elemTags[i][j].size(); k++)
+            {
+                const double x = barycenters[3 * k];
+                const double y = barycenters[3 * k + 1];
+
+                double px = 0.0, py = 0.0;
+                double pxx = 0.0, pxy = 0.0, pyy = 0.0;
+
+                for(const auto &el : bieVec)
+                {
+                    const double phi = el.bcValue[0];
+                    const double q   = el.bcValue[1];
+
+                    if(solutionType)
+                    {
+                        // Noyaux d'ordre 1 et 2 depuis une seule géométrie
+                        const GradKernels gk = computeAnalyticalGradKernels(x, y, el);
+
+                        px += gk.Hx * phi - gk.Gx * q;
+                        py += gk.Hy * phi - gk.Gy * q;
+
+                        pxx += gk.sk.Hxx * phi - gk.sk.Gxx * q;
+                        pxy += gk.sk.Hxy * phi - gk.sk.Gxy * q;
+                        pyy += gk.sk.Hyy * phi - gk.sk.Gyy * q;
+                    }
+                    else
+                    {
+                        px += computeNumericalGradHx(
+                                  x, y, el, quad.type,
+                                  quad.localCoord, quad.weights) * phi
+                            - computeNumericalGradGx(
+                                  x, y, el, quad.type,
+                                  quad.localCoord, quad.weights) * q;
+
+                        py += computeNumericalGradHy(
+                                  x, y, el, quad.type,
+                                  quad.localCoord, quad.weights) * phi
+                            - computeNumericalGradGy(
+                                  x, y, el, quad.type,
+                                  quad.localCoord, quad.weights) * q;
+
+                        const SecondKernels sk = computeNumericalSecondKernels(
+                            x, y, el, quad.type,
+                            quad.localCoord, quad.weights);
+
+                        pxx += sk.Hxx * phi - sk.Gxx * q;
+                        pxy += sk.Hxy * phi - sk.Gxy * q;
+                        pyy += sk.Hyy * phi - sk.Gyy * q;
+                    }
+                }
+                gradE2[i][j][k] = {
+                    2.0 * prefactor * (px * pxx + py * pxy),
+                    2.0 * prefactor * (px * pxy + py * pyy),
+                    0.0
+                };
+            }
+        }
+    }
+}
+
+
+// ---------- affichage (tag-based, sans index de vue) ----------
+void setViewDefaults(const int tag)
+{
+    gmsh::view::option::setNumber(tag, "IntervalsType", 3);
+    gmsh::view::option::setNumber(tag, "MaxRecursionLevel", 3);
+    gmsh::view::option::setNumber(tag, "TargetError", -0.0001);
+    gmsh::view::option::setNumber(tag, "Visible", 0);
+}
+
+static void addNodalScalarView(
+    const int tag,
+    const std::string& modelName,
+    const std::vector<std::vector<std::vector<std::size_t>>>& elTags,
+    const NodalScalarData& data)
+{
+    if (tag < 0 || data.empty())
+        return;
+
+    for (std::size_t i = 0; i < data.size(); ++i)
+    {
+        for (std::size_t j = 0; j < data[i].size(); ++j)
+        {
+            if (data[i][j].empty())
+                continue;
+
+            gmsh::view::addModelData(
+                tag, 0, modelName, "ElementNodeData",
+                elTags.at(i).at(j), data[i][j], 0.0, 1);
+        }
+    }
+
+    setViewDefaults(tag);
+}
+
+void computeAndDisplayExtraViews(
+    const extraViewsStruct& extra,
+    const std::string& modelName,
+    const DomainMesh &mesh,
+    const NodalVectorData& nodalE,
+    const std::vector<elementStruct>& elementVector,
+    const Quadrature &quad,
+    const double epsilon,
+    const bool &solutionType)
+{
+    if (extra.wants(Field::Maxwell) && !nodalE.empty())
+    {
+        NodalScalarData Txx, Tyy, Txy, Tzz;
+
+        computeMaxwellStressNodal(
+            Txx, Tyy, Txy, Tzz, nodalE, epsilon);
+
+        #pragma omp critical(gmsh_api)
+        {
+            addNodalScalarView(
+                extra.txxViewTag, modelName, mesh.elemTags, Txx);
+
+            addNodalScalarView(
+                extra.tyyViewTag, modelName, mesh.elemTags, Tyy);
+
+            addNodalScalarView(
+                extra.txyViewTag, modelName, mesh.elemTags, Txy);
+
+            addNodalScalarView(
+                extra.tzzViewTag, modelName, mesh.elemTags, Tzz);
+        }
+    }
+
+    if (extra.wants(Field::GradE2) && extra.gradE2ViewTag >= 0)
+    {
+        std::vector<std::vector<std::vector<std::vector<double>>>> gradE2;
+
+        computeElementGradE2(
+            gradE2, mesh, elementVector, quad, solutionType, 1.0);
+
+        #pragma omp critical(gmsh_api)
+        {
+            for (std::size_t i = 0; i < gradE2.size(); ++i)
+            {
+                for (std::size_t j = 0; j < gradE2[i].size(); ++j)
+                {
+                    gmsh::view::addModelData(
+                        extra.gradE2ViewTag, 0, modelName, "ElementData",
+                        mesh.elemTags.at(i).at(j),
+                        gradE2[i][j], 0.0, 3);
+                }
+            }
+
+            setViewDefaults(extra.gradE2ViewTag);
+        }
+    }
+}
+
+static std::pair<double, double> maxwellTraction(
+    const elementStruct& el,
+    const double epsilon,
+    const double nx,
+    const double ny)
+{
+    const double Ex = el.Ex;
+    const double Ey = el.Ey;
+
+    const double En = Ex * nx + Ey * ny;
+    const double E2 = Ex * Ex + Ey * Ey;
+
+    const double Tnx = epsilon * En * Ex
+                     - 0.5 * epsilon * E2 * nx;
+
+    const double Tny = epsilon * En * Ey
+                     - 0.5 * epsilon * E2 * ny;
+
+    return {Tnx, Tny};
+}
+
+maxwellLoadStruct computeInclusionMaxwellForce(
+    const domainData& domainA,
+    const domainData& domainB,
+    const interfaceStruct& iface,
+    const double thickness)
+{
+    maxwellLoadStruct result;
+
+    if (iface.name.find("_inc") == std::string::npos)
+        return result;
+
+    if (iface.elemIndicesA.size() != iface.elemIndicesB.size())
+        throw std::runtime_error(
+            "Mismatched interface element counts: " + iface.name);
+
+    for (std::size_t m = 0; m < iface.elemIndicesA.size(); ++m)
+    {
+        const auto& elA =
+            domainA.elementVector.at(iface.elemIndicesA[m]);
+
+        const auto& elB =
+            domainB.elementVector.at(iface.elemIndicesB[m]);
+
+        // Normale commune dirigée de B vers A.
+        const double nx = elB.normalOutward ? elB.nx : -elB.nx;
+        const double ny = elB.normalOutward ? elB.ny : -elB.ny;
+
+        const auto tA = maxwellTraction(
+            elA, domainA.epsilon, nx, ny);
+
+        const auto tB = maxwellTraction(
+            elB, domainB.epsilon, nx, ny);
+
+        result.Fx += (tA.first - tB.first)
+                   * elB.length * thickness;
+
+        result.Fy += (tA.second - tB.second)
+                   * elB.length * thickness;
+    }
+
+    return result;
+}
+
+double maxwellNormalStress(
+    const elementStruct& el,
+    const double epsilon,
+    const double nx,
+    const double ny)
+{
+    const double En = el.Ex * nx + el.Ey * ny;
+    const double E2 = el.Ex * el.Ex + el.Ey * el.Ey;
+
+    return 0.5 * epsilon * (2.0 * En * En - E2);
+}
+
+void displayInterfaceStressJump(
+    const int viewTag,
+    const std::string& modelName,
+    const interfaceStruct& iface,
+    const domainData& domainA,
+    const std::map<int, double>& electrostaticPressure)
+{
+    std::vector<std::size_t> elementTags;
+    std::vector<std::vector<double>> values;
+
+    elementTags.reserve(iface.nbElements());
+    values.reserve(iface.nbElements());
+
+    for (std::size_t i = 0; i < iface.nbElements(); ++i)
+    {
+        const auto& elA =
+            domainA.elementVector.at(iface.elemIndicesA.at(i));
+
+        const auto it = electrostaticPressure.find(
+            static_cast<int>(elA.tag));
+
+        if (it == electrostaticPressure.end())
+            continue;
+
+        elementTags.push_back(elA.tag);
+        values.push_back({it->second});
+    }
+
+    if (elementTags.empty())
+    {
+        std::cerr << "[WARNING] No interface stress data for "
+                  << iface.name << '\n';
+        return;
+    }
+
+    gmsh::view::addModelData(
+        viewTag, 0, modelName, "ElementData",
+        elementTags, values, 0.0, 1);
+
+    setViewDefaults(viewTag);
+
+    gmsh::view::option::setNumber(
+        viewTag, "LineWidth", 15);
+}
+
+// ============================================================
+//  Un champ = une fonction : calcul + publication dans sa vue
+// ============================================================
+static void postProcessPhi(const domainData &dom,
+                           const DomainMesh &mesh,
+                           const Quadrature &quad,
+                           const extraViewsStruct &extra,
+                           const std::string &modelName,
+                           const bool solutionType,
+                           std::map<std::size_t, std::vector<std::size_t>> &bNodeToElems)
+{
+    const double t0 = omp_get_wtime();
+
+    std::map<int, double> internalPhi;
+    std::vector<std::vector<std::vector<std::vector<double>>>> nPhi;
+
+    computeInternalPhi(internalPhi,
+                       mesh.nodeCoords, mesh.nodeTags, mesh.nodeIndices,
+                       dom.elementVector, quad, bNodeToElems, solutionType);
+
+    elementNodeData(nPhi,
+                    mesh.elemTags, mesh.elemTypes, mesh.nbNodes, mesh.elemNodeTags,
+                    dom.elementVector, internalPhi, dom.physicalGroupTag, bNodeToElems);
+
+    #pragma omp critical(gmsh_api)
+    {
+        displayData(extra.phiViewTag, modelName, "results.msh", "ElementNodeData",
+                    mesh.elemTags, nPhi);
+    }
+
+    displayTime(t0, omp_get_wtime(), "post-processing [" + dom.name + "] Phi", true);
+}
+
+static void postProcessENodal(const domainData &dom,
+                              const DomainMesh &mesh,
+                              const Quadrature &quad,
+                              const extraViewsStruct &extra,
+                              const std::string &modelName,
+                              const bool solutionType,
+                              std::map<std::size_t, std::vector<std::size_t>> &bNodeToElems,
+                              NodalVectorData &nEField)   // sortie : relu par le tenseur de Maxwell
+{
+    const double t0 = omp_get_wtime();
+
+    std::map<std::size_t, std::vector<double>> internalNodalE;
+
+    computeInternalElectricField(internalNodalE,
+                                 mesh.nodeCoords, mesh.nodeTags, mesh.nodeIndices,
+                                 dom.elementVector, quad, bNodeToElems, solutionType);
+
+    elementNodeElectricField(nEField,
+                             mesh.elemTags, mesh.elemNodeTags,
+                             dom.elementVector, internalNodalE);
+
+    #pragma omp critical(gmsh_api)
+    {
+        displayNodeElectricField(extra.electricFieldNodeViewTag, modelName,
+                                 mesh.elemTags, nEField);
+    }
+
+    displayTime(t0, omp_get_wtime(), "post-processing [" + dom.name + "] E nodal", true);
+}
+
+static void postProcessEBary(const domainData &dom,
+                             const DomainMesh &mesh,
+                             const Quadrature &quad,
+                             const extraViewsStruct &extra,
+                             const std::string &modelName,
+                             const bool solutionType)
+{
+    const double t0 = omp_get_wtime();
+
+    std::vector<std::vector<std::vector<std::vector<double>>>> ePhi;   // non publié
+    std::vector<std::vector<std::vector<std::vector<double>>>> eField;
+
+    computeElementData(ePhi, eField, mesh, dom.elementVector,
+                       solutionType, quad, false, true);
+
+    #pragma omp critical(gmsh_api)
+    {
+        displayData(extra.electricFieldViewTag, modelName, "results.msh", "ElementData",
+                    mesh.elemTags, eField);
+    }
+
+    displayTime(t0, omp_get_wtime(), "post-processing [" + dom.name + "] E barycentres", true);
+}
+
+// ============================================================
+//  postProcessDomain : liste des champs demandés, rien d'autre
+// ============================================================
+void postProcessDomain(const domainData &dom,
+                       const DomainMesh &mesh,
+                       const Quadrature &quad,
+                       const extraViewsStruct &extra,
+                       const std::string &modelName,
+                       const bool solutionType)
+{
+    // Lien nœud -> éléments de frontière (nécessaire pour Phi et pour E nodal)
+    std::map<std::size_t, std::vector<std::size_t>> bNodeToElems;
+    if (extra.wants(Field::Phi) || extra.wants(Field::ENodal))
+        computeNodeToElements(bNodeToElems, dom.elementVector);
+
+    if (extra.wants(Field::Phi))
+        postProcessPhi(dom, mesh, quad, extra, modelName, solutionType, bNodeToElems);
+
+    // nEField est aussi lu par le tenseur de Maxwell
+    NodalVectorData nEField;
+    if (extra.wants(Field::ENodal))
+        postProcessENodal(dom, mesh, quad, extra, modelName, solutionType,
+                          bNodeToElems, nEField);
+
+    if (extra.wants(Field::EBary))
+        postProcessEBary(dom, mesh, quad, extra, modelName, solutionType);
+
+    // Tenseur de Maxwell et grad|E|²
+    if (extra.wants(Field::Maxwell) || extra.wants(Field::GradE2))
+    {
+        const double t0 = omp_get_wtime();
+        computeAndDisplayExtraViews(extra, modelName, mesh, nEField,
+                                    dom.elementVector, quad, dom.epsilon, solutionType);
+        displayTime(t0, omp_get_wtime(),
+                    "post-processing [" + dom.name + "] Maxwell + grad|E|^2", true);
     }
 }
