@@ -120,10 +120,7 @@ static void computeInclusionLoads(std::map<int, double> &electrostaticPressure,
             throw std::runtime_error("Domain not found for interface: " + iface.name);
 
         // Force électrique résultante (liste vide = toutes les inclusions)
-        const bool selected = params.inclusionInterfaces.empty()
-            || std::find(params.inclusionInterfaces.begin(),
-                         params.inclusionInterfaces.end(),
-                         iface.name) != params.inclusionInterfaces.end();
+        const bool selected = params.selectsInterface(iface.name);
 
         if (wantForces && selected)
         {
@@ -267,6 +264,10 @@ void multiDomainSolverBEM(std::map<int,double> &electrostaticPressure,
                     for (const auto& iface : interfaces)
                     {
                         if (iface.name.find("_inc") == std::string::npos)
+                            continue;
+
+                        // Seulement les interfaces choisies dans parameters.hpp
+                        if (!params.selectsInterface(iface.name))
                             continue;
 
                         const auto itA = std::find_if(

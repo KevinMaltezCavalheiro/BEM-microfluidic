@@ -30,7 +30,7 @@ scale = 10;
 // dans une géométrie de référence puis multipliées par scale.
 
 eps0 = 8.8541878128e-12;
-lc = 0.004 * scale;
+lc = 0.04 * scale;
 
 // ============================================================
 // POINTS POUR LES BLOCS
@@ -251,3 +251,6 @@ SetNumber(
     "Boundary Conditions/BEM_hole_electrode_H/BEM_domain_2/dirichlet",
     150.0
 );
+
+//Mesh.RecombineAll = 1;
+//Mesh.ElementOrder = 2;

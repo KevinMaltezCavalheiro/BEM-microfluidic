@@ -27,10 +27,10 @@ H_interface           = -120*scale; // Interface RESIN / GLASS
 H_interface_glass_pdms = -35*scale;  // Interface GLASS / PDMS (verre = 85 µm)
 
 // --- TAILLES DE MAILLAGE (BEM) ---
-lc_ext   = 50*scale; // Bords extérieurs très grossiers
-lc       = 20*scale; // Électrodes et maillage général
-lc_glass = 10*scale;  // Maillage fin dédié à la couche de verre (Lines 3, 7, 34, 35)
-lc_canal = 10*scale;  // Canal d'huile et puits
+lc_ext   = 25*scale; // Bords extérieurs très grossiers
+lc       = 10*scale; // Électrodes et maillage général
+lc_glass = 5*scale;  // Maillage fin dédié à la couche de verre (Lines 3, 7, 34, 35)
+lc_canal = 5*scale;  // Canal d'huile et puits
 
 
 // ============================================================
@@ -178,7 +178,7 @@ Line(43) = {28, 13};
 
 // Zone de fort gradient entre x = -200 µm et x = +200 µm
 Field[1] = Box;
-Field[1].VIn = 5*scale;            // Taille de maillage fine entre électrodes (2 µm)
+Field[1].VIn = 2*scale;            // Taille de maillage fine entre électrodes (2 µm)
 Field[1].VOut = lc_ext;            // Taille de maillage par défaut hors zone
 Field[1].XMin = -800*scale;        // Englobe la région inter-électrodes
 Field[1].XMax = 800*scale;

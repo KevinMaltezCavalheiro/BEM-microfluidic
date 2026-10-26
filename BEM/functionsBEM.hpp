@@ -190,13 +190,11 @@ struct extraViewsStruct
     int tzzViewTag = -1;
     int gradE2ViewTag = -1;
     int stressJumpViewTag = -1;
+    int eNormViewTag = -1;
+    int gradE2NormViewTag = -1;
 
     void createViews()
     {
-        // Dépendance : le tenseur de Maxwell se calcule à partir du champ E nodal
-        if(wants(Field::Maxwell))
-            fields.insert(Field::ENodal);
-
         // Réinitialisation des tags
         phiViewTag = -1;
         electricFieldViewTag = -1;
@@ -207,6 +205,8 @@ struct extraViewsStruct
         tzzViewTag = -1;
         gradE2ViewTag = -1;
         stressJumpViewTag = -1;
+        eNormViewTag = -1;
+        gradE2NormViewTag = -1;
 
         if(wants(Field::Phi))
             phiViewTag = gmsh::view::add("Phi");
@@ -219,6 +219,9 @@ struct extraViewsStruct
             electricFieldViewTag =
                 gmsh::view::add("Electric Field (Barycenters)");
 
+        if(wants(Field::ENorm))
+            eNormViewTag = gmsh::view::add("|E| (Nodal) [V/m]");
+
         if(wants(Field::Maxwell))
         {
             txxViewTag = gmsh::view::add("Maxwell Txx [Pa]");
@@ -230,6 +233,9 @@ struct extraViewsStruct
         if(wants(Field::GradE2))
             gradE2ViewTag = gmsh::view::add("grad |E|^2 [V^2/m^3]");
 
+        if(wants(Field::GradE2Norm))
+            gradE2NormViewTag = gmsh::view::add("|grad |E|^2| [V^2/m^3]");
+
         if(wants(Field::StressJump))
             stressJumpViewTag =
                 gmsh::view::add("Maxwell Normal Stress Jump [Pa]");
@@ -240,6 +246,8 @@ struct extraViewsStruct
                   << ", Txx=" << txxViewTag
                   << ", gradE2=" << gradE2ViewTag
                   << ", stress jump=" << stressJumpViewTag
+                  << ", |E|=" << eNormViewTag
+                  << ", |gradE2|=" << gradE2NormViewTag
                   << '\n';
     }
 };

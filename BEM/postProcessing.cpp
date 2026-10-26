@@ -1026,7 +1026,7 @@ void computeAndDisplayExtraViews(
         }
     }
 
-    if (extra.wants(Field::GradE2) && extra.gradE2ViewTag >= 0)
+    if (extra.gradE2ViewTag >= 0 || extra.gradE2NormViewTag >= 0)
     {
         std::vector<std::vector<std::vector<std::vector<double>>>> gradE2;
 
@@ -1035,18 +1035,45 @@ void computeAndDisplayExtraViews(
 
         #pragma omp critical(gmsh_api)
         {
-            for (std::size_t i = 0; i < gradE2.size(); ++i)
+            if (extra.gradE2ViewTag >= 0)
             {
-                for (std::size_t j = 0; j < gradE2[i].size(); ++j)
+                for (std::size_t i = 0; i < gradE2.size(); ++i)
                 {
-                    gmsh::view::addModelData(
-                        extra.gradE2ViewTag, 0, modelName, "ElementData",
-                        mesh.elemTags.at(i).at(j),
-                        gradE2[i][j], 0.0, 3);
+                    for (std::size_t j = 0; j < gradE2[i].size(); ++j)
+                    {
+                        gmsh::view::addModelData(extra.gradE2ViewTag, 0, modelName, "ElementData",
+                                                 mesh.elemTags.at(i).at(j),
+                                                 gradE2[i][j], 0.0, 3);
+                    }
                 }
+
+                setViewDefaults(extra.gradE2ViewTag);
             }
 
-            setViewDefaults(extra.gradE2ViewTag);
+            if (extra.gradE2NormViewTag >= 0)
+            {
+                // Norme |grad |E|²| par élément : vue scalaire
+                for (std::size_t i = 0; i < gradE2.size(); ++i)
+                {
+                    for (std::size_t j = 0; j < gradE2[i].size(); ++j)
+                    {
+                        std::vector<std::vector<double>> norms(gradE2[i][j].size());
+
+                        for (std::size_t k = 0; k < gradE2[i][j].size(); ++k)
+                        {
+                            const auto &g = gradE2[i][j][k];
+                            norms[k] = { std::sqrt(g[0]*g[0] + g[1]*g[1] + g[2]*g[2]) };
+                        }
+
+                        gmsh::view::addModelData(
+                                                 extra.gradE2NormViewTag, 0, modelName, "ElementData",
+                                                 mesh.elemTags.at(i).at(j),
+                                                 norms, 0.0, 1);
+                    }
+                }
+
+                setViewDefaults(extra.gradE2NormViewTag);
+            }
         }
     }
 }
@@ -1226,10 +1253,41 @@ static void postProcessENodal(const domainData &dom,
                              mesh.elemTags, mesh.elemNodeTags,
                              dom.elementVector, internalNodalE);
 
-    #pragma omp critical(gmsh_api)
+    if (extra.electricFieldNodeViewTag >= 0)
     {
-        displayNodeElectricField(extra.electricFieldNodeViewTag, modelName,
-                                 mesh.elemTags, nEField);
+        #pragma omp critical(gmsh_api)
+        {
+            displayNodeElectricField(extra.electricFieldNodeViewTag, modelName,
+                                     mesh.elemTags, nEField);
+        }
+    }
+
+    if (extra.eNormViewTag >= 0)
+    {
+        // Norme |E| aux nœuds : vue scalaire
+        NodalScalarData eNorm(nEField.size());
+        for (std::size_t i = 0; i < nEField.size(); ++i)
+        {
+            eNorm[i].resize(nEField[i].size());
+            for (std::size_t j = 0; j < nEField[i].size(); ++j)
+            {
+                eNorm[i][j].resize(nEField[i][j].size());
+                for (std::size_t k = 0; k < nEField[i][j].size(); ++k)
+                {
+                    eNorm[i][j][k].resize(nEField[i][j][k].size());
+                    for (std::size_t l = 0; l < nEField[i][j][k].size(); ++l)
+                    {
+                        const auto &E = nEField[i][j][k][l];
+                        eNorm[i][j][k][l] = std::sqrt(E[0]*E[0] + E[1]*E[1] + E[2]*E[2]);
+                    }
+                }
+            }
+        }
+
+        #pragma omp critical(gmsh_api)
+        {
+            addNodalScalarView(extra.eNormViewTag, modelName, mesh.elemTags, eNorm);
+        }
     }
 
     displayTime(t0, omp_get_wtime(), "post-processing [" + dom.name + "] E nodal", true);
@@ -1269,17 +1327,22 @@ void postProcessDomain(const domainData &dom,
                        const std::string &modelName,
                        const bool solutionType)
 {
+    // Le champ E nodal est calculé dès qu'une vue en a besoin
+    const bool needENodal = extra.wants(Field::ENodal)
+                         || extra.wants(Field::ENorm)
+                         || extra.wants(Field::Maxwell);
+
     // Lien nœud -> éléments de frontière (nécessaire pour Phi et pour E nodal)
     std::map<std::size_t, std::vector<std::size_t>> bNodeToElems;
-    if (extra.wants(Field::Phi) || extra.wants(Field::ENodal))
+    if (extra.wants(Field::Phi) || needENodal)
         computeNodeToElements(bNodeToElems, dom.elementVector);
 
     if (extra.wants(Field::Phi))
         postProcessPhi(dom, mesh, quad, extra, modelName, solutionType, bNodeToElems);
 
-    // nEField est aussi lu par le tenseur de Maxwell
+    // nEField est aussi lu par |E| et par le tenseur de Maxwell
     NodalVectorData nEField;
-    if (extra.wants(Field::ENodal))
+    if (needENodal)
         postProcessENodal(dom, mesh, quad, extra, modelName, solutionType,
                           bNodeToElems, nEField);
 
@@ -1287,7 +1350,7 @@ void postProcessDomain(const domainData &dom,
         postProcessEBary(dom, mesh, quad, extra, modelName, solutionType);
 
     // Tenseur de Maxwell et grad|E|²
-    if (extra.wants(Field::Maxwell) || extra.wants(Field::GradE2))
+    if (extra.wants(Field::Maxwell) || extra.wants(Field::GradE2) || extra.wants(Field::GradE2Norm))
     {
         const double t0 = omp_get_wtime();
         computeAndDisplayExtraViews(extra, modelName, mesh, nEField,
