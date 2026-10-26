@@ -1,3 +1,8 @@
+<img width="1117" height="1054" alt="‎electrodes" src="https://github.com/user-attachments/assets/772dc568-b321-4a07-bb3b-a48c7883a807" />
+<img width="329" height="310" alt="Capture d’écran 2026-10-19 à 23 31 55" src="https://github.com/user-attachments/assets/c71ecd9c-d6b0-4ef1-9d32-21a9c5028500" />
+<img width="329" height="310" alt="Capture d’écran 2026-10-19 à 23 31 48" src="https://github.com/user-attachments/assets/dbfd1923-1227-4939-a8bc-50841d79f677" />
+
+
 # ⚡ 2D Multi-Domain Boundary Element Method (BEM) Solver for Electrostatics
 
 An open-source C++ framework designed to simulate 2D electrostatic fields ($\phi$, $\mathbf{E}$) and electric displacement discontinuities across multi-material interfaces using the **Boundary Element Method (BEM)**.
